@@ -15,6 +15,7 @@ struct CalendarView: View {
     @State private var partyID: String?
     @State private var status: ObligationStatus?
     @State private var showDone = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private struct MonthKey: Hashable, Comparable {
         var year: Int
@@ -57,48 +58,43 @@ struct CalendarView: View {
         let list = filtered
         let overdue = list.filter { !$0.isDone && $0.due < store.today }
         let months = monthGroups(list.filter { !overdue.contains($0) })
+        let blocks = monthBlocks(overdue: overdue, months: months)
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 22, pinnedViews: [.sectionHeaders]) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("合规日历").font(TypeStyle.pageTitle).tracking(-0.5)
-                            Text("按月排列所有截止日。筛选出的事项可一并交办或导出为清单。")
-                                .font(TypeStyle.body).foregroundStyle(Theme.muted)
+                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    VStack(alignment: .leading, spacing: Space.l16) {
+                        PageHeader(title: "合规日历", subtitle: "按月排列所有截止日。筛选出的事项可一并交办或导出为清单。") {
+                            EmptyView()
                         }
+                        .padding(.bottom, Space.s8)
                         filterBar
                         summary(list, overdue: overdue.count)
                         if !list.isEmpty { actionBar(list) }
                     }
-                    if range == .all && !list.isEmpty { monthStrip(list, proxy) }
-
-                    if !overdue.isEmpty {
-                        Section {
-                            rows(overdue)
-                        } header: {
-                            monthHeader("已逾期", count: overdue.count, alert: true)
-                        }
+                    .padding(.bottom, Space.xl24)
+                    if range == .all && !list.isEmpty {
+                        monthStrip(list, proxy).padding(.bottom, Space.section40)
                     }
-                    ForEach(months, id: \.0) { item in
+
+                    // 所有月份是同一个承载面：月份标题吸顶，行之间用细线分隔
+                    ForEach(Array(blocks.enumerated()), id: \.element.id) { i, block in
                         Section {
-                            rows(item.1)
+                            rows(block.rows, last: i == blocks.count - 1)
                         } header: {
-                            monthHeader(item.0.title, count: item.1.count, alert: false)
-                                .id(item.0.id)
+                            monthHeader(block.title, count: block.rows.count, alert: block.alert, first: i == 0)
+                                .id(block.id)
                         }
                     }
                     if list.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("没有符合筛选条件的事项。").font(TypeStyle.body).foregroundStyle(Theme.muted)
-                            if hasFilters {
-                                Button("清除筛选", action: clearFilters)
-                                    .buttonStyle(PillButtonStyle(.secondary))
-                            }
-                        }
-                        .surfaceCard(padding: 22, radius: 18)
+                        EmptyStateView(symbol: "calendar", title: "没有符合筛选条件的事项",
+                                       message: hasFilters ? "试试放宽时间范围，或清除筛选。" : "接下来没有需要办理的合规事项。",
+                                       actionTitle: hasFilters ? "清除筛选" : nil,
+                                       action: { clearFilters() })
+                            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
                     }
                 }
-                .padding(24)
+                .padding(Space.pageEdge)
+                .frame(maxWidth: 1240)
                 .frame(maxWidth: .infinity)
             }
         }
@@ -294,13 +290,13 @@ struct CalendarView: View {
         return HStack(alignment: .bottom, spacing: 6) {
             ForEach(strip, id: \.0) { item in
                 Button {
-                    withAnimation(.smooth) { proxy.scrollTo(item.0.id, anchor: .top) }
+                    withAnimation(Motion.resolved(Motion.panel, reduceMotion: reduceMotion)) { proxy.scrollTo(item.0.id, anchor: .top) }
                 } label: {
                     VStack(spacing: 5) {
                         Text(item.1 == 0 ? "" : "\(item.1)").font(.system(size: 11, weight: .bold)).monospacedDigit()
                             .foregroundStyle(Theme.ink)
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(item.1 == 0 ? Theme.band : Theme.ink.opacity(0.75))
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(item.1 == 0 ? Theme.band : Theme.ink.opacity(0.8))
                             .frame(height: 6 + 30 * CGFloat(item.1) / CGFloat(maxCount))
                         Text(verbatim: "\(item.0.month)月").font(.system(size: 11)).foregroundStyle(Theme.muted)
                     }
@@ -313,27 +309,57 @@ struct CalendarView: View {
             }
         }
         .frame(height: 70)
-        .padding(.horizontal, 16).padding(.vertical, 12)
-        .background(Theme.surface, in: .rect(cornerRadius: 18))
+        .padding(.horizontal, Space.xl24).padding(.vertical, Space.l16)
+        .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("未来 12 个月事项分布")
     }
 
-    private func monthHeader(_ title: String, count: Int, alert: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title).font(TypeStyle.rowTitle).foregroundStyle(alert ? Theme.danger : Theme.ink)
-            Text("\(count) 件").font(TypeStyle.metadata).foregroundStyle(Theme.muted)
-            Spacer()
+    private struct MonthBlock: Identifiable {
+        var id: String
+        var title: String
+        var rows: [Obligation]
+        var alert: Bool
+    }
+
+    private func monthBlocks(overdue: [Obligation], months: [(MonthKey, [Obligation])]) -> [MonthBlock] {
+        var out: [MonthBlock] = []
+        if !overdue.isEmpty { out.append(MonthBlock(id: "overdue", title: "已逾期", rows: overdue, alert: true)) }
+        for (k, rows) in months { out.append(MonthBlock(id: k.id, title: k.title, rows: rows, alert: false)) }
+        return out
+    }
+
+    private func monthHeader(_ title: String, count: Int, alert: Bool, first: Bool) -> some View {
+        let r = first ? Radius.surface : 0
+        return VStack(spacing: 0) {
+            if !first { Rectangle().fill(Theme.hairline).frame(height: 1) }
+            HStack(alignment: .firstTextBaseline, spacing: Space.s8) {
+                Text(title).font(TypeStyle.section).tracking(Tracking.section)
+                    .foregroundStyle(alert ? Theme.danger : Theme.ink)
+                Text("\(count) 件").font(TypeStyle.meta).foregroundStyle(Theme.muted)
+                Spacer()
+            }
+            .padding(.horizontal, Space.xl24).padding(.top, first ? Space.xl24 : Space.l16).padding(.bottom, Space.s8)
         }
-        .padding(.horizontal, 4).padding(.vertical, 8)
-        .background(Theme.canvas)
+        .background(Theme.surface, in: UnevenRoundedRectangle(topLeadingRadius: r, bottomLeadingRadius: 0,
+                                                              bottomTrailingRadius: 0, topTrailingRadius: r,
+                                                              style: .continuous))
+        .accessibilityAddTraits(.isHeader)
     }
 
-    private func rows(_ list: [Obligation]) -> some View {
-        VStack(spacing: 0) {
-            ForEach(list) { o in
+    private func rows(_ list: [Obligation], last: Bool) -> some View {
+        let r = last ? Radius.surface : 0
+        return VStack(spacing: 0) {
+            ForEach(Array(list.enumerated()), id: \.element.id) { i, o in
+                if i > 0 { Rectangle().fill(Theme.hairline).frame(height: 1).padding(.horizontal, Space.m12) }
                 CalendarRow(obligation: o) { router.sheet = .obligation(o.key) }
             }
         }
-        .surfaceCard(padding: 6, radius: 18)
+        .padding(.horizontal, 6).padding(.bottom, last ? Space.s8 : Space.xs4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: r,
+                                                              bottomTrailingRadius: r, topTrailingRadius: 0,
+                                                              style: .continuous))
     }
 }
 
@@ -381,9 +407,9 @@ struct CalendarRow: View {
             }
         }
         .padding(.horizontal, 12).frame(height: 58)
-        .background(hover ? Theme.band : .clear, in: .rect(cornerRadius: 14))
+        .background(hover ? Theme.band.opacity(0.6) : .clear, in: .rect(cornerRadius: Radius.row))
         .opacity(o.isDone ? 0.6 : 1)
-        .onHover { h in withAnimation(.snappy(duration: 0.2)) { hover = h } }
+        .onHover { h in withAnimation(Motion.fast) { hover = h } }
         .contextMenu { ObligationContextMenu(obligation: o) }
     }
 }

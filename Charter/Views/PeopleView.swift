@@ -7,8 +7,10 @@ struct PeopleView: View {
     @Environment(Router.self) private var router
     @State private var query = ""
     @State private var showingNewPerson = false
-    @State private var newPersonName = ""
     @FocusState private var searchFocused: Bool
+    @Namespace private var railNS
+    @State private var highlightID: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var list: [Person] {
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
@@ -17,47 +19,69 @@ struct PeopleView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-        PageHeader(title: "人员") {
-            Button { newPersonName = ""; showingNewPerson = true } label: { Label("新建人员", systemImage: "plus") }
-                .buttonStyle(PillButtonStyle(.primary))
-        }
-        HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Button { searchFocused = true } label: { Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted) }
-                        .buttonStyle(.plain).keyboardShortcut("f", modifiers: [.command]).help("搜索人员（⌘F）")
-                    TextField("搜索姓名或别名", text: $query).textFieldStyle(.plain).focused($searchFocused)
-                }
-                .padding(.horizontal, 14).frame(height: 38)
-                .background(Theme.band, in: .capsule)
-                ScrollView {
-                    LazyVStack(spacing: 4) {
-                        ForEach(list) { p in row(p) }
+        VStack(alignment: .leading, spacing: 0) {
+            PageHeader(title: "人员") {
+                Button { showingNewPerson = true } label: { Label("新建人员", systemImage: "plus") }
+                    .buttonStyle(PillButtonStyle(.primary))
+            }
+            .padding(.horizontal, Space.pageEdge).padding(.top, Space.xl24).padding(.bottom, Space.xl24)
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: Space.s8) {
+                    HStack(spacing: Space.s8) {
+                        Button { searchFocused = true } label: { Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted) }
+                            .buttonStyle(.plain).keyboardShortcut("f", modifiers: [.command]).help("搜索人员（⌘F）")
+                        TextField("搜索姓名或别名", text: $query).textFieldStyle(.plain).focused($searchFocused)
+                        if !query.isEmpty {
+                            Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted) }
+                                .buttonStyle(.plain)
+                        }
+                    }
+                    .font(TypeStyle.body)
+                    .padding(.horizontal, 14).frame(height: 38)
+                    .background(Theme.band, in: .capsule)
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(list) { p in row(p) }
+                        }
+                        .padding(.top, Space.xs4)
+                    }
+                    .scrollIndicators(.never)
+                    .overlay {
+                        if list.isEmpty {
+                            Text(query.isEmpty ? "还没有人员" : "没有找到“\(query)”")
+                                .font(TypeStyle.body).foregroundStyle(Theme.muted)
+                                .padding()
+                        }
                     }
                 }
-                .scrollIndicators(.never)
-            }
-            .padding(14)
-            .frame(width: 300)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .background(Theme.surface, in: .rect(cornerRadius: Theme.radius))
+                .padding(Space.m12)
+                .frame(width: 300)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+                .padding(.leading, Space.pageEdge).padding(.bottom, Space.pageEdge)
 
-            Group {
-                if let id = router.selectedPersonID, let p = store.person(id) {
-                    PersonDetail(person: p).id(p.id)
-                } else {
-                    EmptyState(symbol: "person.crop.rectangle.stack", title: "选择人员",
-                               message: "查看此人的任职、直接与间接持股，以及代持情况。", actionTitle: nil, action: nil)
-                        .background(Theme.surface, in: .rect(cornerRadius: Theme.radius))
+                Group {
+                    if let id = router.selectedPersonID, let p = store.person(id) {
+                        PersonDetail(person: p).id(p.id)
+                    } else {
+                        EmptyStateView(symbol: "person.crop.rectangle.stack", title: "选择人员",
+                                       message: "查看此人的任职、直接与间接持股，以及代持情况。")
+                            .frame(maxHeight: .infinity)
+                            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+                            .padding(.leading, Space.l16).padding(.trailing, Space.pageEdge).padding(.bottom, Space.pageEdge)
+                    }
                 }
+                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        }
-        .padding(24)
         .navigationTitle("人员")
-        .onAppear { if router.selectedPersonID == nil { router.selectedPersonID = list.first?.id } }
+        .onAppear {
+            if router.selectedPersonID == nil { router.selectedPersonID = list.first?.id }
+            highlightID = router.selectedPersonID
+        }
+        .onChange(of: router.selectedPersonID) { _, new in
+            withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) { highlightID = new }
+        }
         .onMoveCommand { direction in
             switch direction {
             case .up: moveSelection(by: -1)
@@ -65,26 +89,9 @@ struct PeopleView: View {
             default: break
             }
         }
+        .onChange(of: router.newPersonRequest) { _, _ in showingNewPerson = true }
         .sheet(isPresented: $showingNewPerson) {
-            let name = newPersonName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let duplicate = !name.isEmpty && store.people.contains { $0.name == name }
-            SheetScaffold(title: "新建人员", subtitle: "先填姓名，任职和持股在公司档案里添加。", width: 460) {
-                FormGroup {
-                    FieldRow(label: "姓名", hint: duplicate ? "已有同名的人员。新建后，列表里会用所在公司区分两人。" : nil) {
-                        TextField("例如：张三", text: $newPersonName).textFieldStyle(KitFieldStyle())
-                    }
-                }
-            } leading: {
-                EmptyView()
-            } trailing: {
-                Button("取消") { showingNewPerson = false }
-                    .buttonStyle(PillButtonStyle(.secondary))
-                    .keyboardShortcut(.cancelAction)
-                Button("新建") { createPerson() }
-                    .buttonStyle(PillButtonStyle(.primary))
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(name.isEmpty)
-            }
+            NewPersonSheet { person in router.selectedPersonID = person.id }
         }
     }
 
@@ -103,7 +110,7 @@ struct PeopleView: View {
             HStack(spacing: 10) {
                 Avatar(name: p.name, size: 34, dashed: held.contains(where: \.isNominee), highlighted: on)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(p.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                    Text(p.name).font(TypeStyle.rowTitle).lineLimit(1)
                     HStack(spacing: 0) {
                         if let anchor {
                             if !caption.isEmpty { Text("\(caption)，").fixedSize() }
@@ -117,11 +124,17 @@ struct PeopleView: View {
                 Spacer(minLength: 0)
             }
             .foregroundStyle(on ? Theme.onSelection : Theme.ink)
-            .padding(.horizontal, 10).frame(height: 52)
-            .background(on ? Theme.selection : .clear, in: .rect(cornerRadius: 16))
+            .padding(.horizontal, 8).frame(height: 52)
+            .background {
+                if highlightID == p.id {
+                    RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+                        .fill(Theme.selection)
+                        .matchedGeometryEffect(id: "railSelection", in: railNS)
+                }
+            }
             .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RowButtonStyle())
         .accessibilityLabel(p.name)
         .accessibilityValue(summary)
         .accessibilityAddTraits(on ? .isSelected : [])
@@ -135,12 +148,48 @@ struct PeopleView: View {
         router.selectedPersonID = list[next].id
     }
 
-    private func createPerson() {
-        let name = newPersonName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-        let person = store.createPerson(name: name)
-        router.selectedPersonID = person.id
-        showingNewPerson = false
+}
+
+/// 新建人员：打开即聚焦姓名；空名在行内提示，同名只提醒不阻止。
+private struct NewPersonSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    var onCreate: (Person) -> Void
+    @State private var name = ""
+    @State private var attempted = false
+    @FocusState private var focused: Bool
+
+    private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        let duplicate = !trimmed.isEmpty && store.people.contains { $0.name == trimmed }
+        SheetScaffold(title: "新建人员", subtitle: "先填姓名，任职和持股在公司档案里添加。", width: 460) {
+            FormGroup {
+                FieldRow(label: "姓名",
+                         hint: duplicate ? "已有同名的人员。新建后，列表里会用所在公司区分两人。" : nil,
+                         error: attempted && trimmed.isEmpty ? "请填写姓名" : nil) {
+                    TextField("例如：张三", text: $name).textFieldStyle(KitFieldStyle())
+                        .focused($focused)
+                }
+            }
+        } leading: {
+            EmptyView()
+        } trailing: {
+            Button("取消") { dismiss() }
+                .buttonStyle(PillButtonStyle(.secondary))
+                .keyboardShortcut(.cancelAction)
+            Button("新建") {
+                attempted = true
+                guard !trimmed.isEmpty else { focused = true; return }
+                let person = store.createPerson(name: trimmed)
+                onCreate(person)
+                store.showToast("已新建人员 \(person.name)")
+                dismiss()
+            }
+            .buttonStyle(PillButtonStyle(.primary))
+            .keyboardShortcut(.defaultAction)
+        }
+        .onAppear { focused = true }
     }
 }
 
@@ -170,10 +219,20 @@ struct PersonDetail: View {
                        heldForMe.isEmpty ? "由他人代持记录" : nil,
                        past.isEmpty ? "曾任职务" : nil].compactMap { $0 }
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
                 hero(blockers: blockers, nominee: direct.contains(where: \.isNominee))
+                hairline
+                HStack(alignment: .top, spacing: 0) {
+                    fact("现任职务", companyIDs.count)
+                    factDivider
+                    fact("直接持股", direct.count)
+                    factDivider
+                    fact("穿透后持有", portfolio.count)
+                    Spacer(minLength: 0)
+                }
+                .fixedSize(horizontal: false, vertical: true)
 
-                // 一列整宽卡片，高度随内容；没有内容的模块不出卡片，统一在最后一句话说明
+                // 一个承载面，模块之间用细线分隔；没有内容的模块不出现，统一在最后一句话说明
                 if !companyIDs.isEmpty {
                     section("现任职务", count: companyIDs.count) {
                         ForEach(companyIDs, id: \.self) { cid in
@@ -216,11 +275,18 @@ struct PersonDetail: View {
                     }
                 }
                 if !missing.isEmpty {
+                    hairline
                     Text(Self.missingSentence(missing))
                         .font(TypeStyle.body).foregroundStyle(Theme.muted)
-                        .padding(.horizontal, 6).padding(.top, 2)
+                        .padding(.horizontal, Space.xl24).padding(.vertical, Space.l16)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+            .padding(.leading, Space.l16).padding(.trailing, Space.pageEdge).padding(.bottom, Space.pageEdge)
+            .frame(maxWidth: 1000, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .appear()
         }
         .scrollIndicators(.never)
         .sheet(isPresented: $editing) {
@@ -245,8 +311,8 @@ struct PersonDetail: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 16) {
                 Avatar(name: person.name, size: 56, dashed: nominee)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(person.name).font(.system(size: 26, weight: .semibold)).tracking(-0.5).textSelection(.enabled)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(person.name).font(TypeStyle.title).tracking(Tracking.title).textSelection(.enabled)
                     if !person.aliases.isEmpty || nominee {
                         HStack(spacing: 6) {
                             ForEach(person.aliases, id: \.self) { Pill(text: $0) }
@@ -278,7 +344,6 @@ struct PersonDetail: View {
                 .fixedSize()
             }
             if !blockers.isEmpty {
-                Rectangle().fill(Theme.hairline).frame(height: 1)
                 HStack(alignment: .center, spacing: 12) {
                     Text("不能删除：\(blockers.joined(separator: "，"))。可以先把记录合并到另一个人。")
                         .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
@@ -290,21 +355,44 @@ struct PersonDetail: View {
                 }
             }
         }
-        .surfaceCard(padding: 22)
+        .padding(Space.xl24)
+    }
+
+    private var hairline: some View {
+        Rectangle().fill(Theme.hairline).frame(height: 1)
+    }
+
+    private var factDivider: some View {
+        Rectangle().fill(Theme.hairline).frame(width: 1).frame(maxHeight: .infinity)
+    }
+
+    private func fact(_ label: String, _ count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(TypeStyle.meta).foregroundStyle(Theme.muted)
+            Text(count == 0 ? "无" : "\(count) 家")
+                .font(.mono(15, .medium)).numericTransition()
+                .foregroundStyle(count == 0 ? Theme.muted : Theme.ink)
+        }
+        .padding(.horizontal, Space.xl24).padding(.vertical, Space.l16)
+        .frame(minWidth: 140, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: 模块
 
     private func section<Content: View>(_ title: String, count: Int, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title).font(.system(size: 17, weight: .semibold))
-                Spacer()
-                CountBadge(count: count)
+        VStack(alignment: .leading, spacing: 0) {
+            hairline
+            VStack(alignment: .leading, spacing: Space.s8) {
+                HStack {
+                    Text(title).font(TypeStyle.section).tracking(Tracking.section)
+                    Spacer()
+                    CountBadge(count: count)
+                }
+                VStack(spacing: 0) { content() }
             }
-            VStack(spacing: 0) { content() }
+            .padding(.horizontal, Space.xl24).padding(.top, Space.xl24).padding(.bottom, Space.l16)
         }
-        .surfaceCard(padding: 18)
     }
 
     private func companyName(_ id: String) -> String {
@@ -352,9 +440,10 @@ struct PersonDetail: View {
                     .multilineTextAlignment(.trailing)
                     .frame(minWidth: numeric ? 64 : nil, alignment: .trailing)
             }
-            .padding(.vertical, 8).contentShape(.rect)
+            .padding(.vertical, 8).padding(.horizontal, Space.s8).contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RowButtonStyle())
+        .padding(.horizontal, -Space.s8)
     }
 }
 
@@ -370,7 +459,7 @@ private struct EditPersonSheet: View {
     var body: some View {
         SheetScaffold(title: "编辑人员", subtitle: "别名用于搜索，也能帮助区分同名的人。", width: 520) {
             FormGroup {
-                FieldRow(label: "姓名") {
+                FieldRow(label: "姓名", error: trimmedName.isEmpty ? "姓名不能为空" : nil) {
                     TextField("姓名", text: $draft.name).textFieldStyle(KitFieldStyle(invalid: trimmedName.isEmpty))
                 }
                 FieldRow(label: "别名", hint: "多个别名用逗号分隔") {
@@ -395,6 +484,7 @@ private struct EditPersonSheet: View {
                 var p = draft
                 p.name = trimmedName
                 store.upsert(p)
+                store.showToast("已保存 \(p.name)")
                 dismiss()
             }
             .buttonStyle(PillButtonStyle(.primary))

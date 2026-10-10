@@ -24,6 +24,7 @@ struct StructureView: View {
     /// 当前显示哪个集团（一个集团一张图）。nil 表示全部公司。
     @State private var graphGroup: String?
     @State private var didInit = false
+    @Namespace private var stopNS
 
     static let companySize = CGSize(width: 280, height: 70)
     static let personSize = CGSize(width: 170, height: 56)
@@ -109,11 +110,20 @@ struct StructureView: View {
         let z = zoom(canvas)
         HStack(spacing: 0) {
             Group {
-                if let snapshot {
+                if store.companies.isEmpty {
+                    FullPageState {
+                        EmptyStateView(symbol: "point.3.connected.trianglepath.dotted", title: "还没有股权结构",
+                                       message: "新建集团并添加公司和持股关系后，这里会自动画出股权结构图。",
+                                       actionTitle: "新建集团") { router.sheet = .newGroup }
+                    }
+                } else if let snapshot {
                     graph(snapshot, zoom: z)
                 } else {
-                    ProgressView("正在整理股权结构…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(spacing: Space.m12) {
+                        ProgressView().controlSize(.small)
+                        Text("正在整理股权结构…").font(TypeStyle.body).foregroundStyle(Theme.muted)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) { title }
@@ -310,10 +320,10 @@ struct StructureView: View {
     private var title: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(store.filterName(graphGroup)).font(TypeStyle.pageTitle).tracking(-0.5)
+                Text(store.filterName(graphGroup)).font(TypeStyle.pageTitle).tracking(Tracking.title)
                     .lineLimit(1).truncationMode(.tail)
                 Text("\(snapshot?.companies.count ?? 0) 家公司")
-                    .font(TypeStyle.metadata).foregroundStyle(Theme.muted).monospacedDigit()
+                    .font(TypeStyle.meta).foregroundStyle(Theme.muted).numericTransition()
                 Spacer(minLength: 0)
             }
             .help("打开侧栏可切换集团")
@@ -327,7 +337,7 @@ struct StructureView: View {
             }
             .font(TypeStyle.body)
         }
-        .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 8)
+        .padding(.horizontal, Space.pageEdge).padding(.top, Space.xl24).padding(.bottom, Space.s8)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -350,13 +360,16 @@ struct StructureView: View {
                     } label: {
                         Text(verbatim: d == store.today ? "今天" : String(d.year))
                             .font(TypeStyle.body).fontWeight(on ? .bold : .medium).monospacedDigit()
-                            .foregroundStyle(on ? .primary : .secondary)
+                            .foregroundStyle(on ? Theme.onSelection : Theme.muted)
                             .frame(width: 62, height: 36)
                             .background {
+                                // 选中的年份底色在年份之间滑动
                                 if on {
-                                    Capsule().fill(.background).shadow(color: .black.opacity(0.18), radius: 6, y: 3)
+                                    Capsule().fill(Theme.selection)
+                                        .matchedGeometryEffect(id: "stop", in: stopNS)
                                 }
                             }
+                            .contentShape(.capsule)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(d == store.today ? "今天" : "\(d.year) 年末")
@@ -364,6 +377,7 @@ struct StructureView: View {
                 }
             }
             .padding(6)
+            .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: asOf)
             .floatingGlass(cornerRadius: 26)
             .padding(.horizontal, 12)
         }
@@ -613,7 +627,7 @@ struct NodeView: View {
                 Text(detail)
                     .font(TypeStyle.metadata)
                     .fontWeight(detailNeedsAttention ? .semibold : .regular)
-                    .foregroundStyle(detailNeedsAttention ? Theme.amberText : Color.secondary)
+                    .foregroundStyle(detailNeedsAttention ? Theme.amberText : Theme.muted)
                     .lineLimit(1).truncationMode(.tail)
                     .monospacedDigit()
                     .contentTransition(.opacity)
@@ -638,13 +652,13 @@ struct NodeView: View {
                 .foregroundStyle(highlighted || !nominee ? Theme.onInk : Theme.ink)
                 .frame(width: 44, height: 44)
                 .background(highlighted ? Theme.ink : (nominee ? Color.clear : Theme.ink.opacity(0.85)), in: .circle)
-                .overlay(Circle().strokeBorder(style: StrokeStyle(lineWidth: nominee && !highlighted ? 1.5 : 0, dash: [3, 3])).foregroundStyle(.secondary))
+                .overlay(Circle().strokeBorder(style: StrokeStyle(lineWidth: nominee && !highlighted ? 1.5 : 0, dash: [3, 3])).foregroundStyle(Theme.muted))
             VStack(alignment: .leading, spacing: 1) {
                 Text(personName)
                     .font(TypeStyle.rowTitle)
                     .lineLimit(2).truncationMode(.tail)
                     .layoutPriority(1)
-                Text(nominee ? "名义股东" : "股东").font(TypeStyle.metadata).foregroundStyle(.secondary)
+                Text(nominee ? "名义股东" : "股东").font(TypeStyle.metadata).foregroundStyle(Theme.muted)
             }
             Spacer(minLength: 0)
         }
@@ -691,13 +705,14 @@ struct InspectorPanel: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            // 一个承载面：顶部身份、关键信息条，其下各分区用细线分隔
+            VStack(alignment: .leading, spacing: 0) {
                 switch ref.kind {
                 case .company: company
                 case .person: person
                 }
             }
-            .padding(24)
+            .font(TypeStyle.body)
             .frame(maxWidth: .infinity, alignment: .leading)
             .transition(.blurReplace)
             .id(ref)
@@ -706,7 +721,7 @@ struct InspectorPanel: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { actionBar }
     }
 
-    /// 底部操作栏：固定在详情栏底部，顶部细线、浅灰底，与弹窗底栏一致。
+    /// 底部操作栏：固定在详情栏底部，与承载面同底色，顶部一条细线分隔。
     private var actionBar: some View {
         HStack(spacing: 8) {
             switch ref.kind {
@@ -721,9 +736,8 @@ struct InspectorPanel: View {
                     .buttonStyle(PillButtonStyle(.primary))
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
+        .padding(.horizontal, Space.xl24).padding(.vertical, Space.l16)
         .frame(maxWidth: .infinity)
-        .background(Theme.band.opacity(0.6))
         .background(Theme.surface)
         .overlay(alignment: .top) { Rectangle().fill(Theme.hairline).frame(height: 1) }
     }
@@ -747,28 +761,35 @@ struct InspectorPanel: View {
         let b = store.breakdown(of: ref.id, on: asOf)
         let officers = store.officers(of: ref.id, on: asOf)
         let chains = store.chainsFromTops(to: ref.id, on: asOf)
-        JurisdictionBadge(code: c?.jurisdiction ?? "?", size: 40, highlighted: true)
-        VStack(alignment: .leading, spacing: 4) {
-            Text(c?.name ?? "").font(TypeStyle.sectionTitle).tracking(-0.3).textSelection(.enabled)
-            Text([store.jurisdictionName(c?.jurisdiction ?? ""), c?.entityForm ?? ""].filter { !$0.isEmpty }.joined(separator: "，"))
-                .foregroundStyle(.secondary)
-        }
-        VStack(spacing: 0) {
-            infoRow("注册编号", c?.registrationNumber ?? "")
-            Divider()
-            infoRow("成立日期", c?.incorporationDate?.description ?? "")
-            Divider()
-            infoRow("注册地址", c?.registeredAddress ?? "")
-            if let c, c.status != .active {
-                Divider()
-                infoRow("状态", c.status.label)
+        VStack(alignment: .leading, spacing: Space.l16) {
+            JurisdictionBadge(code: c?.jurisdiction ?? "?", size: 48, highlighted: true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(c?.name ?? "").font(TypeStyle.title).tracking(Tracking.title)
+                    .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                HStack(spacing: 6) {
+                    Pill(text: store.jurisdictionName(c?.jurisdiction ?? ""))
+                    if let form = c?.entityForm, !form.isEmpty { Pill(text: form) }
+                    if let c, c.status != .active { Pill(text: c.status.label, kind: .strong) }
+                }
             }
         }
-        .padding(.horizontal, 12)
-        .background(Theme.card, in: .rect(cornerRadius: 14))
+        .padding(Space.xl24).padding(.trailing, Space.l16)
+        // 关键信息条
+        VStack(alignment: .leading, spacing: 0) {
+            hairline
+            HStack(alignment: .top, spacing: 0) {
+                fact("注册编号", c?.registrationNumber ?? "", mono: true)
+                Rectangle().fill(Theme.hairline).frame(width: 1).frame(maxHeight: .infinity)
+                fact("成立日期", c?.incorporationDate?.description ?? "", mono: true)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            hairline
+            fact("注册地址", c?.registeredAddress ?? "", mono: false)
+        }
 
         block("董事及高管") {
-            if officers.isEmpty { Text("未录入").foregroundStyle(.secondary) }
+            if officers.isEmpty { Text("未录入").foregroundStyle(Theme.muted) }
             // 同一人担任多个职务时合并成一行
             let grouped: [(personID: String, titles: String)] = officers.reduce(into: [(String, [String])]()) { acc, a in
                 if let i = acc.firstIndex(where: { $0.0 == a.personID }) { acc[i].1.append(a.title) } else { acc.append((a.personID, [a.title])) }
@@ -784,7 +805,7 @@ struct InspectorPanel: View {
                     }
                     .buttonStyle(.plain)
                     Spacer()
-                    Text(a.titles).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                    Text(a.titles).foregroundStyle(Theme.muted).multilineTextAlignment(.trailing)
                 }
             }
         }
@@ -817,7 +838,7 @@ struct InspectorPanel: View {
             }
         }
         block("最终受益（穿透）") {
-            if b.owners.isEmpty && b.unknown < 0.005 { Text("股东未录入").foregroundStyle(.secondary) }
+            if b.owners.isEmpty && b.unknown < 0.005 { Text("股东未录入").foregroundStyle(Theme.muted) }
             ForEach(b.owners, id: \.owner) { u in
                 HStack {
                     Text(store.name(of: u.owner)).fontWeight(.medium)
@@ -836,7 +857,7 @@ struct InspectorPanel: View {
                     }
                     ForEach(b.gaps, id: \.companyID) { g in
                         Text("\(store.name(of: NodeRef(kind: .company, id: g.companyID))) 有 \(Ownership.percentLabel(g.missing)) 股东未录入")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Theme.muted)
                     }
                     if !b.cyclicCompanyIDs.isEmpty {
                         Text("存在循环持股，相关比例暂列未识别，需单独核算。")
@@ -853,14 +874,26 @@ struct InspectorPanel: View {
             block("所在链条") {
                 ForEach(chains.prefix(6), id: \.chain.id) { item in
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(item.group.name).font(.caption).foregroundStyle(.secondary)
+                        Text(item.group.name).font(.caption).foregroundStyle(Theme.muted)
                         Text(store.chainText(item.chain)).font(.callout).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
         }
+        if store.complianceOn, asOf == store.today, let next = store.openObligations.first(where: { $0.company.id == ref.id }) {
+            let left = next.daysLeft(from: store.today)
+            block("下一项截止") {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(next.rule.name).fontWeight(.medium)
+                    Spacer()
+                    Text(left < 0 ? "逾期 \(-left) 天" : "\(left) 天后").fontWeight(.semibold).monospacedDigit()
+                        .foregroundStyle(left < 0 ? Theme.danger : left <= 7 ? Theme.amberText : Theme.ink)
+                }
+            }
+        }
         if let c {
+            hairline
             Button {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(store.companySummary(c, on: asOf), forType: .string)
@@ -868,26 +901,47 @@ struct InspectorPanel: View {
             } label: { Label("复制公司资料摘要", systemImage: "doc.on.doc") }
             .buttonStyle(PillButtonStyle(.accent))
             .help("公司名称、注册编号、成立日期、地址、董事、股东、穿透和链条，可直接发给同事或负责方")
+            .padding(Space.xl24)
         }
-        if store.complianceOn, asOf == store.today, let next = store.openObligations.first(where: { $0.company.id == ref.id }) {
-            let left = next.daysLeft(from: store.today)
-            LabeledContent(next.rule.name, value: left < 0 ? "逾期 \(-left) 天" : "\(left) 天后")
+    }
+
+    private var hairline: some View {
+        Rectangle().fill(Theme.hairline).frame(height: 1)
+    }
+
+    private func fact(_ label: String, _ value: String, mono: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(TypeStyle.meta).foregroundStyle(Theme.muted)
+            Text(value.isEmpty ? "未填写" : value)
+                .font(mono ? .mono(14, .medium) : .system(size: 14, weight: .medium))
+                .foregroundStyle(value.isEmpty ? Theme.muted : Theme.ink)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(.horizontal, Space.xl24).padding(.vertical, Space.l16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     private func infoRow(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(label).foregroundStyle(.secondary).frame(width: 64, alignment: .leading)
+            Text(label).foregroundStyle(Theme.muted).frame(width: 64, alignment: .leading)
             Text(value.isEmpty ? "未填写" : value).foregroundStyle(value.isEmpty ? .secondary : .primary)
                 .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(TypeStyle.body).padding(.vertical, 8)
     }
 
+    /// 分区：顶部细线 + 小节标题 + 内容。
     private func block<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(TypeStyle.metadata).fontWeight(.semibold).foregroundStyle(.secondary)
-            content()
+        VStack(alignment: .leading, spacing: 0) {
+            hairline
+            VStack(alignment: .leading, spacing: Space.m12) {
+                Text(title).font(TypeStyle.section).tracking(Tracking.section).foregroundStyle(Theme.ink)
+                    .accessibilityAddTraits(.isHeader)
+                content()
+            }
+            .padding(.horizontal, Space.xl24).padding(.vertical, Space.l16 + Space.xs4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -924,15 +978,20 @@ struct InspectorPanel: View {
         let p = store.person(ref.id)
         let portfolio = Ownership.portfolio(of: ref, companies: store.companies, holdings: store.holdings, on: asOf)
         let roles = store.appointments.filter { $0.personID == ref.id && $0.isActive(on: asOf) }
-        Text(String((p?.name ?? "?").prefix(1)))
-            .font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.onInk)
-            .frame(width: 44, height: 44).background(Theme.ink, in: .circle)
-        VStack(alignment: .leading, spacing: 4) {
-            Text(p?.name ?? "").font(TypeStyle.entityTitle)
-            if let notes = p?.notes, !notes.isEmpty { Text(notes).foregroundStyle(.secondary) }
+        VStack(alignment: .leading, spacing: Space.l16) {
+            Text(String((p?.name ?? "?").prefix(1)))
+                .font(.system(size: 20, weight: .bold)).foregroundStyle(Theme.onInk)
+                .frame(width: 48, height: 48).background(Theme.ink, in: .circle)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(p?.name ?? "").font(TypeStyle.title).tracking(Tracking.title)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                if let notes = p?.notes, !notes.isEmpty { Text(notes).foregroundStyle(Theme.muted) }
+            }
         }
-        VStack(alignment: .leading, spacing: 8) {
-            Text("穿透后持有").font(TypeStyle.metadata).fontWeight(.semibold).foregroundStyle(.secondary)
+        .padding(Space.xl24).padding(.trailing, Space.l16)
+        block("穿透后持有") {
+            if portfolio.isEmpty { Text("没有持股").foregroundStyle(Theme.muted) }
             ForEach(portfolio, id: \.company.id) { item in
                 Button { router.open(company: item.company.id) } label: {
                     HStack(spacing: 10) {
@@ -948,8 +1007,7 @@ struct InspectorPanel: View {
             }
         }
         if !roles.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("任职").font(TypeStyle.metadata).fontWeight(.semibold).foregroundStyle(.secondary)
+            block("任职") {
                 ForEach(roles) { a in
                     LabeledContent(store.company(a.companyID)?.name ?? "", value: a.title)
                 }

@@ -18,6 +18,8 @@ struct PurposeEditor: View {
     @State private var draft = PacketTemplate(id: "", name: "", categories: [], includeDirectorsPassports: false, maxAgeMonths: nil)
     @State private var loaded = false
     @State private var confirmDelete = false
+    @State private var attempted = false
+    @FocusState private var nameFocused: Bool
 
     static let ageChoices = [1, 3, 6, 12]
 
@@ -41,6 +43,16 @@ struct PurposeEditor: View {
         store.library.packets.contains { $0.id != draft.id && $0.name == trimmedName }
     }
 
+    private var nameError: String? {
+        if nameTaken { return "已有同名用途" }
+        return attempted && trimmedName.isEmpty ? "请填写名称" : nil
+    }
+
+    private var contentError: String? {
+        attempted && draft.categories.isEmpty && !draft.includeDirectorsPassports
+            ? "至少选择一个文件类别，或打开“附上现任董事的护照”" : nil
+    }
+
     private var canSave: Bool {
         !trimmedName.isEmpty && !nameTaken && (!draft.categories.isEmpty || draft.includeDirectorsPassports)
     }
@@ -51,9 +63,10 @@ struct PurposeEditor: View {
                       width: 600, height: 760) {
             VStack(alignment: .leading, spacing: 18) {
                 FormGroup(title: "基本信息") {
-                    FieldRow(label: "名称", hint: nameTaken ? "已有同名用途" : nil) {
+                    FieldRow(label: "名称", error: nameError) {
                         TextField("例如：银行开户", text: $draft.name)
                             .textFieldStyle(KitFieldStyle(invalid: nameTaken))
+                            .focused($nameFocused)
                     }
                 }
 
@@ -74,8 +87,12 @@ struct PurposeEditor: View {
                             }
                         }
                     }
-                    Text("类别按条目的“通用类别”划分，跨法域把同类文件放在一起。")
-                        .font(TypeStyle.metadata).foregroundStyle(Theme.muted).padding(.leading, 4)
+                    if let contentError {
+                        FieldError(text: contentError).padding(.leading, 4)
+                    } else {
+                        Text("类别按条目的“通用类别”划分，跨法域把同类文件放在一起。")
+                            .font(TypeStyle.metadata).foregroundStyle(Theme.muted).padding(.leading, 4)
+                    }
                 }
 
                 FormGroup(title: "其他要求") {
@@ -98,13 +115,21 @@ struct PurposeEditor: View {
             Button("取消") { dismiss() }
                 .buttonStyle(PillButtonStyle(.secondary))
                 .keyboardShortcut(.cancelAction)
-            Button(isNew ? "创建用途" : "保存") { save() }
+            Button(isNew ? "创建用途" : "保存") {
+                attempted = true
+                guard canSave else {
+                    if nameError != nil { nameFocused = true }
+                    return
+                }
+                save()
+            }
                 .buttonStyle(PillButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
-                .disabled(!canSave)
-                .help(canSave ? "" : "请填写名称，并至少选择一个文件类别或附上董事护照")
         }
-        .onAppear(perform: load)
+        .onAppear {
+            load()
+            if isNew { nameFocused = true }
+        }
         .confirmSheet("删除用途“\(trimmedName.isEmpty ? "未命名" : trimmedName)”？", isPresented: $confirmDelete,
                       message: "删除后准备文件包时不再能选这个用途。已经生成的文件包不受影响。",
                       confirmTitle: "删除", destructive: true) {
@@ -138,6 +163,7 @@ struct PurposeEditor: View {
     private func save() {
         var p = draft
         p.name = trimmedName
+        let wasNew = isNew
         if let i = store.library.packets.firstIndex(where: { $0.id == p.id }) {
             store.library.packets[i] = p
         } else {
@@ -145,6 +171,7 @@ struct PurposeEditor: View {
         }
         store.saveLibrary()
         onSaved(p.id)
+        store.showToast(wasNew ? "已创建用途 \(p.name)" : "已保存 \(p.name)")
         dismiss()
     }
 

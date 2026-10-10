@@ -8,7 +8,7 @@ import sys
 root = pathlib.Path(__file__).resolve().parent.parent
 with tempfile.TemporaryDirectory(prefix="charter-regression-build-") as output:
     binary = pathlib.Path(output) / "app-regression"
-    sources = sorted(str(p) for p in (root / "Charter").rglob("*.swift") if "Views" not in p.parts)
+    sources = sorted(str(p) for p in (root / "Charter").rglob("*.swift"))
     subprocess.run(["xcrun", "swiftc", "-parse-as-library", "-D", "CHARTER_REGRESSION",
                     "-target", "arm64-apple-macosx26.0", *sources,
                     str(root / "tools/app_regression.swift"), "-o", str(binary)], cwd=root, check=True)

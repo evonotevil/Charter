@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 
 struct FilesView: View {
@@ -10,6 +11,11 @@ struct FilesView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var filter: Int { router.filesFilter }
     @State private var dropTargeted = false
+    /// 多选（⌘ 点按、⇧ 点按）的文件 ID；anchor 是 ⇧ 连选的起点。
+    @State private var selected: Set<String> = []
+    @State private var anchor: String?
+    @State private var confirmRemove = false
+    @State private var exporting = false
 
     private struct Snapshot {
         var document: Document
@@ -86,34 +92,41 @@ struct FilesView: View {
         let docs = filteredDocuments(scoped)
         let grouped = grouped(docs)
         let attentionCount = scoped.lazy.filter(\.freshness.needsAttention).count
+        // 页面上从上到下的显示顺序，⇧ 连选和 ⌘A 按这个顺序。
+        let ordered: [Document] = (filter == 1 || filter == 3) ? docs : grouped.flatMap { $0.1 }
+        let selectedDocs = ordered.filter { selected.contains($0.id) }
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 18) {
-                header(visible: docs.count, total: scoped.count, attention: attentionCount)
-                controls(attentionCount: attentionCount)
+            LazyVStack(alignment: .leading, spacing: Space.section40) {
+                VStack(alignment: .leading, spacing: Space.xl24) {
+                    header(visible: docs.count, total: scoped.count, attention: attentionCount)
+                    controls(attentionCount: attentionCount)
+                }
                 if store.documents.isEmpty {
-                    EmptyState(symbol: "doc.on.doc", title: "还没有文件",
-                               message: "把按公司分好的文件夹拖进来，Charter 会识别类型、公司和日期，你确认后才归档。",
-                               actionTitle: "选择文件") { router.showImporter = true }
-                        .surfaceCard()
+                    EmptyStateView(symbol: "doc.on.doc", title: "还没有文件",
+                                   message: "把 PDF、照片或按公司分好的文件夹拖进窗口，Charter 会识别类型、公司和日期，你确认后才归档。",
+                                   actionTitle: "导入文件") { router.showImporter = true }
+                        .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
                 } else if docs.isEmpty {
                     emptyResults(scopedCount: scoped.count)
                 } else if filter == 1 || filter == 3 {
-                    section(title: filter == 1 ? "按到期日排列" : "最近 30 天添加", owner: nil, list: docs)
+                    section(title: filter == 1 ? "按到期日排列" : "最近 30 天添加", owner: nil, list: docs, ordered: ordered)
                 } else {
                     ForEach(grouped, id: \.0) { item in
-                        section(title: store.name(of: item.0), owner: item.0, list: item.1)
+                        section(title: store.name(of: item.0), owner: item.0, list: item.1, ordered: ordered)
                     }
                 }
             }
-            .padding(24)
+            .padding(Space.pageEdge)
+            .padding(.bottom, selectedDocs.isEmpty ? 0 : 64)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .appear()
         }
         .background(Theme.canvas)
         .overlay {
             if dropTargeted {
-                RoundedRectangle(cornerRadius: 28)
-                    .strokeBorder(Theme.ink, style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
-                    .background(Theme.lime.opacity(0.88), in: .rect(cornerRadius: 28))
+                RoundedRectangle(cornerRadius: Radius.surface, style: .continuous)
+                    .strokeBorder(Theme.onLime, style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+                    .background(Theme.lime.opacity(0.88), in: .rect(cornerRadius: Radius.surface, style: .continuous))
                     .overlay {
                         VStack(spacing: 8) {
                             Image(systemName: "arrow.down.doc").font(.system(size: 34, weight: .semibold))
@@ -127,21 +140,189 @@ struct FilesView: View {
                     .transition(.opacity)
             }
         }
-        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: dropTargeted)
+        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: dropTargeted)
         .dropDestination(for: URL.self) { urls, _ in
             router.sheet = .importFiles(urls)
             return true
         } isTargeted: { dropTargeted = $0 }
+        .overlay(alignment: .bottom) {
+            if !selectedDocs.isEmpty {
+                selectionBar(selectedDocs)
+                    .padding(.bottom, Space.xl24)
+                    .transition(reduceMotion ? AnyTransition.opacity : AnyTransition.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(Motion.resolved(Motion.panel, reduceMotion: reduceMotion), value: selectedDocs.isEmpty)
+        .background { selectionShortcuts(ordered) }
+        .confirmSheet("从 Charter 移除 \(selectedDocs.count) 份文件的记录？", isPresented: $confirmRemove,
+                      message: "只移除 Charter 里的记录，数据文件夹里的文件不会被删除。",
+                      details: selectedDocs.prefix(8).map { "\(store.name(of: $0.owner))：\(store.docType($0.typeID)?.name ?? "文件")" }
+                        + (selectedDocs.count > 8 ? ["另外 \(selectedDocs.count - 8) 份"] : []),
+                      confirmTitle: "移除", destructive: true) {
+            store.removeDocuments(Set(selectedDocs.map(\.id)))
+            selected.removeAll()
+            anchor = nil
+        }
         .navigationTitle("文件")
     }
 
+    // MARK: 多选
+
+    /// ⌘ 点按：加入或移出选择；⇧ 点按：从上次点按的文件连选到这一份。
+    private func modifiedClick(_ id: String, shift: Bool, ordered: [Document]) {
+        if shift, let a = anchor,
+           let i = ordered.firstIndex(where: { $0.id == a }),
+           let j = ordered.firstIndex(where: { $0.id == id }) {
+            selected.formUnion(ordered[min(i, j)...max(i, j)].map(\.id))
+        } else if selected.contains(id) && !shift {
+            selected.remove(id)
+            anchor = id
+        } else {
+            selected.insert(id)
+            anchor = id
+        }
+    }
+
+    /// 普通点按：保持原来的打开行为，同时清除多选。
+    private func plainClick(_ id: String) {
+        selected.removeAll()
+        anchor = id
+    }
+
+    private func isPlainClick() -> Bool {
+        let flags = NSEvent.modifierFlags
+        return !flags.contains(.command) && !flags.contains(.shift)
+    }
+
+    /// ⌘A 全选当前显示的文件，Esc 取消选择。搜索框有焦点时不接管 ⌘A。
+    private func selectionShortcuts(_ ordered: [Document]) -> some View {
+        ZStack {
+            Button("全选") {
+                selected = Set(ordered.map(\.id))
+                anchor = ordered.first?.id
+            }
+            .keyboardShortcut("a", modifiers: .command)
+            .disabled(searchFocused || ordered.isEmpty)
+            Button("取消选择") {
+                selected.removeAll()
+                anchor = nil
+            }
+            .keyboardShortcut(.cancelAction)
+            .disabled(selected.isEmpty)
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+        .accessibilityHidden(true)
+    }
+
+    /// 底部浮动操作条：选中 1 份以上时出现。
+    private func selectionBar(_ docs: [Document]) -> some View {
+        HStack(spacing: 8) {
+            Text("已选 \(docs.count) 份")
+                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.ink)
+                .numericTransition()
+                .animation(Motion.resolved(Motion.fast, reduceMotion: reduceMotion), value: docs.count)
+                .padding(.leading, 8).padding(.trailing, 4)
+            Button("打开") { openAll(docs) }
+                .buttonStyle(PillButtonStyle(.quiet, size: .small))
+            Button("在访达中显示") { revealAll(docs) }
+                .buttonStyle(PillButtonStyle(.quiet, size: .small))
+            Button("从 Charter 移除…") { confirmRemove = true }
+                .buttonStyle(PillButtonStyle(.secondary, size: .small))
+            Button(exporting ? "正在导出…" : "导出为 ZIP…") { exportZIP(docs) }
+                .buttonStyle(PillButtonStyle(.primary, size: .small))
+                .disabled(exporting)
+            Rectangle().fill(Theme.hairline).frame(width: 1, height: 20)
+            Button {
+                selected.removeAll()
+                anchor = nil
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.muted)
+                    .frame(width: 28, height: 28).contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help("取消选择（Esc）")
+            .accessibilityLabel("取消选择")
+        }
+        .padding(.horizontal, 10).frame(height: 48)
+        .background(Theme.surface, in: .capsule)
+        .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 1))
+        .floatingShadow()
+    }
+
+    /// 右键点到已选中的文件、且选了不止一份时，菜单最前面显示批量操作。
+    private func batchMenu(for id: String, ordered: [Document]) -> AnyView? {
+        guard selected.contains(id), selected.count > 1 else { return nil }
+        let docs = ordered.filter { selected.contains($0.id) }
+        guard docs.count > 1 else { return nil }
+        return AnyView(Section("已选 \(docs.count) 份") {
+            Button("打开 \(docs.count) 份") { openAll(docs) }
+            Button("在访达中显示 \(docs.count) 份") { revealAll(docs) }
+            Button("导出为 ZIP…") { exportZIP(docs) }
+            Button("从 Charter 移除 \(docs.count) 份…") { confirmRemove = true }
+        })
+    }
+
+    private func openAll(_ docs: [Document]) {
+        for d in docs { store.open(d) }
+    }
+
+    private func revealAll(_ docs: [Document]) {
+        NSWorkspace.shared.activateFileViewerSelecting(docs.map { store.fileURL($0) })
+    }
+
+    /// 把选中的文件打包成一个 ZIP，保存到用户选择的位置。
+    private func exportZIP(_ docs: [Document]) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.zip]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "Charter 文件 \(store.today.description).zip"
+        panel.prompt = "导出"
+        guard panel.runModal() == .OK, let target = panel.url else { return }
+        let fm = FileManager.default
+        var used = Set<String>()
+        var entries: [ExportEntry] = []
+        for d in docs {
+            let source = store.fileURL(d)
+            guard fm.fileExists(atPath: source.path) else { continue }
+            let base = source.deletingPathExtension().lastPathComponent
+            let ext = source.pathExtension
+            var name = source.lastPathComponent
+            var n = 2
+            while used.contains(name) {
+                name = ext.isEmpty ? "\(base) (\(n))" : "\(base) (\(n)).\(ext)"
+                n += 1
+            }
+            used.insert(name)
+            entries.append(ExportEntry(path: name, payload: .file(source)))
+        }
+        let missing = docs.count - entries.count
+        guard !entries.isEmpty else {
+            store.errorMessage = "选中的文件在数据文件夹里都找不到了，无法导出。请在访达中检查数据文件夹的“文件”目录。"
+            return
+        }
+        exporting = true
+        Task { @MainActor in
+            defer { exporting = false }
+            do {
+                if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
+                guard fm.createFile(atPath: target.path, contents: nil) else { throw CocoaError(.fileWriteUnknown) }
+                try await ExportIO.writeZIP(entries: entries, to: target) { _, _ in }
+                store.showToast("已导出 \(entries.count) 份文件到 \(target.lastPathComponent)"
+                                + (missing > 0 ? "，\(missing) 份找不到原文件已跳过。" : "。"))
+                NSWorkspace.shared.activateFileViewerSelecting([target])
+            } catch {
+                try? fm.removeItem(at: target)
+                store.errorMessage = "导出 ZIP 失败：\(error.localizedDescription)。请换一个保存位置再试。"
+            }
+        }
+    }
+
     private func header(visible: Int, total: Int, attention: Int) -> some View {
-        HStack(alignment: .bottom) {
-            PageTitle(title: "文件",
-                      subtitle: (visible == total ? "\(total) 份现行文件" : "显示 \(visible) / \(total) 份")
-                        + (attention > 0 ? "，\(attention) 份需处理" : "，都在有效期内")
-                        + "。把 PDF、照片或文件夹拖进窗口即可导入。")
-            Spacer()
+        PageHeader(title: "文件",
+                   subtitle: (visible == total ? "\(total) 份现行文件" : "显示 \(visible) / \(total) 份")
+                     + (attention > 0 ? "，\(attention) 份需处理" : "，都在有效期内")
+                     + "。把 PDF、照片或文件夹拖进窗口即可导入。") {
             Button { router.showImporter = true } label: { Label("导入文件", systemImage: "square.and.arrow.down") }
                 .buttonStyle(PillButtonStyle(.primary, size: .large))
                 .help("选择 PDF、照片或文件夹；也可以直接拖进窗口")
@@ -171,7 +352,7 @@ struct FilesView: View {
                 }
             }
         }
-        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: filter)
+        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: filter)
     }
 
     private func primaryFilters(attentionCount: Int) -> some View {
@@ -181,30 +362,27 @@ struct FilesView: View {
 
     @ViewBuilder
     private func emptyResults(scopedCount: Int) -> some View {
-        VStack(spacing: 10) {
+        Group {
             if !query.isEmpty {
-                Text("没有找到“\(query)”").font(.system(size: 15, weight: .semibold))
-                Text("搜索范围已按当前集团和归属类型限制。").font(.system(size: 13)).foregroundStyle(Theme.muted)
-                Button("清除搜索") { query = "" }.buttonStyle(PillButtonStyle(.secondary, size: .small))
+                EmptyStateView(symbol: "magnifyingglass", title: "没有找到“\(query)”",
+                               message: "搜索范围已按当前集团和归属类型限制。",
+                               actionTitle: "清除搜索") { query = "" }
             } else if scopedCount == 0 {
-                Text("当前范围没有文件").font(.system(size: 15, weight: .semibold))
-                Text("当前集团或归属类型下没有现行文件。").font(.system(size: 13)).foregroundStyle(Theme.muted)
-                Button("查看全部范围") {
+                EmptyStateView(symbol: "doc.on.doc", title: "当前范围没有文件",
+                               message: "当前集团或归属类型下没有现行文件。",
+                               actionTitle: "查看全部范围") {
                     router.groupFilter = nil
                     router.filesOwnerKind = nil
                     router.filesFilter = 0
                 }
-                .buttonStyle(PillButtonStyle(.secondary, size: .small))
             } else {
-                Text(filter == 1 ? "未来 \(horizon) 天没有即将到期的文件" : filter == 2 ? "当前范围没有需要处理的文件" : "最近 30 天没有添加文件")
-                    .font(.system(size: 15, weight: .semibold))
-                Text("当前范围内还有 \(scopedCount) 份现行文件。").font(.system(size: 13)).foregroundStyle(Theme.muted)
-                Button("查看全部文件") { router.filesFilter = 0 }
-                    .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                EmptyStateView(symbol: filter == 2 ? "checkmark.seal" : "doc.on.doc",
+                               title: filter == 1 ? "未来 \(horizon) 天没有即将到期的文件" : filter == 2 ? "当前范围没有需要处理的文件" : "最近 30 天没有添加文件",
+                               message: "当前范围内还有 \(scopedCount) 份现行文件。",
+                               actionTitle: "查看全部文件") { router.filesFilter = 0 }
             }
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 40)
-        .surfaceCard()
+        .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
     }
 
     private var horizonFilters: some View {
@@ -235,13 +413,14 @@ struct FilesView: View {
                 Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.muted) }.buttonStyle(.plain)
             }
         }
+        .font(TypeStyle.body)
         .padding(.horizontal, 14).frame(minWidth: 200, maxWidth: .infinity, minHeight: 36, maxHeight: 36)
         .background(Theme.surface, in: .capsule)
     }
 
     @ViewBuilder
-    private func section(title: String, owner: NodeRef?, list: [Document]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func section(title: String, owner: NodeRef?, list: [Document], ordered: [Document]) -> some View {
+        VStack(alignment: .leading, spacing: Space.m12) {
             HStack(spacing: 10) {
                 if let owner {
                     if owner.kind == .company, let c = store.company(owner.id) {
@@ -251,34 +430,68 @@ struct FilesView: View {
                     }
                     Button { if owner.kind == .company { router.open(company: owner.id) } else { router.open(person: owner.id) } } label: {
                         HStack(spacing: 4) {
-                            Text(title).font(.system(size: 17, weight: .semibold))
+                            Text(title).font(TypeStyle.section).tracking(Tracking.section)
                             Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.muted)
                         }
                     }
                     .buttonStyle(.plain)
                 } else {
-                    Text(title).font(.system(size: 17, weight: .semibold))
+                    Text(title).font(TypeStyle.section).tracking(Tracking.section)
                 }
-                Text("\(list.count) 份").font(.system(size: 13)).foregroundStyle(Theme.muted)
+                Text("\(list.count) 份").font(TypeStyle.meta).foregroundStyle(Theme.muted)
                 let bad = list.filter { store.freshness($0).needsAttention }.count
                 if bad > 0 { Pill(text: "\(bad) 份需处理", kind: list.contains { store.freshness($0).pillKind == .bad } ? .bad : .warn) }
                 Spacer()
             }
             if grid {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 14)], alignment: .leading, spacing: 14) {
-                    ForEach(list) { d in FileCard(document: d, showOwner: owner == nil) }
+                // 文件是独立的对象：缩略图视图里每份文件一张卡片，直接放在画布上
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160, maximum: 200), spacing: Space.l16)], alignment: .leading, spacing: Space.l16) {
+                    ForEach(list) { d in
+                        FileCard(document: d, showOwner: owner == nil,
+                                 isSelected: selected.contains(d.id),
+                                 extraMenu: batchMenu(for: d.id, ordered: ordered),
+                                 onModifiedClick: { shift in modifiedClick(d.id, shift: shift, ordered: ordered) },
+                                 onPlainClick: { plainClick(d.id) })
+                    }
                 }
             } else {
+                // 列表视图：一个承载面，行之间用细线分隔
+                VStack(spacing: 0) {
                 FileHeaderRow()
                 LazyVStack(spacing: 0) {
                     ForEach(Array(list.enumerated()), id: \.element.id) { pair in
-                        DocumentRow(document: pair.element, showOwner: owner == nil)
-                        if pair.offset < list.count - 1 { Divider().padding(.horizontal, 14).opacity(0.5) }
+                        let d = pair.element
+                        let on = selected.contains(d.id)
+                        DocumentRow(document: d, showOwner: owner == nil, extraMenu: batchMenu(for: d.id, ordered: ordered))
+                            .background(on ? Theme.band : .clear, in: .rect(cornerRadius: Radius.row))
+                            .overlay {
+                                if on {
+                                    RoundedRectangle(cornerRadius: Radius.row).strokeBorder(Theme.ink, lineWidth: 2)
+                                        .allowsHitTesting(false)
+                                }
+                            }
+                            .animation(Motion.resolved(Motion.fast, reduceMotion: reduceMotion), value: on)
+                            .highPriorityGesture(TapGesture().modifiers(.command).onEnded {
+                                modifiedClick(d.id, shift: false, ordered: ordered)
+                            })
+                            .highPriorityGesture(TapGesture().modifiers(.shift).onEnded {
+                                modifiedClick(d.id, shift: true, ordered: ordered)
+                            })
+                            .simultaneousGesture(TapGesture().onEnded {
+                                if isPlainClick() { plainClick(d.id) }
+                            })
+                            .accessibilityAddTraits(on ? .isSelected : [])
+                        if pair.offset < list.count - 1 {
+                            Rectangle().fill(Theme.hairline).frame(height: 1).padding(.horizontal, Space.l16)
+                        }
                     }
                 }
+                }
+                .padding(Space.s8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
             }
         }
-        .surfaceCard()
     }
 }
 
@@ -310,35 +523,100 @@ struct FileCard: View {
     @Environment(Router.self) private var router
     var document: Document
     var showOwner = false
+    var isSelected = false
+    /// 右键菜单最前面追加的批量操作。
+    var extraMenu: AnyView? = nil
+    /// ⌘ 或 ⇧ 点按时调用（参数：是否按着 ⇧）；为空时一律打开文件详情。
+    var onModifiedClick: ((Bool) -> Void)? = nil
+    var onPlainClick: (() -> Void)? = nil
     @State private var hover = false
+    @State private var uploading = false
+    @State private var pending: StagedFile?
+    @State private var reissuing = false
+    @State private var confirmRemove = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let d = document
         let f = store.freshness(d)
-        Button { router.sheet = .document(d.id) } label: {
-            VStack(alignment: .leading, spacing: 8) {
+        Button {
+            let flags = NSEvent.modifierFlags
+            if let onModifiedClick, flags.contains(.command) || flags.contains(.shift) {
+                onModifiedClick(flags.contains(.shift))
+            } else {
+                onPlainClick?()
+                router.sheet = .document(d.id)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: Space.m12) {
                 FileThumb(url: store.fileURL(d), alert: f.pillKind == .bad, size: CGSize(width: 120, height: 150))
                     .frame(maxWidth: .infinity).frame(height: 172)
-                    .background(Theme.band, in: .rect(cornerRadius: 16))
-                    .scaleEffect(hover ? 1.02 : 1)
+                    .background(Theme.band, in: .rect(cornerRadius: Radius.field, style: .continuous))
+                    .scaleEffect(hover && !reduceMotion ? 1.02 : 1)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(store.docType(d.typeID)?.name ?? "文件").font(.system(size: 13.5, weight: .semibold)).lineLimit(1)
+                    Text(store.docType(d.typeID)?.name ?? "文件").font(TypeStyle.rowTitle).lineLimit(1)
                     Text(showOwner ? store.name(of: d.owner) : (d.issueDate.map { "\($0.long)签发" } ?? "缺少签发日期"))
-                        .font(.system(size: 11.5)).foregroundStyle(Theme.muted).lineLimit(1)
+                        .font(TypeStyle.micro).foregroundStyle(Theme.muted).lineLimit(1)
                 }
                 Pill(text: f.label, kind: f.pillKind)
             }
+            .padding(Space.m12)
+            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Radius.surface, style: .continuous)
+                    .strokeBorder(isSelected ? Theme.ink : (hover ? Theme.hairline : .clear), lineWidth: isSelected ? 2.5 : 1)
+            }
+            .overlay(alignment: .topTrailing) {
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.onInk, Theme.ink)
+                        .padding(Space.l16)
+                        .transition(.opacity)
+                }
+            }
+            .animation(Motion.resolved(Motion.fast, reduceMotion: reduceMotion), value: isSelected)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .onHover { h in withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) { hover = h } }
+        .onHover { h in withAnimation(Motion.resolved(Motion.fast, reduceMotion: reduceMotion)) { hover = h } }
         .contextMenu {
+            if let extraMenu {
+                extraMenu
+                Divider()
+            }
             Button("打开") { store.open(d) }
             Button("在访达中显示") { store.reveal(d) }
+            Button("归档新版…") { uploading = true }
+            Button("请补发…") { reissuing = true }
+            Divider()
+            Button("从 Charter 移除记录…", role: .destructive) { confirmRemove = true }
+        }
+        .fileImporter(isPresented: $uploading, allowedContentTypes: [.pdf, .image]) { result in
+            guard case .success(let url) = result else { return }
+            Task { @MainActor in
+                do {
+                    // 先放进待确认区，用户确认后才归档；取消不改动档案
+                    pending = try await store.stage(url: url, typeID: d.typeID, owner: d.owner, replaces: d, form: d.form) { new in
+                        router.sheet = .document(new.id)
+                    }
+                } catch {
+                    store.errorMessage = "读取文件失败：\(error.localizedDescription)"
+                }
+            }
+        }
+        .sheet(item: $pending) { ArchiveConfirmSheet(file: $0) }
+        .sheet(isPresented: $reissuing) {
+            CopyTextSheet(title: "请补发：\(store.docType(d.typeID)?.name ?? "文件")", text: store.reissueText(for: d))
+        }
+        .confirmSheet("从 Charter 移除这份文件的记录？", isPresented: $confirmRemove,
+                      message: "只移除 Charter 里的记录，数据文件夹里的文件不会被删除。",
+                      confirmTitle: "移除", destructive: true) {
+            store.delete(document: d)
         }
         .help(d.originalFileName)
         .accessibilityLabel("\(store.docType(d.typeID)?.name ?? "文件")，\(f.label)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

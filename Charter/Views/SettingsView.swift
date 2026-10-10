@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
@@ -20,7 +21,15 @@ struct SettingsView: View {
 struct GeneralSettings: View {
     @Environment(AppStore.self) private var store
     @State private var confirmSample = false
+    @State private var confirmClear = false
+    @State private var pendingConfig: PendingConfig?
     @State private var newDay = ""
+
+    private struct PendingConfig: Identifiable {
+        let id = UUID()
+        var bundle: ConfigBundle
+        var fileName: String
+    }
     @FocusState private var newDayFocused: Bool
 
     private var inICloud: Bool { store.store.root.path.contains("Mobile Documents") }
@@ -79,6 +88,25 @@ struct GeneralSettings: View {
                         Button("载入…") { confirmSample = true }
                             .buttonStyle(PillButtonStyle(.secondary, size: .small))
                     }
+                    SettingRow(symbol: "trash", title: "清空所有数据",
+                               detail: "删除公司、集团、人员、关系、文件（含数据文件夹里的归档文件）、负责方和事项记录。设置和模板库保留。适合试用结束后重新开始。") {
+                        Button("清空…") { confirmClear = true }
+                            .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                            .disabled(store.isLoading || store.isImporting || store.loadFailed)
+                    }
+                }
+                section("配置") {
+                    SettingRow(symbol: "square.and.arrow.up", title: "导出配置",
+                               detail: "把提醒设置和模板库（法域、文件类型、档案条目、规则、用途）存成一个文件，可在另一套数据里导入。不含公司、文件等档案数据。") {
+                        Button("导出配置…") { exportConfig() }
+                            .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                    }
+                    SettingRow(symbol: "square.and.arrow.down", title: "导入配置",
+                               detail: "读取导出的配置文件，确认变化后再应用。") {
+                        Button("导入配置…") { importConfig() }
+                            .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                            .disabled(store.isLoading || store.loadFailed)
+                    }
                 }
             }
             .padding(28)
@@ -90,6 +118,38 @@ struct GeneralSettings: View {
                       message: "示例数据会覆盖当前数据文件夹里的公司、人员和负责方。建议先更换为空文件夹。",
                       confirmTitle: "载入", destructive: true) {
             SampleData.install(into: store)
+        }
+        .confirmSheet("清空所有数据？", isPresented: $confirmClear,
+                      message: "以下内容会被永久删除，数据文件夹里的归档文件也会一起删除，无法撤销。设置和模板库（法域、档案条目、规则、用途）会保留。",
+                      details: store.clearSummary.lines,
+                      confirmTitle: "清空", destructive: true) {
+            store.clearAllData()
+        }
+        .sheet(item: $pendingConfig) { pending in
+            ConfigImportSheet(bundle: pending.bundle, fileName: pending.fileName)
+        }
+    }
+
+    private func exportConfig() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "Charter 配置 \(store.today.description).json"
+        panel.prompt = "导出"
+        if panel.runModal() == .OK, let url = panel.url { store.exportConfig(to: url) }
+    }
+
+    private func importConfig() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.prompt = "读取配置"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            pendingConfig = PendingConfig(bundle: try AppStore.readConfig(at: url), fileName: url.lastPathComponent)
+        } catch {
+            store.errorMessage = error.localizedDescription
         }
     }
 
@@ -103,7 +163,7 @@ struct GeneralSettings: View {
                 .background(Theme.ink, in: .rect(cornerRadius: 18, style: .continuous))
             VStack(alignment: .leading, spacing: 5) {
                 Text("数据文件夹").font(TypeStyle.micro).foregroundStyle(Theme.muted)
-                Text(store.store.root.lastPathComponent).font(.system(size: 20, weight: .semibold)).tracking(-0.3)
+                Text(store.store.root.lastPathComponent).font(.system(size: 22, weight: .heavy)).tracking(-0.44)
                     .foregroundStyle(Theme.ink).lineLimit(1)
                 HStack(spacing: 6) {
                     Circle().fill(inICloud ? Theme.lime : Theme.muted.opacity(0.5)).frame(width: 7, height: 7)
@@ -122,8 +182,8 @@ struct GeneralSettings: View {
                     .buttonStyle(PillButtonStyle(.quiet, size: .small))
             }
         }
-        .padding(20)
-        .background(Theme.surface, in: .rect(cornerRadius: 22, style: .continuous))
+        .padding(Space.xl24)
+        .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
     }
 
     /// 提前提醒的天数：每个天数一枚胶囊，可移除；末尾可直接输入新的天数。
@@ -177,9 +237,9 @@ struct GeneralSettings: View {
             VStack(alignment: .leading, spacing: 16) {
                 content()
             }
-            .padding(18)
+            .padding(Space.xl24)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: .rect(cornerRadius: 18, style: .continuous))
+            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
         }
     }
 
@@ -191,6 +251,56 @@ struct GeneralSettings: View {
         panel.prompt = "使用这个文件夹"
         panel.directoryURL = FolderStore.defaultRoot.deletingLastPathComponent()
         if panel.runModal() == .OK, let url = panel.url { store.changeDataRoot(to: url) }
+    }
+}
+
+/// 导入配置前的确认：选择合并或全部替换，并列出会发生的变化。
+struct ConfigImportSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    var bundle: ConfigBundle
+    var fileName: String
+    @State private var mode: AppStore.ConfigImportMode = .merge
+
+    var body: some View {
+        SheetScaffold(title: "导入配置",
+                      subtitle: "来自“\(fileName)”，导出于 \(bundle.exportedAt.formatted(date: .long, time: .shortened))。公司、文件等档案数据不受影响。",
+                      width: 520) {
+            VStack(alignment: .leading, spacing: 18) {
+                FormGroup(title: "导入方式") {
+                    RadioGroup(options: [(AppStore.ConfigImportMode.merge, "合并（同名覆盖）"),
+                                         (AppStore.ConfigImportMode.replace, "全部替换")],
+                               selection: $mode)
+                        .padding(.vertical, 4)
+                }
+                FormGroup(title: "将会改变") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(store.configImportSummary(bundle, mode: mode), id: \.self) { line in
+                            Text(line).font(TypeStyle.body).foregroundStyle(Theme.ink)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                if mode == .replace {
+                    Text("全部替换会移除这里有、配置里没有的规则、用途和未使用的文件类型。")
+                        .font(TypeStyle.metadata).foregroundStyle(Theme.amberText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        } leading: {
+            EmptyView()
+        } trailing: {
+            Button("取消") { dismiss() }
+                .buttonStyle(PillButtonStyle(.secondary))
+                .keyboardShortcut(.cancelAction)
+            Button(mode == .merge ? "合并导入" : "全部替换") {
+                store.applyConfig(bundle, mode: mode)
+                dismiss()
+            }
+            .buttonStyle(PillButtonStyle(mode == .replace ? .danger : .primary))
+            .keyboardShortcut(.defaultAction)
+        }
     }
 }
 
@@ -215,7 +325,7 @@ struct DocumentTypesSettings: View {
                     ForEach(list) { t in
                         VStack(alignment: .leading, spacing: 1) {
                             Text(t.name).fontWeight(.medium)
-                            Text("\(t.category)，\(t.jurisdictions.isEmpty ? "通用" : t.jurisdictions.joined(separator: "、"))").font(.caption).foregroundStyle(.secondary)
+                            Text("\(t.category)，\(t.jurisdictions.isEmpty ? "通用" : t.jurisdictions.joined(separator: "、"))").font(.caption).foregroundStyle(Theme.muted)
                         }
                         .tag(t.id)
                     }
@@ -232,7 +342,7 @@ struct DocumentTypesSettings: View {
             if let i = store.library.documentTypes.firstIndex(where: { $0.id == selection }) {
                 DocumentTypeForm(type: Binding(get: { store.library.documentTypes[i] }, set: { store.library.documentTypes[i] = $0; store.saveLibrary() }))
             } else {
-                Text("选择要编辑的文件类型").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+                Text("选择要编辑的文件类型").foregroundStyle(Theme.muted).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }
@@ -393,7 +503,7 @@ struct RulesSettings: View {
                 }
                 .scrollIndicators(.never)
                 .frame(maxHeight: .infinity)
-                .background(Theme.surface, in: .rect(cornerRadius: 18, style: .continuous))
+                .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
                 .overlay {
                     if list.isEmpty {
                         Text("没有符合条件的规则。").font(TypeStyle.body).foregroundStyle(Theme.muted)
@@ -419,16 +529,8 @@ struct RulesSettings: View {
                 .scrollIndicators(.never)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             } else {
-                VStack(spacing: 10) {
-                    Image(systemName: "calendar.badge.clock")
-                        .font(.system(size: 22, weight: .medium)).foregroundStyle(Theme.ink)
-                        .frame(width: 52, height: 52)
-                        .background(Theme.surface, in: .rect(cornerRadius: 15, style: .continuous))
-                    Text("选择要编辑的规则").font(TypeStyle.rowTitle).foregroundStyle(Theme.ink)
-                    Text("可在这里核对规则、调整截止日算法和提醒。")
-                        .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                EmptyStateView(symbol: "calendar.badge.clock", title: "选择要编辑的规则", message: "可在这里核对规则、调整截止日算法和提醒。")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(24)
@@ -754,9 +856,9 @@ struct SettingsSection<Content: View>: View {
             VStack(alignment: .leading, spacing: spacing) {
                 content
             }
-            .padding(18)
+            .padding(Space.xl24)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.surface, in: .rect(cornerRadius: 18, style: .continuous))
+            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
         }
     }
 }
@@ -770,7 +872,7 @@ struct SettingsPaneHeader<Trailing: View>: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 17, weight: .semibold)).tracking(-0.2)
+                Text(title).font(.system(size: 22, weight: .heavy)).tracking(-0.44)
                     .foregroundStyle(Theme.ink).lineLimit(1)
                 if let detail {
                     Text(detail).font(TypeStyle.metadata).foregroundStyle(Theme.muted)
@@ -809,7 +911,7 @@ struct SettingsHero<Trailing: View>: View {
                 .background(Theme.ink, in: .rect(cornerRadius: 18, style: .continuous))
             VStack(alignment: .leading, spacing: 5) {
                 Text(label).font(TypeStyle.micro).foregroundStyle(Theme.muted)
-                Text(title).font(.system(size: 20, weight: .semibold)).tracking(-0.3)
+                Text(title).font(.system(size: 22, weight: .heavy)).tracking(-0.44)
                     .foregroundStyle(Theme.ink).lineLimit(1)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Circle().fill(dot).frame(width: 7, height: 7)
@@ -820,8 +922,8 @@ struct SettingsHero<Trailing: View>: View {
             Spacer(minLength: 12)
             trailing
         }
-        .padding(20)
-        .background(Theme.surface, in: .rect(cornerRadius: 22, style: .continuous))
+        .padding(Space.xl24)
+        .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
     }
 }
 

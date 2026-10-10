@@ -19,30 +19,34 @@ struct TodayView: View {
     var body: some View {
         Group {
             if store.companies.isEmpty {
-                EmptyState(symbol: "building.2", title: "还没有公司",
-                           message: "把按公司分好的文件夹拖进“文件”，Charter 会识别并建档；也可以先载入示例数据。",
-                           actionTitle: "载入示例数据") { SampleData.install(into: store) }
+                FullPageState {
+                    EmptyStateView(symbol: "building.2", title: "还没有公司",
+                                   message: "把按公司分好的文件夹拖进“文件”，Charter 会识别并建档；也可以先载入示例数据。",
+                                   actionTitle: "载入示例数据") { SampleData.install(into: store) }
+                }
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        header
-                        if let f = focus {
-                            FocusCard(obligation: f)
-                                .id(f.key)
-                                .transition(reduceMotion ? .identity : .opacity)
-                        } else {
-                            Text(open.isEmpty ? "接下来 400 天都没有待办的合规事项。" : "目前没有需要你处理的事项，已交办的事项正在等待回件。")
-                                .font(TypeStyle.body).foregroundStyle(Theme.muted)
-                                .surfaceCard(padding: 22, radius: 18)
+                    VStack(alignment: .leading, spacing: Space.section40) {
+                        VStack(alignment: .leading, spacing: Space.xl24) {
+                            header
+                            if let f = focus {
+                                FocusCard(obligation: f)
+                                    .id(f.key)
+                                    .transition(reduceMotion ? .identity : .opacity)
+                            } else {
+                                allClear
+                            }
                         }
                         if !next.isEmpty { nextSection }
                         if !waiting.isEmpty { waitingSection }
                         docsSection
                     }
-                    .padding(24)
+                    .padding(Space.pageEdge)
+                    .frame(maxWidth: 1240)
                     .frame(maxWidth: .infinity)
+                    .appear()
                 }
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: focus?.key)
+                .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: focus?.key)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -56,45 +60,65 @@ struct TodayView: View {
             if overdue > 0 { return "\(mine.count) 件事项待你处理，其中 \(overdue) 件已逾期。" }
             return "\(mine.count) 件事项待你处理。"
         }()
-        return HStack(alignment: .bottom, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("今天").font(TypeStyle.pageTitle).tracking(-0.5)
-                Text("\(store.today.long)，\(store.today.weekdayName)。\(headline)")
-                    .font(TypeStyle.body).foregroundStyle(Theme.muted)
-                    .contentTransition(.numericText())
-            }
-            Spacer(minLength: 12)
+        return PageHeader(title: "今天", subtitle: "\(store.today.long)，\(store.today.weekdayName)。\(headline)") {
             Button("在合规日历中查看全部 \(open.count) 件") { router.openCalendar() }
                 .buttonStyle(PillButtonStyle(.secondary))
         }
     }
 
-    private var nextSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ComplianceSectionHeader(title: "也在等你", trailing: "\(next.count) 件")
-            VStack(spacing: 0) {
-                ForEach(next) { o in
-                    ObligationRow(obligation: o, detail: "\(o.company.name)，\(store.stateLine(o))", emphasize: store.waitingTooLong(o)) {
-                        withAnimation(.smooth) { focusKey = o.key }
-                    }
-                    .transition(.blurReplace)
-                }
+    /// 没有需要处理的事项：好消息，用柠檬绿。
+    private var allClear: some View {
+        HStack(alignment: .bottom, spacing: Space.l16) {
+            VStack(alignment: .leading, spacing: Space.s8) {
+                Text("一切就绪").font(TypeStyle.display).tracking(Tracking.display)
+                Text(open.isEmpty ? "接下来 400 天都没有待办的合规事项。" : "目前没有需要你处理的事项，已交办的事项正在等待回件。")
+                    .font(TypeStyle.body).foregroundStyle(Theme.onLime.opacity(0.7))
             }
-            .surfaceCard(padding: 6, radius: 18)
+            Spacer(minLength: Space.l16)
+            Image(systemName: "checkmark").font(.system(size: 18, weight: .bold))
+                .frame(width: 44, height: 44)
+                .background(Theme.onLime.opacity(0.1), in: .circle)
+                .accessibilityHidden(true)
+        }
+        .foregroundStyle(Theme.onLime)
+        .padding(Space.xl24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.lime, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+    }
+
+    /// 单一承载面，行之间用细线分隔。
+    private func listSurface<Item: Identifiable, Row: View>(_ items: [Item], @ViewBuilder row: @escaping (Item) -> Row) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
+                if i > 0 { Rectangle().fill(Theme.hairline).frame(height: 1).padding(.horizontal, Space.m12) }
+                row(item)
+            }
+        }
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+    }
+
+    private var nextSection: some View {
+        VStack(alignment: .leading, spacing: Space.m12) {
+            ComplianceSectionHeader(title: "也在等你", trailing: "\(next.count) 件")
+            listSurface(next) { o in
+                ObligationRow(obligation: o, detail: "\(o.company.name)，\(store.stateLine(o))", emphasize: store.waitingTooLong(o)) {
+                    withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) { focusKey = o.key }
+                }
+                .transition(.blurReplace)
+            }
         }
     }
 
     private var waitingSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.m12) {
             ComplianceSectionHeader(title: "等回件", trailing: "\(waiting.count) 件")
-            VStack(spacing: 0) {
-                ForEach(waiting) { o in
-                    ObligationRow(obligation: o, detail: "\(o.company.name)，\(store.stateLine(o))") {
-                        router.sheet = .obligation(o.key)
-                    }
+            listSurface(waiting) { o in
+                ObligationRow(obligation: o, detail: "\(o.company.name)，\(store.stateLine(o))") {
+                    router.sheet = .obligation(o.key)
                 }
             }
-            .surfaceCard(padding: 6, radius: 18)
         }
     }
 
@@ -102,14 +126,11 @@ struct TodayView: View {
     private var docsSection: some View {
         let docs = Array(store.documentsNeedingAttention.prefix(3))
         if !docs.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Space.m12) {
                 ComplianceSectionHeader(title: "需要更新的文件", trailing: store.documentsNeedingAttention.count > 3 ? "全部 \(store.documentsNeedingAttention.count) 份" : nil) {
                     router.section = .files
                 }
-                VStack(spacing: 0) {
-                    ForEach(docs) { d in DocumentRow(document: d) }
-                }
-                .surfaceCard(padding: 6, radius: 18)
+                listSurface(docs) { d in DocumentRow(document: d) }
             }
         }
     }
@@ -123,7 +144,7 @@ struct ComplianceSectionHeader: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title).font(TypeStyle.rowTitle).foregroundStyle(Theme.ink)
+            Text(title).font(TypeStyle.section).tracking(Tracking.section).foregroundStyle(Theme.ink)
             Spacer()
             if let trailing {
                 if let action {
@@ -140,7 +161,8 @@ struct ComplianceSectionHeader: View {
 
 // MARK: - 焦点卡片
 
-/// 今天最该处理的一件事。紧凑：左边是时间，右边是事项和下一步。
+/// 今天最该处理的一件事：页面的主色块。未逾期用柠檬绿（好消息），已逾期用深色底加红色标签。
+/// 色块下方是同一承载面上的操作条。
 struct FocusCard: View {
     @Environment(AppStore.self) private var store
     @Environment(Router.self) private var router
@@ -151,67 +173,83 @@ struct FocusCard: View {
         let left = o.daysLeft(from: store.today)
         let trust = store.trust(o)
         let unverifiedLate = left < 0 && !trust.isConfirmed && !o.status.isHandedOff
-        HStack(alignment: .top, spacing: 30) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(left < 0 ? "逾期 \(-left) 天" : left == 0 ? "今天截止" : "还有 \(left) 天")
-                    .font(.system(size: 34, weight: .semibold)).tracking(-0.8).monospacedDigit()
-                    .foregroundStyle(left < 0 ? Theme.danger : left <= 7 ? Theme.amberText : Theme.ink)
-                    .contentTransition(.numericText(countsDown: true))
-                Text("\(o.due.long)截止，\(o.due.weekdayName)")
-                    .font(TypeStyle.body).foregroundStyle(Theme.muted)
-                if unverifiedLate {
-                    Text("按草稿规则已过截止日 \(-left) 天")
-                        .font(TypeStyle.metadata).fontWeight(.semibold).foregroundStyle(Theme.amberText)
-                        .padding(.top, 4)
-                        .help("规则尚未核对，实际截止日可能不同，请先向负责方确认。")
-                }
-            }
-            .frame(width: 200, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 8) {
+        let late = left < 0
+        let fg: Color = late ? Theme.onEmphasis : Theme.onLime
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: Space.l16) {
+                HStack(spacing: Space.s8) {
                     Text(store.jurisdictionName(o.company.jurisdiction))
                         .font(.system(size: 11, weight: .semibold))
                         .padding(.horizontal, 9).frame(height: 22)
-                        .background(Theme.ink, in: .capsule)
-                        .foregroundStyle(Theme.onInk)
+                        .background(fg.opacity(0.12), in: .capsule)
                     Button(o.company.name) { router.open(company: o.company.id) }
-                        .buttonStyle(.plain).font(TypeStyle.body).foregroundStyle(Theme.muted)
+                        .buttonStyle(.plain).font(TypeStyle.body).foregroundStyle(fg.opacity(0.75))
                         .help("打开公司档案")
-                }
-                HStack(spacing: 8) {
-                    Text(o.rule.name).font(.system(size: 24, weight: .semibold)).tracking(-0.3)
-                    TrustBadge(trust: trust)
-                }
-                .padding(.top, 10)
-                Text(store.stateLine(o)).font(TypeStyle.body).foregroundStyle(Theme.muted).padding(.top, 4)
-                if left < 0 && trust.isConfirmed && !o.rule.penalty.isEmpty {
-                    Text("逾期后果：\(o.rule.penalty)").font(TypeStyle.body).foregroundStyle(Theme.danger).padding(.top, 4).lineLimit(2)
-                }
-                HStack(spacing: 10) {
-                    if unverifiedLate {
-                        Button(confirmTitle) { router.sheet = .confirmRule(ruleID: o.rule.id, companyID: o.company.id) }
-                            .buttonStyle(PillButtonStyle(.primary, size: .large))
-                            .help("规则尚未核对。请先确认实际截止日，再决定是否交办。")
-                        NextStepControls(obligation: o, emphasized: false)
-                    } else {
-                        NextStepControls(obligation: o)
+                    Spacer(minLength: 0)
+                    if late {
+                        Text(unverifiedLate ? "按草稿规则已逾期" : "已逾期")
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 10).frame(height: 24)
+                            .background(Theme.danger, in: .capsule)
+                            .foregroundStyle(Color.white)
+                            .help(unverifiedLate ? "规则尚未核对，实际截止日可能不同，请先向负责方确认。" : "已过截止日")
                     }
-                    Button("详情") { router.sheet = .obligation(o.key) }
-                        .buttonStyle(PillButtonStyle(.quiet, size: .large))
                 }
-                .padding(.top, 18)
+                HStack(alignment: .firstTextBaseline, spacing: Space.s8) {
+                    if left == 0 {
+                        Text("今天").font(TypeStyle.display).tracking(Tracking.display)
+                        Text("截止").font(TypeStyle.section).tracking(Tracking.section)
+                    } else {
+                        Text("\(abs(left))").font(TypeStyle.display).tracking(Tracking.display)
+                            .monospacedDigit()
+                            .contentTransition(.numericText(countsDown: true))
+                        Text(late ? "天已逾期" : "天后截止").font(TypeStyle.section).tracking(Tracking.section)
+                    }
+                }
+                VStack(alignment: .leading, spacing: Space.xs4) {
+                    HStack(spacing: Space.s8) {
+                        Text(o.rule.name).font(TypeStyle.title).tracking(Tracking.title)
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        TrustBadge(trust: trust)
+                    }
+                    Text("\(o.due.long)截止，\(o.due.weekdayName)。\(store.stateLine(o))")
+                        .font(TypeStyle.body).foregroundStyle(fg.opacity(0.7))
+                    if late && trust.isConfirmed && !o.rule.penalty.isEmpty {
+                        Text("逾期后果：\(o.rule.penalty)").font(TypeStyle.body).foregroundStyle(fg.opacity(0.85))
+                            .lineLimit(2)
+                    }
+                }
             }
-            Spacer(minLength: 0)
+            .foregroundStyle(fg)
+            .padding(Space.xl24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(late ? Theme.emphasis : Theme.lime)
+
+            HStack(spacing: 10) {
+                if unverifiedLate {
+                    Button(confirmTitle) { router.sheet = .confirmRule(ruleID: o.rule.id, companyID: o.company.id) }
+                        .buttonStyle(PillButtonStyle(.primary, size: .large))
+                        .help("规则尚未核对。请先确认实际截止日，再决定是否交办。")
+                    NextStepControls(obligation: o, emphasized: false)
+                } else {
+                    NextStepControls(obligation: o)
+                }
+                Button("详情") { router.sheet = .obligation(o.key) }
+                    .buttonStyle(PillButtonStyle(.quiet, size: .large))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Space.xl24).padding(.vertical, Space.l16)
         }
-        .padding(.horizontal, 28).padding(.vertical, 24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: .rect(cornerRadius: Theme.radius))
+        .background(Theme.surface)
+        .clipShape(.rect(cornerRadius: Radius.surface, style: .continuous))
         .overlay {
-            if left < 0 && !unverifiedLate {
-                RoundedRectangle(cornerRadius: Theme.radius).strokeBorder(Theme.danger.opacity(0.6), lineWidth: 1.5)
+            if late && !unverifiedLate {
+                RoundedRectangle(cornerRadius: Radius.surface, style: .continuous)
+                    .strokeBorder(Theme.danger.opacity(0.6), lineWidth: 1.5)
             }
         }
+        .accessibilityElement(children: .contain)
     }
 
     private var confirmTitle: String {
@@ -255,11 +293,11 @@ struct ObligationRow: View {
                     .opacity(hover ? 1 : 0).offset(x: hover ? 0 : -4)
             }
             .padding(.horizontal, 12).frame(height: 62)
-            .background(hover ? Theme.band : .clear, in: .rect(cornerRadius: 14))
+            .background(hover ? Theme.band.opacity(0.6) : .clear, in: .rect(cornerRadius: Radius.row))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .onHover { h in withAnimation(.snappy(duration: 0.2)) { hover = h } }
+        .onHover { h in withAnimation(Motion.fast) { hover = h } }
         .contextMenu { ObligationContextMenu(obligation: o) }
     }
 }
@@ -285,6 +323,8 @@ struct DocumentRow: View {
     var showOwner = true
     /// 显示到期日（“即将到期”列表）。
     var showExpiry = false
+    /// 右键菜单最前面追加的内容（“文件”页多选时的批量操作）。
+    var extraMenu: AnyView? = nil
     private var d: Document { document }
 
     /// 第二行：备注优先，其次当地名称；原文件名只有不像系统生成的名字时才显示。
@@ -354,7 +394,7 @@ struct DocumentRow: View {
             .frame(width: FileColumns.actions, alignment: .trailing)
         }
         .padding(.horizontal, 16).frame(minHeight: 60)
-        .background(hover ? Theme.band.opacity(0.6) : .clear, in: .rect(cornerRadius: 14))
+        .background(hover ? Theme.band.opacity(0.6) : .clear, in: .rect(cornerRadius: Radius.row))
         .contentShape(.rect)
         .focusable()
         .onKeyPress(.return) { router.sheet = .document(d.id); return .handled }
@@ -384,9 +424,14 @@ struct DocumentRow: View {
             CopyTextSheet(title: "请补发：\(store.docType(d.typeID)?.name ?? "文件")", text: store.reissueText(for: d))
         }
         .contextMenu {
+            if let extraMenu {
+                extraMenu
+                Divider()
+            }
             Button("打开") { store.open(d) }
             Button("在访达中显示") { store.reveal(d) }
             Button("归档新版…") { uploading = true }
+            Button("请补发…") { reissuing = true }
             Button(d.needsUpdate ? "取消“需要更新”" : "标为需要更新") {
                 if let i = store.documents.firstIndex(where: { $0.id == d.id }) { store.documents[i].needsUpdate.toggle(); store.saveDocuments() }
             }
@@ -402,10 +447,14 @@ struct FileThumb: View {
     var alert = false
     var size = CGSize(width: 36, height: 44)
     @State private var image: NSImage?
+    @State private var loading = true
 
     var body: some View {
         Group {
-            if let image {
+            if loading && image == nil && size.width >= 80 {
+                // 大缩略图生成较慢：先放与最终尺寸一致的骨架，加载完不跳动
+                SkeletonBlock(width: size.width, height: size.height)
+            } else if let image {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
                     .frame(width: size.width, height: size.height)
                     .clipShape(.rect(cornerRadius: 6))
@@ -415,7 +464,11 @@ struct FileThumb: View {
                 DocThumb(alert: alert).scaleEffect(size.width / 36).frame(width: size.width, height: size.height)
             }
         }
-        .task(id: url) { image = await Thumbnails.shared.image(for: url, size: size) }
+        .task(id: url) {
+            loading = true
+            image = await Thumbnails.shared.image(for: url, size: size)
+            loading = false
+        }
     }
 }
 

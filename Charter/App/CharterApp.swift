@@ -25,16 +25,40 @@ struct CharterApp: App {
         return CGSize(width: 1440, height: 920)
     }
 
+    private var newItemTitle: String {
+        switch router.section {
+        case .people: "新建人员"
+        case .parties: "添加负责方"
+        default: "新建公司"
+        }
+    }
+
+    private func newItemForCurrentPage() {
+        switch router.section {
+        case .people: router.newPersonRequest += 1
+        case .parties: router.newPartyRequest += 1
+        default: router.sheet = .newCompany
+        }
+    }
+
     var body: some Scene {
         WindowGroup("Charter") {
             RootView()
                 .environment(store)
                 .environment(router)
                 .frame(minWidth: 1080, minHeight: 720)
+                .onReceive(NotificationCenter.default.publisher(for: .charterDataCleared)) { _ in router.resetSelection() }
         }
         .defaultSize(width: initialSize.width, height: initialSize.height)
         .windowToolbarStyle(.unified)
         .commands {
+            // ⌘N：按当前页面新建（人员页 → 新建人员，负责方页 → 添加负责方，其余 → 新建公司）。
+            // 替换系统的“新建窗口”：Charter 只用一个主窗口。
+            CommandGroup(replacing: .newItem) {
+                Button(newItemTitle) { newItemForCurrentPage() }
+                    .keyboardShortcut("n", modifiers: [.command])
+                    .disabled(store.isLoading || store.isImporting || store.loadFailed || router.sheet != nil)
+            }
             CommandGroup(after: .newItem) {
                 Button("新建公司") { router.sheet = .newCompany }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
@@ -196,6 +220,9 @@ final class Router {
     }
 
     var section: Section = .overview
+    /// ⌘N 在“人员”“负责方”页发出的新建请求（页面监听计数变化，打开自己的新建弹窗）。
+    var newPersonRequest = 0
+    var newPartyRequest = 0
     var calendarPreset: CalendarPreset?
     var selectedCompanyID: String?
     var selectedPersonID: String?
@@ -212,6 +239,19 @@ final class Router {
     var companiesMatrix = false
     var sheet: Sheet?
     var showImporter = false
+
+    /// 清空数据后回到初始状态：不再指向已删除的公司、人员或集团。
+    func resetSelection() {
+        sheet = nil
+        calendarPreset = nil
+        selectedCompanyID = nil
+        selectedPersonID = nil
+        groupFilter = nil
+        filesOwnerKind = nil
+        filesFilter = 0
+        companyTab = 0
+        section = .overview
+    }
 
     func openCalendar(_ preset: CalendarPreset = CalendarPreset()) {
         calendarPreset = preset

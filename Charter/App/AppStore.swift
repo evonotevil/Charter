@@ -47,6 +47,10 @@ final class AppStore {
         let id = UUID()
         var text: String
         var undo: (() -> Void)?
+        /// 成功（柠檬绿圆点）或失败（红色圆点）。
+        var kind: ToastView.Kind = .success
+        /// 操作按钮文字：撤销 / 重试。
+        var undoTitle: String = "撤销"
         static func == (a: Toast, b: Toast) -> Bool { a.id == b.id }
     }
 
@@ -506,10 +510,15 @@ final class AppStore {
     // MARK: 提示条
 
     func showToast(_ text: String, undo: (() -> Void)? = nil) {
-        let t = Toast(text: text, undo: undo)
+        showToast(text, kind: .success, actionTitle: "撤销", action: undo)
+    }
+
+    /// 带种类的提示条：成功可带“撤销”，失败可带“重试”。有操作时停留 6 秒，否则 3 秒。
+    func showToast(_ text: String, kind: ToastView.Kind, actionTitle: String = "撤销", action: (() -> Void)? = nil) {
+        let t = Toast(text: text, undo: action, kind: kind, undoTitle: actionTitle)
         toast = t
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(6))
+            try? await Task.sleep(for: .seconds(action == nil ? 3 : 6))
             if self.toast == t { self.toast = nil }
         }
     }

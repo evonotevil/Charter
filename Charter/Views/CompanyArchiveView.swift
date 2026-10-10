@@ -14,33 +14,36 @@ struct CompanyArchiveView: View {
         let main = items.filter { !$0.isExtra || store.itemIDs(for: company).contains($0.typeID) }
         let others = items.filter { $0.isExtra && !store.itemIDs(for: company).contains($0.typeID) }
         let counted = items.filter { $0.state != .marked(.notApplicable) }
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("档案清单").font(TypeStyle.sectionTitle)
-                Text("\(counted.filter { $0.state.hasFile }.count)/\(counted.count) 已归档").font(.system(size: 13)).foregroundStyle(Theme.muted)
+        VStack(alignment: .leading, spacing: Space.m12) {
+            HStack(alignment: .firstTextBaseline, spacing: Space.s8) {
+                Text("档案清单").font(TypeStyle.section).tracking(Tracking.section)
+                Text("\(counted.filter { $0.state.hasFile }.count)/\(counted.count) 已归档").font(TypeStyle.meta).monospacedDigit().foregroundStyle(Theme.muted)
                 Spacer()
                 Button("自定义清单") { router.sheet = .companyItems(company.id) }
-                    .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                    .buttonStyle(PillButtonStyle(.quiet, size: .small))
                     .help("只为这家公司增加或去掉条目；法域通用条目在“设置 → 档案条目”里改")
             }
             Text("按法域起始清单管理；可按实际需要调整。未持有材料可标记保管方、权限受限或不适用。")
                 .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
-            ArchiveHeaderRow(compact: compact)
             VStack(spacing: 0) {
+                ArchiveHeaderRow(compact: compact)
                 ForEach(Array(main.enumerated()), id: \.element.id) { pair in
+                    if pair.offset > 0 { Rectangle().fill(Theme.hairline).frame(height: 1) }
                     ArchiveRow(company: company, item: pair.element, compact: compact)
-                    if pair.offset < main.count - 1 { Divider().padding(.horizontal, 14).opacity(0.5) }
                 }
             }
             if !others.isEmpty {
-                Text("其他文件").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.muted).padding(.top, 8)
+                Text("其他文件").font(TypeStyle.meta).foregroundStyle(Theme.muted).padding(.top, Space.s8)
                 VStack(spacing: 0) {
-                    ForEach(others) { item in ArchiveRow(company: company, item: item, compact: compact) }
+                    ForEach(Array(others.enumerated()), id: \.element.id) { pair in
+                        if pair.offset > 0 { Rectangle().fill(Theme.hairline).frame(height: 1) }
+                        ArchiveRow(company: company, item: pair.element, compact: compact)
+                    }
                 }
             }
         }
-        .surfaceCard()
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 }
@@ -61,7 +64,7 @@ enum ArchiveColumns {
 struct ArchiveHeaderRow: View {
     var compact = false
     var body: some View {
-        BandHeader {
+        VStack(spacing: 0) {
             HStack(spacing: ArchiveColumns.spacing) {
                 Text("条目").padding(.leading, 28).frame(minWidth: compact ? ArchiveColumns.nameMinCompact : ArchiveColumns.nameMin, maxWidth: .infinity, alignment: .leading)
                 Text("状态").frame(width: compact ? ArchiveColumns.stateCompact : ArchiveColumns.state, alignment: .leading)
@@ -69,7 +72,12 @@ struct ArchiveHeaderRow: View {
                 Text("到期").frame(width: compact ? ArchiveColumns.dateCompact : ArchiveColumns.date, alignment: .leading)
                 Color.clear.frame(width: compact ? ArchiveColumns.actionsCompact : ArchiveColumns.actions, height: 1)
             }
+            .font(TypeStyle.micro)
+            .foregroundStyle(Theme.muted)
+            .padding(.horizontal, Space.l16).frame(height: 32)
+            Rectangle().fill(Theme.hairline).frame(height: 1)
         }
+        .accessibilityHidden(true)
     }
 }
 
@@ -85,6 +93,7 @@ struct ArchiveRow: View {
     @State private var noteText = ""
     @State private var hover = false
     @FocusState private var focused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let d = item.document
@@ -128,10 +137,13 @@ struct ArchiveRow: View {
                     .help("更多操作")
             }
             .frame(width: compact ? ArchiveColumns.actionsCompact : ArchiveColumns.actions, alignment: .trailing)
+            // 行内操作平时低调，悬停或键盘聚焦时加强；需要归档的空条目始终清晰
+            .opacity(hover || focused || d == nil ? 1 : 0.55)
+            .animation(Motion.resolved(Motion.fast, reduceMotion: reduceMotion), value: hover)
         }
         .font(.system(size: 12.5))
-        .padding(.horizontal, 16).frame(minHeight: 56)
-        .background(hover || focused ? Theme.band.opacity(0.6) : .clear, in: .rect(cornerRadius: 14))
+        .padding(.horizontal, Space.l16).padding(.vertical, Space.s8).frame(minHeight: 56)
+        .background(hover || focused ? Theme.band.opacity(0.7) : .clear, in: .rect(cornerRadius: Radius.row))
         .contentShape(.rect)
         // 用浅色底代替系统的方形焦点框
         .focusable()
@@ -312,8 +324,17 @@ struct CompanyItemsSheet: View {
                     .keyboardShortcut(.defaultAction)
             }
             .sheet(isPresented: $creating) { NewCompanyItemSheet(company: c, jurisdictionName: jName) }
+            .onExitCommand { dismiss() }
         } else {
-            Text("找不到这家公司").padding(40)
+            SheetScaffold(title: "找不到这家公司", subtitle: "它可能已被删除。", width: 420) {
+                EmptyView()
+            } leading: {
+                EmptyView()
+            } trailing: {
+                Button("关闭") { dismiss() }
+                    .buttonStyle(PillButtonStyle(.primary))
+                    .keyboardShortcut(.cancelAction)
+            }
         }
     }
 }
@@ -355,6 +376,7 @@ private struct NewCompanyItemSheet: View {
                                  validity: draft.validity, months: draft.validity == .monthsAfterIssue ? draft.months : nil,
                                  scope: c.jurisdiction)
         if !toTemplate { store.addItem(t.id, to: c.id) }
+        store.showToast("已添加条目 \(t.name)")
         dismiss()
     }
 }

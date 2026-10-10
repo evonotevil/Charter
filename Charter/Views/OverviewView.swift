@@ -74,26 +74,28 @@ struct OverviewView: View {
         }
         Group {
             if store.companies.isEmpty {
-                EmptyState(symbol: "building.2", title: "还没有公司",
-                           message: "先新建一个集团（从实控人或顶层公司开始），再逐层添加公司；也可以载入示例数据。",
-                           actionTitle: "新建集团") { router.sheet = .newGroup }
+                FullPageState {
+                    EmptyStateView(symbol: "building.2", title: "还没有公司",
+                                   message: "先新建一个集团（从实控人或顶层公司开始），再逐层添加公司；也可以载入示例数据。",
+                                   actionTitle: "新建集团") { router.sheet = .newGroup }
+                }
             } else {
                 ScrollView(.vertical) {
-                    LazyVStack(alignment: .leading, spacing: 16) {
+                    LazyVStack(alignment: .leading, spacing: Space.l16) {
                         header(shownCompanies, archives)
-                            .padding(.bottom, 4)
+                            .padding(.bottom, Space.s8)
                         ForEach(shown) { b in
                             card(b, rows: b.rows, archives: archives)
                         }
                         if shown.isEmpty {
-                            Text(onlyAttention ? "没有需要处理的公司。" : "没有找到符合条件的公司。")
-                                .font(TypeStyle.body).foregroundStyle(Theme.muted)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .surfaceCard()
+                            EmptyStateView(symbol: onlyAttention ? "checkmark" : "magnifyingglass",
+                                           title: onlyAttention ? "没有需要处理的公司" : "没有找到符合条件的公司",
+                                           message: onlyAttention ? "当前范围内的公司档案都已就绪。" : "换个关键词，或清除搜索后再看。")
+                                .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
                         }
-                        legend.padding(.top, 4).padding(.leading, 4)
+                        legend.padding(.top, Space.s8).padding(.leading, Space.xs4)
                     }
-                    .padding(.horizontal, 24).padding(.bottom, 24)
+                    .padding(.horizontal, Space.pageEdge).padding(.bottom, Space.pageEdge)
                 }
             }
         }
@@ -143,7 +145,7 @@ struct OverviewView: View {
     @ViewBuilder
     private func stat(_ n: String, _ label: String, color: Color? = nil, action: (() -> Void)? = nil) -> some View {
         let content = HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(n).font(.system(size: 15, weight: .semibold)).monospacedDigit().foregroundStyle(color ?? Theme.ink)
+            Text(n).font(TypeStyle.section).tracking(Tracking.section).numericTransition().foregroundStyle(color ?? Theme.ink)
             Text(label).font(TypeStyle.body).foregroundStyle(Theme.muted)
         }
         if let action {
@@ -158,11 +160,12 @@ struct OverviewView: View {
     private func card(_ b: Block, rows: [GroupRow], archives: [String: [ArchiveItem]]) -> some View {
         let items = rows.flatMap { archives[$0.companyID] ?? [] }.filter { $0.state != .marked(.notApplicable) }
         let have = items.filter { $0.state.hasFile }.count
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 10) {
-                GroupIcon(groupID: b.id, size: 30)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(b.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1)
+        return VStack(alignment: .leading, spacing: Space.l16) {
+            HStack(alignment: .center, spacing: Space.m12) {
+                GroupIcon(groupID: b.id, size: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(b.title).font(TypeStyle.section).tracking(Tracking.section).foregroundStyle(Theme.ink).lineLimit(1)
+                        .help(b.title)
                     Text(b.subtitle).font(TypeStyle.metadata).foregroundStyle(Theme.muted).lineLimit(1)
                 }
                 Spacer(minLength: 12)
@@ -186,7 +189,6 @@ struct OverviewView: View {
                     .help("集团操作")
                 }
             }
-            .padding(.horizontal, 6)
 
             // 放得下时表格铺满卡片宽度；放不下时在卡片内横向滚动
             ViewThatFits(in: .horizontal) {
@@ -198,9 +200,9 @@ struct OverviewView: View {
                 .scrollIndicators(.automatic)
             }
         }
-        .padding(14)
+        .padding(Space.xl24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: .rect(cornerRadius: 18))
+        .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
     }
 
     private func grid(_ b: Block, rows: [GroupRow], archives: [String: [ArchiveItem]]) -> some View {
@@ -235,10 +237,10 @@ struct OverviewView: View {
                     .help(cat)
             }
         }
-        .font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.muted)
+        .font(TypeStyle.micro).foregroundStyle(Theme.muted)
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-        .background(Theme.band, in: .rect(cornerRadius: 10))
+        .background(Theme.band, in: .rect(cornerRadius: Radius.row, style: .continuous))
     }
 
     private var legend: some View {
@@ -355,8 +357,8 @@ struct OverviewRow: View {
         }
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: 58)
-        .background(hover ? Theme.band.opacity(0.6) : .clear, in: .rect(cornerRadius: 10))
+        .frame(height: 56)
+        .background(hover ? Theme.band.opacity(0.7) : .clear, in: .rect(cornerRadius: Radius.row))
         .onHover { hover = $0 }
         .contextMenu {
             Button("打开档案") { router.companyTab = 0; router.open(company: company.id) }
@@ -459,7 +461,7 @@ struct MatrixTile: View {
         switch state {
         case .valid, .noDate: Theme.limeSoft
         case .expiring, .needsUpdate, .marked(.unverified): Theme.amberSoft
-        case .expired: Theme.danger.opacity(0.16)
+        case .expired: Theme.dangerSoft
         case .missing, .marked: Theme.band
         }
     }
@@ -506,7 +508,7 @@ struct StateGlyph: View {
     var body: some View {
         switch state {
         case .valid, .noDate:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.primary.opacity(0.75))
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.ink.opacity(0.75))
         case .expiring:
             Image(systemName: "clock.badge.exclamationmark").foregroundStyle(Theme.amberText)
         case .expired:
@@ -514,17 +516,17 @@ struct StateGlyph: View {
         case .needsUpdate:
             Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(Theme.amberText)
         case .marked(.notObtained):
-            Image(systemName: "questionmark.circle").foregroundStyle(.secondary)
+            Image(systemName: "questionmark.circle").foregroundStyle(Theme.muted)
         case .marked(.restricted):
-            Image(systemName: "lock.circle").foregroundStyle(.secondary)
+            Image(systemName: "lock.circle").foregroundStyle(Theme.muted)
         case .marked(.unverified):
             Image(systemName: "questionmark.diamond").foregroundStyle(Theme.amberText)
         case .marked(.external):
-            Image(systemName: "building.columns").foregroundStyle(.secondary)
+            Image(systemName: "building.columns").foregroundStyle(Theme.muted)
         case .marked(.notApplicable):
-            Image(systemName: "minus").foregroundStyle(.tertiary)
+            Image(systemName: "minus").foregroundStyle(Theme.muted.opacity(0.6))
         case .missing:
-            Image(systemName: "circle.dashed").foregroundStyle(.tertiary)
+            Image(systemName: "circle.dashed").foregroundStyle(Theme.muted.opacity(0.6))
         }
     }
 }

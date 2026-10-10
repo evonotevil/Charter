@@ -1,15 +1,120 @@
 import SwiftUI
+import AppKit
 
-/// 工作界面的语义字号。保持系统字体，只收敛重复角色，避免各页面用相邻字号制造层级。
+/// 字体层级（设计语言）：只用四档 —— Display 44/800、Title 28/750、Section 17/650、Body 14，外加 Meta 12.5/500。
+/// 标题收紧字距（用 `Tracking`），数字一律 `.monospacedDigit()`。
 enum TypeStyle {
-    static let entityTitle = Font.system(size: 26, weight: .semibold)
-    static let sectionTitle = Font.system(size: 20, weight: .semibold)
-    /// 页面大标题（与总览“下午好”一致）。
-    static let pageTitle = Font.system(size: 26, weight: .semibold)
+    // 新档位
+    static let display = Font.system(size: 44, weight: .heavy)
+    /// 28 / 750：SwiftUI 没有 750，取 .bold；配合 `Tracking.title`。
+    static let title = Font.system(size: 28, weight: .bold)
+    /// 17 / 650：取 .semibold。
+    static let section = Font.system(size: 17, weight: .semibold)
+    static let body = Font.system(size: 14)
+    static let meta = Font.system(size: 12.5, weight: .medium)
+
+    // 旧名称（保留调用点），映射到新档位
+    static let entityTitle = TypeStyle.title
+    static let sectionTitle = TypeStyle.section
+    /// 页面大标题：28 / 800，字距收紧。
+    static let pageTitle = Font.system(size: 28, weight: .heavy)
     static let rowTitle = Font.system(size: 14, weight: .semibold)
-    static let body = Font.system(size: 13)
-    static let metadata = Font.system(size: 12)
+    static let metadata = TypeStyle.meta
     static let micro = Font.system(size: 11, weight: .medium)
+}
+
+/// 标题字距（-0.02em / -0.03em 换算为点）。
+enum Tracking {
+    static let display: CGFloat = -1.3   // 44 × -0.03
+    static let title: CGFloat = -0.56    // 28 × -0.02
+    static let section: CGFloat = -0.2
+}
+
+// MARK: - 间距、圆角、动效
+
+/// 4 点网格。页边 32，区块间距 40。
+enum Space {
+    static let xs4: CGFloat = 4
+    static let s8: CGFloat = 8
+    static let m12: CGFloat = 12
+    static let l16: CGFloat = 16
+    static let xl24: CGFloat = 24
+    static let xxl32: CGFloat = 32
+    static let section40: CGFloat = 40
+    static let xxxl48: CGFloat = 48
+    /// 页面左右边距。
+    static let pageEdge: CGFloat = 32
+}
+
+/// 圆角：按钮为胶囊，输入框 12，行高亮 10，承载面 20。
+enum Radius {
+    /// 按钮与胶囊控件：用 `.capsule`；这里给需要数值的场合一个足够大的值。
+    static let control: CGFloat = 999
+    static let field: CGFloat = 12
+    static let row: CGFloat = 10
+    static let surface: CGFloat = 20
+}
+
+/// 动效：一条缓动曲线 cubic-bezier(.2,.8,.2,1)，三档时长 120 / 200 / 280 ms。减少动态效果时只做淡入淡出。
+enum Motion {
+    static let fastDuration: Double = 0.12
+    static let standardDuration: Double = 0.2
+    static let panelDuration: Double = 0.28
+
+    /// 按下、悬停、勾选。
+    static let fast = Animation.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.12)
+    /// 选中、切换、展开。
+    static let standard = Animation.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.2)
+    /// 浮层、提示条、侧板进出。
+    static let panel = Animation.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.28)
+
+    /// 减少动态效果时换成短淡入淡出（位移由调用方改用 `.opacity` 过渡）。
+    static func resolved(_ animation: Animation, reduceMotion: Bool) -> Animation {
+        reduceMotion ? .easeOut(duration: fastDuration) : animation
+    }
+
+    /// 系统“减少动态效果”设置（非视图代码里用）。
+    @MainActor static var reduceMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    /// `withAnimation` 的包装，自动遵守减少动态效果。
+    @MainActor static func perform<R>(_ animation: Animation = Motion.standard, _ body: () throws -> R) rethrows -> R {
+        try withAnimation(resolved(animation, reduceMotion: reduceMotion), body)
+    }
+}
+
+extension View {
+    /// 浮层（菜单、提示条、拖动中的对象）共用的一层阴影。页面内的承载面不加阴影。
+    func floatingShadow() -> some View {
+        self.shadow(color: Color.black.opacity(0.12), radius: 16, y: 12)
+            .shadow(color: Color.black.opacity(0.06), radius: 3, y: 2)
+    }
+
+    /// 出现时淡入并上移 4 点；减少动态效果时只淡入。
+    func appear(delay: Double = 0) -> some View {
+        modifier(AppearModifier(delay: delay))
+    }
+
+    /// 数字变化时逐位滚动（`.contentTransition(.numericText())`）。
+    func numericTransition() -> some View {
+        self.monospacedDigit().contentTransition(.numericText())
+    }
+}
+
+private struct AppearModifier: ViewModifier {
+    var delay: Double
+    @State private var shown = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown || reduceMotion ? 0 : 4)
+            .onAppear {
+                withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion).delay(delay)) { shown = true }
+            }
+    }
 }
 
 // MARK: - 按钮
@@ -35,21 +140,28 @@ struct PillButtonStyle: ButtonStyle {
         let kind: Kind
         let size: Size
         @Environment(\.isEnabled) private var enabled
+        @Environment(\.isFocused) private var focused
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         @State private var hover = false
 
         var body: some View {
             configuration.label
-                .font(.system(size: size == .small ? 12 : size == .large ? 14.5 : 13.5, weight: .semibold))
+                .font(.system(size: size == .small ? 13 : size == .large ? 14.5 : 14, weight: .semibold))
                 .lineLimit(1)
-                .padding(.horizontal, size == .small ? 12 : size == .large ? 20 : 16)
-                .frame(height: size == .small ? 28 : size == .large ? 42 : 34)
+                .padding(.horizontal, size.horizontalPadding)
+                .frame(height: size.height)
                 .background(background, in: .capsule)
-                .overlay { if kind == .secondary { Capsule().strokeBorder(Theme.hairline, lineWidth: 1) } }
+                .overlay { if kind == .secondary { Capsule().strokeBorder(Theme.hairline, lineWidth: 1.5) } }
                 .foregroundStyle(foreground)
                 .opacity(enabled ? 1 : 0.4)
-                .scaleEffect(configuration.isPressed ? 0.97 : 1)
-                .animation(reduceMotion ? nil : .snappy(duration: 0.15), value: configuration.isPressed)
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+                .animation(Motion.resolved(Motion.fast, reduceMotion: reduceMotion), value: configuration.isPressed)
+                // 键盘焦点：柠檬绿外圈（只在“全键盘控制”下按钮可获得焦点时出现）
+                .overlay {
+                    if focused {
+                        Capsule().strokeBorder(Theme.lime, lineWidth: 3).padding(-4)
+                    }
+                }
                 .onHover { hover = $0 }
                 .contentShape(.capsule)
         }
@@ -71,6 +183,24 @@ struct PillButtonStyle: ButtonStyle {
             case .accent: Theme.onLime
             case .danger: .white
             }
+        }
+    }
+}
+
+extension PillButtonStyle.Size {
+    /// 高度：大 44（页面主操作）、常规 38（页面与弹窗）、小 30（表格行内）。
+    var height: CGFloat {
+        switch self {
+        case .small: 30
+        case .regular: 38
+        case .large: 44
+        }
+    }
+    var horizontalPadding: CGFloat {
+        switch self {
+        case .small: 14
+        case .regular: 18
+        case .large: 22
         }
     }
 }
@@ -190,7 +320,8 @@ struct CountBadge: View {
     var body: some View {
         Text("\(count)")
             .font(.system(size: 11.5, weight: .semibold)).monospacedDigit()
-            .padding(.horizontal, 8).frame(minWidth: 26, minHeight: 22)
+            .contentTransition(.numericText())
+            .padding(.horizontal, 8).frame(minWidth: 24, minHeight: 22)
             .background(inverted ? Theme.onSelection.opacity(0.18) : Theme.band, in: .capsule)
             .foregroundStyle(inverted ? Theme.onSelection : Theme.muted)
     }
@@ -265,9 +396,9 @@ struct PageTitle: View {
     var subtitle: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(TypeStyle.pageTitle).tracking(-0.5)
+            Text(title).font(TypeStyle.pageTitle).tracking(Tracking.title)
                 .lineLimit(1).minimumScaleFactor(0.6)
-            if let subtitle { Text(subtitle).font(.system(size: 14)).foregroundStyle(Theme.muted) }
+            if let subtitle { Text(subtitle).font(TypeStyle.body).foregroundStyle(Theme.muted) }
         }
     }
 }
@@ -304,7 +435,7 @@ extension Theme {
     static let attentionOnSelection = Color(hex: 0xF2C66B)
 }
 
-/// 页面顶部：大标题（可带说明）+ 右侧操作。各页统一 24 点页边距，与总览对齐。
+/// 页面顶部：大标题（28 / 800，可带说明）+ 右侧操作。页边距用 `Space.pageEdge`，与总览对齐。
 struct PageHeader<Trailing: View>: View {
     var title: String
     var subtitle: String? = nil

@@ -164,6 +164,7 @@ struct DocumentSheet: View {
     private func save() {
         do {
             try store.updateDocument(document)
+            store.showToast("文件信息已保存")
             dismiss()
         } catch {
             saveError = error.localizedDescription

@@ -56,6 +56,8 @@ struct PacketView: View {
             footerTrailing(s)
         }
         .interactiveDismissDisabled(phase == .building)
+        // 完成后只剩“完成”按钮，Esc 同样关闭
+        .onExitCommand { if case .done = phase { dismiss() } }
         .onAppear {
             if companyID == nil { companyID = store.companies.first?.id }
             if templateID.isEmpty || template == nil { templateID = store.library.packets.first?.id ?? "" }

@@ -90,8 +90,18 @@ struct ExportSheet: View {
                 }
             }
             .interactiveDismissDisabled(working)
+            // 导出完成后只剩“完成”按钮，Esc 同样关闭
+            .onExitCommand { if result != nil { dismiss() } }
         } else {
-            Text("找不到这家公司").padding(40)
+            SheetScaffold(title: "找不到这家公司", subtitle: "它可能已被删除。", width: 420) {
+                EmptyView()
+            } leading: {
+                EmptyView()
+            } trailing: {
+                Button("关闭") { dismiss() }
+                    .buttonStyle(PillButtonStyle(.primary))
+                    .keyboardShortcut(.cancelAction)
+            }
         }
     }
 

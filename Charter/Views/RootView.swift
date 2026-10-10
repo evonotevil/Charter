@@ -53,27 +53,33 @@ struct RootView: View {
         .overlay {
             if store.isLoading {
                 ZStack {
-                    Theme.canvas.opacity(0.86).ignoresSafeArea()
-                    VStack(spacing: 12) {
-                        ProgressView().controlSize(.large)
-                        Text("正在读取档案…").font(.system(size: 14, weight: .semibold))
-                        Text("读取完成前不会保存或修改数据").font(.caption).foregroundStyle(Theme.muted)
+                    // 读取期间仍挡住整个窗口的交互（与 .disabled 一起），但只用一张小卡片提示。
+                    Theme.canvas.opacity(0.6).ignoresSafeArea()
+                    VStack(alignment: .leading, spacing: Space.m12) {
+                        HStack(spacing: Space.s8 + 2) {
+                            ProgressView().controlSize(.small)
+                            Text("正在读取档案…").font(TypeStyle.rowTitle)
+                        }
+                        SkeletonBlock(width: 220, height: 10)
+                        SkeletonBlock(width: 160, height: 10)
+                        Text("读取完成前不会保存或修改数据").font(TypeStyle.meta).foregroundStyle(Theme.muted)
                     }
-                    .padding(24)
-                    .background(Theme.surface, in: .rect(cornerRadius: 20))
+                    .padding(Space.xl24)
+                    .frame(width: 300, alignment: .leading)
+                    .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+                    .floatingShadow()
                 }
+                .transition(.opacity)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("正在读取档案")
             } else if store.loadFailed {
-                VStack(spacing: 12) {
-                    Label("档案暂时处于保护状态", systemImage: "exclamationmark.shield")
-                        .font(.system(size: 17, weight: .semibold))
-                    Text("现有档案已保留。请检查数据文件夹或修复读取错误，再重新载入。")
-                        .font(.callout).multilineTextAlignment(.center)
-                    Button("重新载入") { store.load() }.buttonStyle(PillButtonStyle(.primary))
-                }
-                .padding(24).frame(maxWidth: 440)
-                .background(Theme.surface, in: .rect(cornerRadius: 20))
+                ErrorStateView(title: "档案暂时处于保护状态",
+                               message: "现有档案已保留。请检查数据文件夹或修复读取错误，再重新载入。",
+                               retryTitle: "重新载入") { store.load() }
+                    .frame(maxWidth: 460)
+                    .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+                    .floatingShadow()
+                    .padding(Space.pageEdge)
             }
         }
         .sheet(item: $router.sheet) { sheet in
@@ -130,13 +136,27 @@ struct RootView: View {
             if let d = store.documents.first(where: { $0.id == id }) {
                 DocumentSheet(document: d)
             } else {
-                Text("找不到这份文件").padding(40)
+                SheetScaffold(title: "找不到这份文件", subtitle: "它可能已被删除或移到其他公司。", width: 420) {
+                    EmptyView()
+                } leading: {
+                    EmptyView()
+                } trailing: {
+                    Button("关闭") { router.sheet = nil }
+                        .buttonStyle(PillButtonStyle(.primary)).keyboardShortcut(.cancelAction)
+                }
             }
         case .obligation(let key):
             if let o = store.allObligations.first(where: { $0.key == key }) {
                 ObligationSheet(obligation: o)
             } else {
-                Text("找不到这件事项").padding(40)
+                SheetScaffold(title: "找不到这件事项", subtitle: "它可能已办结或被移除。", width: 420) {
+                    EmptyView()
+                } leading: {
+                    EmptyView()
+                } trailing: {
+                    Button("关闭") { router.sheet = nil }
+                        .buttonStyle(PillButtonStyle(.primary)).keyboardShortcut(.cancelAction)
+                }
             }
         }
     }
@@ -146,22 +166,25 @@ struct Sidebar: View {
     @Environment(AppStore.self) private var store
     @Environment(Router.self) private var router
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var navNS
+    /// 选中底色所在的行：跟随 router.section，但单独做动画，页面本身即时切换。
+    @State private var highlighted: Router.Section = .overview
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.s8) {
                 GroupSwitcher()
                 ActionMenu(systemImage: "plus", kind: .secondary, entries: newEntries, arrowEdge: .trailing)
                     .help("新建")
                     .accessibilityLabel("新建")
             }
-            .padding(.bottom, 16)
+            .padding(.bottom, Space.l16)
             ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     ForEach(Router.Section.allCases.filter { !$0.isCompliance }) { s in navRow(s) }
                     if store.complianceOn {
                         Text("合规").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Theme.muted)
-                            .padding(.leading, 14).padding(.top, 18).padding(.bottom, 4)
+                            .padding(.leading, Space.m12).padding(.top, Space.l16).padding(.bottom, Space.xs4)
                         ForEach(Router.Section.allCases.filter(\.isCompliance)) { s in navRow(s) }
                     }
                 }
@@ -169,7 +192,13 @@ struct Sidebar: View {
             .scrollIndicators(.never)
             attentionCard
         }
-        .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 12)
+        .padding(.horizontal, Space.m12).padding(.top, Space.s8).padding(.bottom, Space.m12)
+        .onAppear { highlighted = router.section }
+        // 菜单快捷键（⌘1…⌘5）或其他页面跳转改变 section 时，底色同样滑过去
+        .onChange(of: router.section) { _, new in
+            guard highlighted != new else { return }
+            withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) { highlighted = new }
+        }
     }
 
     /// 侧栏顶部“+”：新建公司（落在当前选中的集团里）、新建集团、导入文件。
@@ -191,28 +220,39 @@ struct Sidebar: View {
     private func navRow(_ s: Router.Section) -> some View {
         let on = router.section == s
         let n = badge(for: s)
+        let index = Router.Section.allCases.filter { !$0.isCompliance }.firstIndex(of: s)
         return Button {
-            // 切换页面不做淡入淡出：两页叠在一起时工具栏会闪一下
+            // 切换页面本身不做淡入淡出（两页叠在一起时工具栏会闪一下），只让选中底色在行间滑动
+            withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
+                highlighted = s
+            }
             router.section = s
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: s.symbol).font(.system(size: 15, weight: .medium)).frame(width: 22)
+            HStack(spacing: Space.m12) {
+                Image(systemName: s.symbol).font(.system(size: 15, weight: .medium)).frame(width: 20)
                 Text(s.title).font(.system(size: 14, weight: on ? .semibold : .medium))
-                Spacer(minLength: 4)
+                Spacer(minLength: Space.xs4)
                 if n > 0 { CountBadge(count: n, inverted: on) }
             }
             .foregroundStyle(on ? Theme.onSelection : Theme.ink)
-            .padding(.horizontal, 14).frame(height: 40)
-            .background(on ? Theme.selection : .clear, in: .capsule)
-            .contentShape(.capsule)
+            .padding(.horizontal, Space.m12).frame(height: 36)
+            .background {
+                if highlighted == s {
+                    RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+                        .fill(Theme.selection)
+                        .matchedGeometryEffect(id: "navSelection", in: navNS)
+                }
+            }
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .help(index.map { "\(s.title)（⌘\($0 + 1)）" } ?? s.title)
         .accessibilityLabel(s.title)
         .accessibilityValue(n > 0 ? "\(n) 项待处理" : "")
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// 底部提醒：中性底色，琥珀色警告。
+    /// 底部提醒：白色承载面，琥珀色图标，细线描边。
     @ViewBuilder
     private var attentionCard: some View {
         let n = store.documentsNeedingAttention.count
@@ -222,31 +262,38 @@ struct Sidebar: View {
                 router.filesOwnerKind = nil
                 router.section = .files
             } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 14, weight: .semibold))
-                        .frame(width: 32, height: 32).background(Theme.amberSoft, in: .circle).foregroundStyle(Theme.amberText)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("\(n) 份文件需处理").font(.system(size: 13.5, weight: .semibold))
-                        Text("过期、即将到期或需更新").font(.system(size: 11.5)).opacity(0.7)
+                VStack(alignment: .leading, spacing: Space.s8) {
+                    HStack(spacing: Space.s8) {
+                        Circle().fill(Theme.amber).frame(width: 8, height: 8)
+                        Text("需要处理").font(TypeStyle.micro).foregroundStyle(Theme.amberText)
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.muted)
                     }
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold))
+                    HStack(alignment: .firstTextBaseline, spacing: Space.xs4) {
+                        Text("\(n)").font(.system(size: 28, weight: .heavy)).tracking(Tracking.title).numericTransition()
+                        Text("份文件").font(.system(size: 13, weight: .semibold))
+                    }
+                    Text("过期、即将到期或需更新").font(TypeStyle.micro).foregroundStyle(Theme.muted)
                 }
                 .foregroundStyle(Theme.ink)
-                .padding(12)
-                .background(Theme.surface, in: .rect(cornerRadius: 20))
-                .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(Theme.hairline) }
+                .padding(Space.l16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.surface, in: .rect(cornerRadius: 16, style: .continuous))
+                .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.hairline) }
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .padding(.top, Space.m12)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(n) 份文件需处理")
             .accessibilityHint("打开文件页并只显示需要处理的文件")
+            .accessibilityAddTraits(.isButton)
         } else {
             HStack(spacing: 6) {
                 Image(systemName: store.store.isInICloud ? "icloud" : "internaldrive")
                 Text(store.store.isInICloud ? "已通过 iCloud 同步" : "数据保存在本机")
             }
-            .font(.caption).foregroundStyle(Theme.muted).padding(.leading, 14)
+            .font(.caption).foregroundStyle(Theme.muted).padding(.leading, Space.m12).padding(.top, Space.m12)
         }
     }
 

@@ -10,6 +10,7 @@ struct ArchiveItemsSettings: View {
     @State private var addingJurisdiction = false
     @State private var jCode = ""
     @State private var jName = ""
+    @State private var jAttempted = false
     @State private var creatingIn: String?
     @State private var draft = ArchiveItemDraft()
     @State private var allJurisdictions = false
@@ -57,7 +58,7 @@ struct ArchiveItemsSettings: View {
                             selection: Binding(get: { code ?? "" }, set: { code = $0 }),
                             placeholder: "选择法域", minWidth: 200)
                 Spacer(minLength: 0)
-                Button { addingJurisdiction = true } label: { Label("新建法域", systemImage: "plus") }
+                Button { jAttempted = false; addingJurisdiction = true } label: { Label("新建法域", systemImage: "plus") }
                     .buttonStyle(PillButtonStyle(.quiet, size: .small))
             }
             if let code {
@@ -124,7 +125,7 @@ struct ArchiveItemsSettings: View {
             }
             .scrollIndicators(.never)
             .frame(maxHeight: .infinity)
-            .background(Theme.surface, in: .rect(cornerRadius: 18, style: .continuous))
+            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
 
             Text(person ? "护照、身份证等挂在人名下的文件。"
                         : "内置条目是管理用的起始清单，不代表已核验的法定要求。实际要求请按公司情况与接收方确认。")
@@ -231,16 +232,8 @@ struct ArchiveItemsSettings: View {
             }
             .scrollIndicators(.never)
         } else {
-            VStack(spacing: 10) {
-                Image(systemName: "list.bullet.rectangle")
-                    .font(.system(size: 22, weight: .medium)).foregroundStyle(Theme.ink)
-                    .frame(width: 52, height: 52)
-                    .background(Theme.surface, in: .rect(cornerRadius: 15, style: .continuous))
-                Text("选择条目以查看和编辑").font(TypeStyle.rowTitle).foregroundStyle(Theme.ink)
-                Text("可在这里修改名称、当地名称、识别线索和有效期。")
-                    .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            EmptyStateView(symbol: "list.bullet.rectangle", title: "选择条目以查看和编辑", message: "可在这里修改名称、当地名称、识别线索和有效期。")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -274,10 +267,18 @@ struct ArchiveItemsSettings: View {
         store.setTemplateItems(a, for: code)
     }
 
+    /// 新建法域的代码校验：空（点过“添加”后才提示）或与已有法域重复。
+    private var jCodeError: String? {
+        let c = jCode.trimmingCharacters(in: .whitespaces).uppercased()
+        if c.isEmpty { return jAttempted ? "请填写法域代码" : nil }
+        if let j = store.library.jurisdictions.first(where: { $0.code == c }) { return "已有法域 \(j.name)（\(c)）" }
+        return nil
+    }
+
     private var jurisdictionForm: some View {
         SheetScaffold(title: "新建法域", subtitle: "新建后可以为这个法域设置档案条目。", width: 460) {
             FormGroup {
-                FieldRow(label: "代码", hint: "2–3 个字母，例如 MY") {
+                FieldRow(label: "代码", hint: "2–3 个字母，例如 MY", error: jCodeError) {
                     TextField("MY", text: $jCode).textFieldStyle(KitFieldStyle())
                 }
                 FieldRow(label: "名称") {
@@ -290,10 +291,13 @@ struct ArchiveItemsSettings: View {
             Button("取消") { addingJurisdiction = false }
                 .buttonStyle(PillButtonStyle(.secondary))
                 .keyboardShortcut(.cancelAction)
-            Button("添加") { addJurisdiction() }
+            Button("添加") {
+                jAttempted = true
+                guard jCodeError == nil else { return }
+                addJurisdiction()
+            }
                 .buttonStyle(PillButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
-                .disabled(jCode.trimmingCharacters(in: .whitespaces).isEmpty)
         }
     }
 
@@ -303,7 +307,8 @@ struct ArchiveItemsSettings: View {
         store.library.jurisdictions.append(Jurisdiction(code: c, name: jName.isEmpty ? c : jName, timeZone: TimeZone.current.identifier, entityForms: []))
         store.setTemplateItems([], for: c)
         code = c
-        jCode = ""; jName = ""
+        store.showToast("已添加法域 \(store.jurisdictionName(c))")
+        jCode = ""; jName = ""; jAttempted = false
         addingJurisdiction = false
     }
 }

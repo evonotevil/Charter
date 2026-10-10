@@ -19,17 +19,17 @@ extension Color {
 
 /// 设计规范：浅灰画布 + 白色圆角卡片；黑色为主强调，柠檬绿用于品牌入口、有效状态和完成度；琥珀色表示需要处理，红色只用于已过期。
 enum Theme {
-    static let canvas = Color(light: 0xECECEF, dark: 0x0F0F11)
+    static let canvas = Color(light: 0xEEEEF0, dark: 0x0F0F11)
     static let surface = Color(light: 0xFFFFFF, dark: 0x1C1C1F)
     /// 表头带、次级填充、未选中的分段。
-    static let band = Color(light: 0xF3F3F5, dark: 0x27272B)
-    static let hairline = Color(light: 0xE6E6EA, dark: 0x303035)
+    static let band = Color(light: 0xF4F4F6, dark: 0x27272B)
+    static let hairline = Color(light: 0xE4E4E8, dark: 0x303035)
     static let ink = Color(light: 0x121212, dark: 0xF2F2F3)
     static let onInk = Color(light: 0xFFFFFF, dark: 0x121212)
     /// Emphasis panels retain a dark surface in both appearances.
     static let emphasis = Color(hex: 0x121212)
     static let onEmphasis = Color.white
-    static let muted = Color(light: 0x6E6E76, dark: 0x9C9CA3)
+    static let muted = Color(light: 0x6B6B73, dark: 0x9C9CA3)
     /// 股权图默认连线：比 hairline 深，比文字浅，两种外观下都清楚。
     static let edge = Color(light: 0x9A9AA3, dark: 0x6C6C74)
     static let lime = Color(hex: 0xD9F46B)
@@ -38,6 +38,8 @@ enum Theme {
     static let limeText = Color(light: 0x4D5B12, dark: 0xD9F46B)
     static let onLime = Color(hex: 0x121212)
     static let danger = Color(hex: 0xE2553D)
+    /// 红色浅底（“已过期”胶囊）。
+    static let dangerSoft = Color(light: 0xFBE3DE, dark: 0x4A1F18)
     static let amber = Color(hex: 0xF2B441)
     static let amberSoft = Color(light: 0xFCEFD3, dark: 0x4A3A16)
     static let amberText = Color(light: 0x8A5A00, dark: 0xF2C66B)
@@ -92,6 +94,7 @@ struct Pill: View {
     var body: some View {
         Text(text)
             .font(.system(size: 11.5, weight: .semibold))
+            .lineLimit(1)
             .padding(.horizontal, 9)
             .frame(height: 22)
             .background(background, in: .capsule)
@@ -105,7 +108,7 @@ struct Pill: View {
         case .neutral: Theme.band
         case .valid: Theme.limeSoft
         case .warn: Theme.amberSoft
-        case .bad: Theme.danger
+        case .bad: Theme.dangerSoft
         case .strong: Theme.ink
         case .lime: Theme.lime
         case .outline: .clear
@@ -116,7 +119,7 @@ struct Pill: View {
         case .neutral: Theme.muted
         case .valid: Theme.limeText
         case .warn: Theme.amberText
-        case .bad: .white
+        case .bad: Theme.danger
         case .strong: Theme.onInk
         case .lime: Theme.onLime
         case .outline: Theme.muted
@@ -196,6 +199,7 @@ struct FactRow: View {
     }
 }
 
+/// 旧接口：转到 `EmptyStateView`（新规范的空状态）。
 struct EmptyState: View {
     var symbol: String
     var title: String
@@ -204,16 +208,8 @@ struct EmptyState: View {
     var action: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: symbol).font(.system(size: 34, weight: .light)).foregroundStyle(.secondary)
-            Text(title).font(.display(20))
-            Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 380)
-            if let actionTitle, let action {
-                Button(actionTitle, action: action).buttonStyle(PillButtonStyle(.primary, size: .large)).padding(.top, 6)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
+        EmptyStateView(symbol: symbol, title: title, message: message, actionTitle: actionTitle, action: action)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -275,28 +271,53 @@ struct ToastOverlay: View {
         VStack {
             Spacer()
             if let t = store.toast {
-                HStack(spacing: 14) {
-                    Image(systemName: "checkmark").fontWeight(.bold)
-                    Text(t.text).fontWeight(.medium)
-                    if let undo = t.undo {
-                        Button("撤销") { undo(); store.toast = nil }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 14).frame(height: 32)
-                            .background(.white.opacity(0.16), in: .capsule)
-                    }
+                ToastView(text: t.text, kind: t.kind, actionTitle: t.undo == nil ? nil : t.undoTitle) {
+                    t.undo?()
+                    store.toast = nil
                 }
-                .foregroundStyle(.white)
-                .padding(.leading, 18).padding(.trailing, t.undo == nil ? 18 : 6)
-                .frame(height: 46)
-                .background(Color.black.opacity(0.82), in: .capsule)
-                .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
                 .padding(.bottom, 92)
-                .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.92)))
+                .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 .id(t.id)
             }
         }
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.25), value: store.toast)
+        .frame(maxWidth: .infinity)
+        .animation(Motion.resolved(Motion.panel, reduceMotion: reduceMotion), value: store.toast)
         .allowsHitTesting(store.toast != nil)
+    }
+}
+
+/// 提示条本体：墨黑胶囊；成功为柠檬绿圆点，失败为红色圆点；可带“撤销”/“重试”。
+struct ToastView: View {
+    enum Kind: Equatable { case success, failure }
+    var text: String
+    var kind: Kind = .success
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle().fill(kind == .success ? Theme.lime : Theme.danger).frame(width: 18, height: 18)
+                .overlay {
+                    Image(systemName: kind == .success ? "checkmark" : "exclamationmark")
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(kind == .success ? Theme.onLime : Color.white)
+                }
+            Text(text).font(.system(size: 14, weight: .semibold)).lineLimit(2)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.onInk)
+                    .padding(.horizontal, 12).frame(height: 30)
+                    .background(Theme.onInk.opacity(0.14), in: .capsule)
+            }
+        }
+        .foregroundStyle(Theme.onInk)
+        .padding(.leading, 16).padding(.trailing, actionTitle == nil ? 18 : 6)
+        .frame(minHeight: 44)
+        .background(Theme.ink, in: .capsule)
+        .floatingShadow()
+        .accessibilityElement(children: .combine)
     }
 }
 

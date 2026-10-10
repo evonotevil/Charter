@@ -13,7 +13,7 @@ import AppKit
 // - 危险：红色，只用于删除等不可撤销操作的最终确认
 // - 强调：柠檬绿，只用于“复制摘要”这类非提交型的便捷操作
 //
-// 尺寸：小 28（表格行内）、常规 34（页面与弹窗）、大 42（页面主操作）。
+// 尺寸：小 30（表格行内）、常规 38（页面与弹窗）、大 44（页面主操作）。
 // 弹窗底部：左侧放次要的辅助操作，右侧依次“取消（次要）→ 主操作（主要）”。
 
 extension EnvironmentValues {
@@ -22,15 +22,15 @@ extension EnvironmentValues {
 }
 
 enum Kit {
-    static let fieldHeight: CGFloat = 34
-    static let fieldRadius: CGFloat = 10
+    static let fieldHeight: CGFloat = 38
+    static let fieldRadius: CGFloat = Radius.field
     static let popoverRadius: CGFloat = 14
     static let labelWidth: CGFloat = 92
 }
 
 // MARK: - 输入框
 
-/// 输入框：浅灰底、圆角 10、聚焦时深色描边。
+/// 输入框：浅灰底、圆角 12、聚焦时深色描边；`invalid` 时红色描边、白底（配合 `FieldError` 显示原因）。
 struct KitFieldStyle: TextFieldStyle {
     var invalid = false
 
@@ -50,19 +50,29 @@ struct KitFieldStyle: TextFieldStyle {
                 .focused($focused)
                 .padding(.horizontal, 12)
                 .frame(minHeight: Kit.fieldHeight)
-                .background(fill, in: .rect(cornerRadius: Kit.fieldRadius))
+                .background(invalid ? Theme.surface : fill, in: .rect(cornerRadius: Kit.fieldRadius))
                 .overlay(RoundedRectangle(cornerRadius: Kit.fieldRadius)
-                    .strokeBorder(invalid ? Theme.danger : (focused ? Theme.ink.opacity(0.7) : Theme.hairline), lineWidth: focused || invalid ? 1.5 : 1))
-                .animation(.easeOut(duration: 0.12), value: focused)
+                    .strokeBorder(invalid ? Theme.danger : (focused ? Theme.ink.opacity(0.7) : Theme.hairline), lineWidth: 1.5))
+                .animation(Motion.fast, value: focused)
+                .animation(Motion.fast, value: invalid)
         }
     }
 }
 
-/// 表单行：左侧固定宽度的标签，右侧控件；可选一行说明。
+/// 表单行：左侧固定宽度的标签，右侧控件；可选一行说明；`error` 非空时在控件下方显示红色原因（替代说明）。
 struct FieldRow<Content: View>: View {
     var label: String
     var hint: String?
+    var error: String?
     @ViewBuilder var content: Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(label: String, hint: String? = nil, error: String? = nil, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.hint = hint
+        self.error = error
+        self.content = content()
+    }
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -70,10 +80,33 @@ struct FieldRow<Content: View>: View {
                 .frame(width: Kit.labelWidth, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
                 content
-                if let hint { Text(hint).font(TypeStyle.metadata).foregroundStyle(Theme.muted) }
+                if let error {
+                    FieldError(text: error)
+                } else if let hint {
+                    Text(hint).font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: error)
         }
+    }
+}
+
+/// 行内校验错误：红色 12.5 点文字，出现时淡入。
+struct FieldError: View {
+    var text: String
+    var body: some View {
+        Label {
+            Text(text)
+        } icon: {
+            Image(systemName: "exclamationmark.circle.fill")
+        }
+        .labelStyle(.titleAndIcon)
+        .font(TypeStyle.meta)
+        .foregroundStyle(Theme.danger)
+        .fixedSize(horizontal: false, vertical: true)
+        .transition(.opacity)
+        .accessibilityLabel("错误：\(text)")
     }
 }
 
@@ -172,11 +205,17 @@ extension Theme {
 private struct PopoverPanel: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .padding(6)
+            .padding(Kit.popoverPadding)
             .frame(minWidth: 200, alignment: .leading)
             // 浮层统一白底（深色为深灰），不随窗口材质变暗或变透明
             .presentationBackground(Theme.surface)
     }
+}
+
+extension Kit {
+    /// 浮层（菜单、下拉、日历）统一外观：系统弹出窗口自带阴影，这里只统一底色与内边距。
+    /// 自绘浮层（不在 popover 里）用 `.floatingShadow()`。
+    static let popoverPadding: CGFloat = 6
 }
 
 /// 浮层里的一行：图标 + 文字 + 可选快捷键/勾选；悬停浅灰底。
@@ -205,7 +244,7 @@ struct PopoverRow: View {
                 }
             }
             .padding(.horizontal, 10).frame(height: 30)
-            .background(hover ? Theme.band : .clear, in: .rect(cornerRadius: 8))
+            .background(hover ? Theme.band : .clear, in: .rect(cornerRadius: Radius.row))
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -236,11 +275,7 @@ struct ActionMenu: View {
 
     /// 胶囊按钮左右各有内边距，图标按钮的标签宽度 = 高度 − 两侧内边距。
     private var iconOnlyWidth: CGFloat {
-        switch size {
-        case .small: return 28 - 24
-        case .regular: return 34 - 32
-        case .large: return 42 - 40
-        }
+        max(0, size.height - 2 * size.horizontalPadding)
     }
 
     var body: some View {
@@ -612,27 +647,32 @@ struct SheetScaffold<Content: View, Leading: View, Trailing: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.system(size: 20, weight: .semibold))
+            VStack(alignment: .leading, spacing: Space.xs4 + 2) {
+                Text(title)
+                    .font(.system(size: 22, weight: .heavy)).tracking(-0.44)
+                    .lineLimit(2).truncationMode(.tail)
+                    .help(title)
+                    .accessibilityAddTraits(.isHeader)
                 if let subtitle {
                     Text(subtitle).font(TypeStyle.body).foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .padding(.horizontal, 24).padding(.top, 22).padding(.bottom, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 28).padding(.top, 28).padding(.bottom, Space.xl24)
 
             ViewThatFits(in: .vertical) {
                 padded(content)
                 ScrollView { padded(content) }.scrollBounceBehavior(.basedOnSize)
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: Space.s8 + 2) {
                 leading
-                Spacer(minLength: 12)
+                Spacer(minLength: Space.m12)
                 trailing
             }
-            .padding(.horizontal, 24).padding(.vertical, 14)
-            .background(Theme.band.opacity(0.6))
+            .padding(.horizontal, 28).padding(.vertical, Space.l16)
+            .background(Theme.surface)
             .overlay(alignment: .top) { Rectangle().fill(Theme.hairline).frame(height: 1) }
         }
         .frame(width: width)
@@ -644,7 +684,7 @@ struct SheetScaffold<Content: View, Leading: View, Trailing: View>: View {
     private func padded(_ content: Content) -> some View {
         content
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24).padding(.bottom, 22)
+            .padding(.horizontal, 28).padding(.bottom, 28)
     }
 }
 
@@ -673,8 +713,8 @@ struct FormGroup<Content: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .environment(\.kitFieldFill, onCanvas ? Theme.band : Theme.surface)
-            .background(onCanvas ? Theme.surface : Theme.band.opacity(0.55), in: .rect(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.hairline))
+            .background(onCanvas ? Theme.surface : Theme.band.opacity(0.55), in: .rect(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.hairline))
         }
     }
 }
@@ -700,7 +740,9 @@ struct ConfirmSheet: View {
                     .frame(width: 38, height: 38)
                     .background(destructive ? Theme.danger.opacity(0.12) : Theme.band, in: .circle)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(title).font(.system(size: 17, weight: .semibold))
+                    Text(title).font(.system(size: 22, weight: .heavy)).tracking(-0.44)
+                        .lineLimit(2).help(title)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(message).font(TypeStyle.body).foregroundStyle(Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -714,11 +756,11 @@ struct ConfirmSheet: View {
                         }
                     }
                 }
-                .padding(12)
+                .padding(Space.l16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.band, in: .rect(cornerRadius: 12))
+                .background(Theme.band, in: .rect(cornerRadius: Radius.field))
             }
-            HStack(spacing: 10) {
+            HStack(spacing: Space.s8 + 2) {
                 Spacer()
                 Button("取消") { dismiss() }
                     .buttonStyle(PillButtonStyle(.secondary))
@@ -728,8 +770,8 @@ struct ConfirmSheet: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(24)
-        .frame(width: 440)
+        .padding(28)
+        .frame(width: 460)
         .background(Theme.surface)
     }
 }
@@ -778,5 +820,121 @@ struct CopyTextSheet: View {
             }
             .buttonStyle(PillButtonStyle(.primary)).keyboardShortcut(.defaultAction)
         }
+    }
+}
+
+// MARK: - 状态：加载、空、失败
+
+/// 骨架占位块：浅灰圆角条，带一道缓慢掠过的高光；减少动态效果时静止。
+struct SkeletonBlock: View {
+    var width: CGFloat? = nil
+    var height: CGFloat = 12
+    @State private var phase: CGFloat = -1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: min(height / 2, Radius.row))
+            .fill(Theme.band)
+            .overlay {
+                if !reduceMotion {
+                    GeometryReader { geo in
+                        LinearGradient(colors: [Theme.band, Theme.hairline, Theme.band],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .frame(width: geo.size.width)
+                            .offset(x: phase * geo.size.width)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: min(height / 2, Radius.row)))
+                }
+            }
+            .frame(width: width, height: height)
+            .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) { phase = 1 }
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+/// 空状态：图标、标题（17 / 650）、说明（灰）、可选一个小号主按钮。
+struct EmptyStateView: View {
+    var symbol: String
+    var title: String
+    var message: String
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(spacing: Space.m12) {
+            Image(systemName: symbol)
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(Theme.muted)
+                .frame(width: 48, height: 48)
+                .background(Theme.band, in: .circle)
+            VStack(spacing: Space.xs4) {
+                Text(title).font(TypeStyle.section).tracking(Tracking.section)
+                Text(message).font(TypeStyle.body).foregroundStyle(Theme.muted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: 380)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(PillButtonStyle(.primary, size: .small))
+                    .padding(.top, Space.xs4)
+            }
+        }
+        .padding(Space.section40)
+        .frame(maxWidth: .infinity)
+        .appear()
+    }
+}
+
+/// 整页状态（空、失败）的容器：与正常页面一样放进 ScrollView 并撑满可视高度居中。
+/// 详情栏里没有滚动视图时，系统会改变窗口工具栏 / 安全区的计算，
+/// 导致侧栏顶部（集团切换）被顶进标题栏、挤到红绿灯旁边；统一容器可避免这一点。
+struct FullPageState<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollView(.vertical) {
+            content
+                .frame(maxWidth: .infinity)
+                .containerRelativeFrame(.vertical, alignment: .center)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+    }
+}
+
+/// 失败状态：说明原因，并给一个“重试”。
+struct ErrorStateView: View {
+    var title: String
+    var message: String
+    var retryTitle = "重试"
+    var retry: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(spacing: Space.m12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Theme.danger)
+                .frame(width: 48, height: 48)
+                .background(Theme.dangerSoft, in: .circle)
+            VStack(spacing: Space.xs4) {
+                Text(title).font(TypeStyle.section).tracking(Tracking.section)
+                Text(message).font(TypeStyle.body).foregroundStyle(Theme.muted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: 380)
+            if let retry {
+                Button(action: retry) { Label(retryTitle, systemImage: "arrow.clockwise") }
+                    .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                    .padding(.top, Space.xs4)
+            }
+        }
+        .padding(Space.section40)
+        .frame(maxWidth: .infinity)
+        .appear()
     }
 }

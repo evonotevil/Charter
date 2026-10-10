@@ -132,6 +132,12 @@ struct GroupEditor: View {
     @State private var iconRemoved = false
     @State private var pickingIcon = false
     @State private var iconError: String?
+    @State private var attempted = false
+    @FocusState private var nameFocused: Bool
+
+    private var nameError: String? {
+        attempted && name.trimmingCharacters(in: .whitespaces).isEmpty ? "请填写集团名称" : nil
+    }
 
     init(group: CorporateGroup?) {
         original = group
@@ -151,10 +157,11 @@ struct GroupEditor: View {
                       width: 580, height: 760) {
             VStack(alignment: .leading, spacing: 18) {
                 FormGroup(title: "基本信息") {
-                    FieldRow(label: "集团名称") {
+                    FieldRow(label: "集团名称", error: nameError) {
                         TextField("例如：远澜集团", text: $name).textFieldStyle(KitFieldStyle())
+                            .focused($nameFocused)
                     }
-                    FieldRow(label: "集团图标", hint: iconError ?? "PNG 或 JPEG，会裁成正方形；未设置时显示名称首字。") {
+                    FieldRow(label: "集团图标", hint: "PNG 或 JPEG，会裁成正方形；未设置时显示名称首字。", error: iconError) {
                         HStack(spacing: 12) {
                             iconPreview
                             Button("选择图片…") { iconError = nil; pickingIcon = true }
@@ -210,11 +217,15 @@ struct GroupEditor: View {
             Button("取消") { dismiss() }
                 .buttonStyle(PillButtonStyle(.secondary))
                 .keyboardShortcut(.cancelAction)
-            Button(original == nil ? "创建" : "保存") { save() }
+            Button(original == nil ? "创建" : "保存") {
+                attempted = true
+                guard nameError == nil else { nameFocused = true; return }
+                save()
+            }
                 .buttonStyle(PillButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
+        .onAppear { if original == nil { nameFocused = true } }
         .fileImporter(isPresented: $pickingIcon, allowedContentTypes: [.png, .jpeg]) { result in
             guard case .success(let url) = result else { return }
             let access = url.startAccessingSecurityScopedResource()
@@ -286,6 +297,7 @@ struct GroupEditor: View {
         store.tidyGroups()
         router.groupFilter = g.id
         router.section = .overview
+        store.showToast(original == nil ? "已创建集团 \(g.name)" : "已保存 \(g.name)")
         dismiss()
     }
 }
@@ -320,7 +332,8 @@ struct RelationSheet: View {
                     NodePicker(title: "类型", choice: $other, allowPerson: upward, allowCompany: true, exclude: [self_])
                 }
                 FormGroup(title: "持股") {
-                    FieldRow(label: upward ? "持有本公司" : "本公司持有") {
+                    FieldRow(label: upward ? "持有本公司" : "本公司持有",
+                             error: percent <= 0 || percent > 100 ? "持股比例需大于 0、不超过 100%" : nil) {
                         HStack(spacing: 6) {
                             TextField("", value: $percent, format: .number)
                                 .textFieldStyle(KitFieldStyle(invalid: percent <= 0 || percent > 100))

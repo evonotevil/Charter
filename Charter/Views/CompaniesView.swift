@@ -7,6 +7,10 @@ struct CompaniesView: View {
     @Environment(Router.self) private var router
     @State private var query = ""
     @FocusState private var searchFocused: Bool
+    @Namespace private var railNS
+    /// 选中底色所在的行：跟随 router.selectedCompanyID 单独做动画，详情本身即时切换。
+    @State private var highlightID: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private func matches(_ c: Company) -> Bool {
         let q = query.lowercased().trimmingCharacters(in: .whitespaces)
@@ -40,7 +44,7 @@ struct CompaniesView: View {
                 PillSegmented(options: [(false, "列表"), (true, "矩阵")], selection: $router.companiesMatrix)
                     .help("列表：逐家查看；矩阵：公司 × 档案类别一览")
             }
-            .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 16)
+            .padding(.horizontal, Space.pageEdge).padding(.top, Space.xl24).padding(.bottom, Space.xl24)
             Group {
                 if router.companiesMatrix {
                     OverviewView()
@@ -56,8 +60,8 @@ struct CompaniesView: View {
         GeometryReader { geometry in
         let sections = self.sections
         HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: Space.s8) {
+                HStack(spacing: Space.s8) {
                     Button { searchFocused = true } label: {
                         Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
                     }
@@ -71,6 +75,7 @@ struct CompaniesView: View {
                             .buttonStyle(.plain)
                     }
                 }
+                .font(TypeStyle.body)
                 .padding(.horizontal, 14).frame(height: 38)
                 .background(Theme.band, in: .capsule)
                 ScrollView {
@@ -78,10 +83,10 @@ struct CompaniesView: View {
                         ForEach(sections, id: \.id) { sec in
                             HStack(spacing: 8) {
                                 GroupIcon(groupID: sec.id == Router.ungrouped ? Router.ungrouped : sec.id, size: 18)
-                                Text(sec.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.muted)
+                                Text(sec.title).font(TypeStyle.micro).foregroundStyle(Theme.muted)
                                     .lineLimit(1)
                             }
-                            .padding(.horizontal, 10).padding(.top, 12).padding(.bottom, 4)
+                            .padding(.horizontal, Space.s8).padding(.top, Space.l16).padding(.bottom, Space.xs4)
                             ForEach(sec.rows) { r in
                                 if let c = store.company(r.companyID) { row(c, r) }
                             }
@@ -107,20 +112,21 @@ struct CompaniesView: View {
                     }
                 }
             }
-            .padding(14)
-            .frame(width: min(310, max(240, geometry.size.width - 540)))
+            .padding(Space.m12)
+            .frame(width: min(300, max(240, geometry.size.width - 560)))
             .frame(maxHeight: .infinity, alignment: .top)
-            .background(Theme.surface, in: .rect(cornerRadius: Theme.radius))
-            .padding(.leading, 24).padding(.bottom, 24)
+            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+            .padding(.leading, Space.pageEdge).padding(.bottom, Space.pageEdge)
 
             Group {
                 if let id = router.selectedCompanyID, let c = store.company(id) {
                     CompanyDetailView(company: c).id(c.id)
                 } else {
-                    EmptyState(symbol: "building.2", title: "选择公司", message: "从左侧列表选择公司，或新建公司。",
-                               actionTitle: "新建公司") { router.sheet = .newCompany }
-                        .background(Theme.surface, in: .rect(cornerRadius: Theme.radius))
-                        .padding(.leading, 14).padding(.trailing, 24).padding(.bottom, 24)
+                    EmptyStateView(symbol: "building.2", title: "选择公司", message: "从左侧列表选择公司，或新建公司。",
+                                   actionTitle: "新建公司") { router.sheet = .newCompany }
+                        .frame(maxHeight: .infinity)
+                        .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+                        .padding(.leading, Space.l16).padding(.trailing, Space.pageEdge).padding(.bottom, Space.pageEdge)
                 }
             }
             .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -129,8 +135,12 @@ struct CompaniesView: View {
         .navigationTitle("公司")
         .onAppear {
             reconcileSelection()
+            highlightID = router.selectedCompanyID
         }
         .onChange(of: router.groupFilter) { _, _ in reconcileSelection() }
+        .onChange(of: router.selectedCompanyID) { _, new in
+            withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) { highlightID = new }
+        }
         .onMoveCommand { direction in
             switch direction {
             case .up: moveSelection(by: -1)
@@ -150,23 +160,30 @@ struct CompaniesView: View {
     private func row(_ c: Company, _ r: GroupRow) -> some View {
         let on = router.selectedCompanyID == c.id
         let severity = subtitleSeverity(c)
-        return Button { router.selectedCompanyID = c.id } label: {
+        return Button { select(c.id) } label: {
             HStack(spacing: 10) {
                 Text(c.jurisdiction)
                     .font(.system(size: 10.5, weight: .bold))
-                    .frame(width: 30, height: 30)
-                    .background(on ? Theme.onInk.opacity(0.16) : Theme.band, in: .rect(cornerRadius: 9))
+                    .frame(width: 28, height: 28)
+                    .background(on ? Theme.onSelection.opacity(0.16) : Theme.band, in: .rect(cornerRadius: 8))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(c.name).font(.system(size: 13.5, weight: .semibold)).lineLimit(1)
+                    Text(c.name).font(.system(size: 13.5, weight: .semibold)).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(subtitle(c, r)).font(.system(size: 11.5)).lineLimit(1)
                         .foregroundStyle(subtitleColor(severity, selected: on))
                 }
                 Spacer(minLength: 0)
             }
             .foregroundStyle(on ? Theme.onSelection : Theme.ink)
-            .padding(.leading, 8 + CGFloat(min(r.depth, 4)) * 14).padding(.trailing, 8)
-            .frame(height: 50)
-            .background(on ? Theme.selection : .clear, in: .rect(cornerRadius: 14))
+            .padding(.leading, 8 + CGFloat(min(r.depth, 4)) * 12).padding(.trailing, 8).padding(.vertical, 8)
+            .frame(minHeight: 48)
+            .background {
+                if highlightID == c.id {
+                    RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+                        .fill(Theme.selection)
+                        .matchedGeometryEffect(id: "railSelection", in: railNS)
+                }
+            }
             .contentShape(.rect)
         }
         .buttonStyle(RowButtonStyle())
@@ -235,7 +252,12 @@ struct CompaniesView: View {
         let current = router.selectedCompanyID.flatMap { id in filtered.firstIndex { $0.id == id } }
             ?? (offset > 0 ? -1 : filtered.count)
         let next = min(max(current + offset, 0), filtered.count - 1)
-        router.selectedCompanyID = filtered[next].id
+        select(filtered[next].id)
+    }
+
+    /// 选中底色在行间滑动；详情本身即时切换。
+    private func select(_ id: String) {
+        router.selectedCompanyID = id
     }
 }
 
@@ -248,44 +270,67 @@ struct CompanyDetailView: View {
     @State private var tab = 0
     @State private var dropTargeted = false
     @State private var width: CGFloat = 1000
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var ref: NodeRef { NodeRef(kind: .company, id: company.id) }
 
     var body: some View {
         let wide = width >= 1120
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
                 hero
-                PillSegmented(options: tabOptions, selection: $tab)
-                    .padding(.vertical, 4)
+                    .padding(Space.xl24)
+                hairline
+                keyFacts
+                hairline
+                HStack {
+                    PillSegmented(options: tabOptions, selection: $tab)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, Space.xl24).padding(.vertical, Space.l16)
+                hairline
                 Group {
                     switch tab {
                     case 0:
                         if wide {
-                            HStack(alignment: .top, spacing: 14) {
+                            HStack(alignment: .top, spacing: 0) {
                                 CompanyArchiveView(company: company)
+                                    .padding(Space.xl24)
+                                Rectangle().fill(Theme.hairline).frame(width: 1).frame(maxHeight: .infinity)
                                 sidePanel.frame(width: 300)
+                                    .padding(Space.xl24)
                             }
+                            .fixedSize(horizontal: false, vertical: true)
                         } else {
-                            VStack(spacing: 14) {
+                            VStack(spacing: 0) {
                                 CompanyArchiveView(company: company)
-                                sidePanel
+                                    .padding(Space.xl24)
+                                hairline
+                                sidePanel.padding(Space.xl24)
                             }
                         }
-                    case 2: documentsTab.surfaceCard()
-                    case 4: obligationsTab.surfaceCard()
-                    default: historyTab.surfaceCard()
+                    case 2: documentsTab.padding(Space.xl24)
+                    case 4: obligationsTab.padding(Space.xl24)
+                    default: historyTab.padding(Space.xl24)
                     }
                 }
-                .transition(.opacity)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .id(tab)
+                .transition(reduceMotion ? AnyTransition.opacity : AnyTransition.opacity.combined(with: .offset(y: 4)))
             }
-            .padding(.leading, 14).padding(.trailing, 24).padding(.bottom, 24)
+            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+            .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: tab)
+            .padding(.leading, Space.l16).padding(.trailing, Space.pageEdge).padding(.bottom, Space.pageEdge)
             .frame(maxWidth: 1200, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .onAppear { tab = normalized(router.companyTab) }
         .onChange(of: router.companyTab) { tab = normalized(router.companyTab) }
+    }
+
+    private var hairline: some View {
+        Rectangle().fill(Theme.hairline).frame(height: 1)
     }
 
     private var tabOptions: [(Int, String)] {
@@ -301,57 +346,74 @@ struct CompanyDetailView: View {
         return t
     }
 
-    // MARK: 顶部大卡
+    // MARK: 顶部
 
     private var hero: some View {
+        let groups = store.groups(containing: company.id)
+        return ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: Space.l16) {
+                heroIdentity(groups)
+                Spacer(minLength: Space.m12)
+                heroActions
+            }
+            VStack(alignment: .leading, spacing: Space.l16) {
+                heroIdentity(groups)
+                heroActions
+            }
+        }
+    }
+
+    /// 关键信息条：注册编号、成立日期、注册地址、档案进度，用竖向细线分隔。
+    private var keyFacts: some View {
         let items = store.archive(of: company).filter { $0.state != .marked(.notApplicable) }
         let have = items.filter(\.state.hasFile).count
-        let groups = store.groups(containing: company.id)
-        return VStack(alignment: .leading, spacing: 18) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 16) {
-                    heroIdentity(groups)
-                    Spacer(minLength: 12)
-                    heroActions
-                }
-                VStack(alignment: .leading, spacing: 14) {
-                    heroIdentity(groups)
-                    heroActions
-                }
-            }
-            HStack(spacing: 12) {
-                ProgressCapsule(value: items.isEmpty ? 0 : Double(have) / Double(items.count))
-                Text("档案 \(have)/\(items.count)").font(.mono(12.5)).foregroundStyle(Theme.muted)
-            }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 0) {
-                    fact("注册编号", company.registrationNumber, mono: true)
-                    Divider()
-                    fact("成立日期", company.incorporationDate?.description ?? "", mono: true)
-                    Divider()
-                    fact("注册地址", company.registeredAddress, mono: false)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                VStack(spacing: 0) {
-                    fact("注册编号", company.registrationNumber, mono: true)
-                    Divider()
-                    fact("成立日期", company.incorporationDate?.description ?? "", mono: true)
-                    Divider()
-                    fact("注册地址", company.registeredAddress, mono: false)
-                }
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.hairline, lineWidth: 1))
+        let archive = VStack(alignment: .leading, spacing: 6) {
+            Text("档案").font(TypeStyle.meta).foregroundStyle(Theme.muted)
+            Text("\(have)/\(items.count)").font(.mono(15, .medium)).numericTransition()
+            ProgressCapsule(value: items.isEmpty ? 0 : Double(have) / Double(items.count))
+                .frame(maxWidth: 140)
         }
-        .surfaceCard(padding: 22)
+        .padding(.horizontal, Space.xl24).padding(.vertical, Space.l16)
+        .frame(minWidth: 150, alignment: .leading)
+        return ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 0) {
+                fact("注册编号", company.registrationNumber, mono: true)
+                factDivider
+                fact("成立日期", company.incorporationDate?.description ?? "", mono: true)
+                factDivider
+                fact("注册地址", company.registeredAddress, mono: false)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                factDivider
+                archive
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 0) {
+                    fact("注册编号", company.registrationNumber, mono: true)
+                    factDivider
+                    fact("成立日期", company.incorporationDate?.description ?? "", mono: true)
+                    factDivider
+                    archive
+                    Spacer(minLength: 0)
+                }
+                hairline
+                fact("注册地址", company.registeredAddress, mono: false)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var factDivider: some View {
+        Rectangle().fill(Theme.hairline).frame(width: 1).frame(maxHeight: .infinity)
     }
 
     private func heroIdentity(_ groups: [CorporateGroup]) -> some View {
         HStack(alignment: .top, spacing: 16) {
                 JurisdictionBadge(code: company.jurisdiction, size: 54, highlighted: true)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(company.name).font(TypeStyle.entityTitle).tracking(-0.5)
+                    Text(company.name).font(TypeStyle.title).tracking(Tracking.title)
+                        .lineLimit(2).truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                        .help(company.name)
                     ScrollView(.horizontal) {
                     HStack(spacing: 6) {
                         Pill(text: store.jurisdictionName(company.jurisdiction))
@@ -408,15 +470,15 @@ struct CompanyDetailView: View {
     }
 
     private func fact(_ label: String, _ value: String, mono: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(label).font(.system(size: 12.5)).foregroundStyle(Theme.muted)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).font(TypeStyle.meta).foregroundStyle(Theme.muted)
             Text(value.isEmpty ? "未填写" : value)
                 .font(mono ? .mono(15, .medium) : .system(size: 14, weight: .medium))
                 .foregroundStyle(value.isEmpty ? Theme.muted : Theme.ink)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 18).padding(.vertical, 14)
+        .padding(.horizontal, Space.xl24).padding(.vertical, Space.l16)
         .frame(minWidth: 150, alignment: .leading)
     }
 
@@ -427,7 +489,7 @@ struct CompanyDetailView: View {
         let holders = store.directShareholders(of: company.id)
         let b = store.breakdown(of: company.id)
         let chains = store.chainsFromTops(to: company.id)
-        return VStack(spacing: 14) {
+        return VStack(alignment: .leading, spacing: Space.xl24) {
             VStack(alignment: .leading, spacing: 10) {
                 sideTitle("董事及高管", officers.count)
                 if officers.isEmpty { Text("未录入").font(.system(size: 13)).foregroundStyle(Theme.muted) }
@@ -446,7 +508,8 @@ struct CompanyDetailView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .surfaceCard(padding: 18)
+
+            Rectangle().fill(Theme.hairline).frame(height: 1)
 
             VStack(alignment: .leading, spacing: 10) {
                 sideTitle("股东", holders.count)
@@ -498,13 +561,12 @@ struct CompanyDetailView: View {
                 .buttonStyle(PillButtonStyle(.accent))
                 .padding(.top, 4)
             }
-            .surfaceCard(padding: 18)
         }
     }
 
     private func sideTitle(_ t: String, _ n: Int) -> some View {
         HStack {
-            Text(t).font(.system(size: 16, weight: .semibold))
+            Text(t).font(TypeStyle.section).tracking(Tracking.section)
             Spacer()
             if n > 0 { CountBadge(count: n) }
         }
@@ -574,14 +636,14 @@ struct CompanyDetailView: View {
                     SectionTitle(title: "董事及高管", trailing: officers.isEmpty ? nil : "\(officers.count) 人")
                     VStack(spacing: 0) {
                         if officers.isEmpty {
-                            Text("未录入。可在“编辑”或“记录变更”里添加。").foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
+                            Text("未录入。可在“编辑”或“记录变更”里添加。").foregroundStyle(Theme.muted).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
                         }
                         ForEach(officers) { a in
                             HStack {
                                 Button(store.name(of: NodeRef(kind: .person, id: a.personID))) { router.open(person: a.personID) }.buttonStyle(.link)
-                                Text(a.title).foregroundStyle(.secondary)
+                                Text(a.title).foregroundStyle(Theme.muted)
                                 Spacer()
-                                Text(a.from.map { "自 \($0.description)" } ?? "").foregroundStyle(.secondary).monospacedDigit()
+                                Text(a.from.map { "自 \($0.description)" } ?? "").foregroundStyle(Theme.muted).monospacedDigit()
                             }
                             .padding(.vertical, 10)
                         }
@@ -595,9 +657,9 @@ struct CompanyDetailView: View {
                         ForEach(store.breakdownLines(b), id: \.self) { line in
                             Text(line).foregroundStyle(line.hasPrefix("未识别") ? Theme.amberText : .primary)
                         }
-                        if b.owners.isEmpty && b.unknown < 0.005 { Text("股东未录入").foregroundStyle(.secondary) }
+                        if b.owners.isEmpty && b.unknown < 0.005 { Text("股东未录入").foregroundStyle(Theme.muted) }
                         ForEach(chains.prefix(6), id: \.chain.id) { item in
-                            Text("链条（\(item.group.name)）：\(store.chainText(item.chain))").font(.callout).foregroundStyle(.secondary)
+                            Text("链条（\(item.group.name)）：\(store.chainText(item.chain))").font(.callout).foregroundStyle(Theme.muted)
                         }
                     }
                     .textSelection(.enabled)
@@ -614,7 +676,7 @@ struct CompanyDetailView: View {
                     Button { router.sheet = .obligation(next.key) } label: {
                         Card {
                             VStack(alignment: .leading, spacing: 6) {
-                                Text("下一个截止日").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.secondary)
+                                Text("下一个截止日").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Theme.muted)
                                 let left = next.daysLeft(from: store.today)
                                 Text(left < 0 ? "逾期 \(-left) 天" : left == 0 ? "今天截止" : "还有 \(left) 天")
                                     .font(.display(26, .bold)).monospacedDigit()
@@ -623,7 +685,7 @@ struct CompanyDetailView: View {
                                     Text(next.rule.name).font(.system(size: 15, weight: .semibold))
                                     TrustBadge(trust: store.trust(next))
                                 }
-                                Text("\(next.due.long)，\(store.responsibleParty(for: next)?.name ?? "未指定负责方")").font(.callout).foregroundStyle(.secondary)
+                                Text("\(next.due.long)，\(store.responsibleParty(for: next)?.name ?? "未指定负责方")").font(.callout).foregroundStyle(Theme.muted)
                             }
                         }
                     }
@@ -677,8 +739,8 @@ struct CompanyDetailView: View {
             }
             .foregroundStyle(dropTargeted ? Theme.onLime : Theme.muted)
             .frame(maxWidth: .infinity).frame(height: 90)
-            .background(dropTargeted ? Theme.lime : Theme.surface, in: .rect(cornerRadius: 22))
-            .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 5])).foregroundStyle(dropTargeted ? Theme.ink : Theme.hairline))
+            .background(dropTargeted ? Theme.lime : Theme.surface, in: .rect(cornerRadius: Radius.surface))
+            .overlay(RoundedRectangle(cornerRadius: Radius.surface).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 5])).foregroundStyle(dropTargeted ? Theme.ink : Theme.hairline))
             .dropDestination(for: URL.self) { urls, _ in
                 router.sheet = .importFiles(urls)
                 return true
@@ -709,11 +771,11 @@ struct CompanyDetailView: View {
                     VStack(spacing: 0) {
                         ForEach(done) { o in
                             HStack {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.primary)
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.ink)
                                 Text(o.rule.name).fontWeight(.medium)
-                                Text("截止 \(o.due.long)").foregroundStyle(.secondary)
+                                Text("截止 \(o.due.long)").foregroundStyle(Theme.muted)
                                 Spacer()
-                                Text(o.record?.completedOn.map { "\($0.long)完成" } ?? "").foregroundStyle(.secondary)
+                                Text(o.record?.completedOn.map { "\($0.long)完成" } ?? "").foregroundStyle(Theme.muted)
                                 if let r = store.receipt(o) {
                                     Button("查看回执") { store.open(r) }.buttonStyle(PillButtonStyle(.quiet, size: .small))
                                 }
@@ -737,7 +799,7 @@ struct CompanyDetailView: View {
         let unsynced = store.unsyncedChanges(companyID: company.id)
         return VStack(alignment: .leading, spacing: 20) {
             if changes.isEmpty {
-                Text("还没有变更记录。董事、股东、地址或名称有变化时，点击上方的“记录变更”。").foregroundStyle(.secondary)
+                Text("还没有变更记录。董事、股东、地址或名称有变化时，点击上方的“记录变更”。").foregroundStyle(Theme.muted)
             }
             if !unsynced.isEmpty {
                 HStack(alignment: .top, spacing: 12) {
@@ -745,9 +807,9 @@ struct CompanyDetailView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("\(unsynced.count) 条变更没有同步到董事或股东名单").fontWeight(.semibold)
                         Text(unsynced.map { "\($0.effectiveOn.long)：\($0.summary.isEmpty ? $0.kind.label : $0.summary)" }.joined(separator: "\n"))
-                            .font(.callout).foregroundStyle(.secondary)
+                            .font(.callout).foregroundStyle(Theme.muted)
                         Text("这些变更只记了一笔，名单里没有对应的就任、离任或持股变化。请在“编辑”里补上任期日期，股权结构和文件包才会准确。")
-                            .font(.callout).foregroundStyle(.secondary)
+                            .font(.callout).foregroundStyle(Theme.muted)
                     }
                     Spacer()
                     Button("编辑名单") { router.sheet = .editCompany(company.id) }
@@ -759,7 +821,7 @@ struct CompanyDetailView: View {
             VStack(alignment: .leading, spacing: 22) {
                 ForEach(changes) { c in
                     HStack(alignment: .top, spacing: 22) {
-                        Circle().strokeBorder(Color.primary, lineWidth: 2.5).frame(width: 14, height: 14).padding(.top, 3)
+                        Circle().strokeBorder(Theme.ink, lineWidth: 2.5).frame(width: 14, height: 14).padding(.top, 3)
                         Text(c.effectiveOn.description).fontWeight(.bold).monospacedDigit().frame(width: 100, alignment: .leading)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(c.summary.isEmpty ? c.kind.label : c.summary).font(.system(size: 15, weight: .semibold))
@@ -767,7 +829,7 @@ struct CompanyDetailView: View {
                                 Text(line).font(.callout)
                             }
                             HStack(spacing: 10) {
-                                Text("\(c.kind.label)，\(c.recordedOn.long)录入").font(.callout).foregroundStyle(.secondary)
+                                Text("\(c.kind.label)，\(c.recordedOn.long)录入").font(.callout).foregroundStyle(Theme.muted)
                                 if let id = c.evidenceDocumentID, let d = store.documents.first(where: { $0.id == id }) {
                                     Button("查看证明文件") { router.sheet = .document(d.id) }.buttonStyle(.link).font(.callout)
                                 }
@@ -785,7 +847,7 @@ struct CompanyDetailView: View {
                             Text(Ownership.percentLabel(h.percent)).fontWeight(.bold)
                             if h.isNominee { Pill(text: "代持", kind: .warn) }
                             Spacer()
-                            Text("\(h.from?.description ?? "?") 至 \(h.to?.description ?? "今")").foregroundStyle(.secondary).monospacedDigit()
+                            Text("\(h.from?.description ?? "?") 至 \(h.to?.description ?? "今")").foregroundStyle(Theme.muted).monospacedDigit()
                         }
                         .padding(.horizontal, 14).frame(height: 40)
                         .background(Theme.card, in: .rect(cornerRadius: 12))
@@ -818,7 +880,7 @@ struct DocumentAlertCard: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(type?.name ?? "文件")\(f.label)").font(.display(17))
                 Text("上一份\(document.issueDate.map { "签发于 \($0.long)" } ?? "没有签发日期")。银行开户、审计和 KYC 可能会用到。")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(.callout).foregroundStyle(Theme.muted)
             }
             Spacer()
             if let party {
@@ -887,13 +949,13 @@ struct DocumentCard: View {
         let f = store.freshness(document)
         VStack(alignment: .leading, spacing: 0) {
             ZStack {
-                RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.15)).frame(width: 76, height: 100)
+                RoundedRectangle(cornerRadius: 6).fill(Theme.muted.opacity(0.15)).frame(width: 76, height: 100)
                     .rotationEffect(.degrees(hover ? -6 : 0)).offset(x: hover ? -8 : 0, y: 4)
-                RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.1)).frame(width: 76, height: 100)
+                RoundedRectangle(cornerRadius: 6).fill(Theme.muted.opacity(0.1)).frame(width: 76, height: 100)
                     .rotationEffect(.degrees(hover ? 5 : 0)).offset(x: hover ? 8 : 0, y: 4)
                 VStack(alignment: .leading, spacing: 6) {
                     Capsule().fill(f.emphasisFill).frame(width: 34, height: 5)
-                    ForEach([0.8, 0.92, 0.64, 0.86], id: \.self) { w in Capsule().fill(Color.secondary.opacity(0.25)).frame(width: CGFloat(52 * w), height: 3) }
+                    ForEach([0.8, 0.92, 0.64, 0.86], id: \.self) { w in Capsule().fill(Theme.muted.opacity(0.25)).frame(width: CGFloat(52 * w), height: 3) }
                 }
                 .padding(12)
                 .frame(width: 76, height: 104, alignment: .topLeading)
@@ -903,7 +965,7 @@ struct DocumentCard: View {
             .frame(maxWidth: .infinity).frame(height: 128)
             VStack(alignment: .leading, spacing: 3) {
                 Text(store.docType(document.typeID)?.name ?? "文件").font(.system(size: 14, weight: .semibold))
-                Text(document.issueDate.map { "\($0.long)签发" } ?? "未注明日期").font(.caption).foregroundStyle(.secondary)
+                Text(document.issueDate.map { "\($0.long)签发" } ?? "未注明日期").font(.caption).foregroundStyle(Theme.muted)
                 Pill(text: f.label, kind: f.pillKind).padding(.top, 6)
             }
             .padding(14)
@@ -943,7 +1005,7 @@ struct ShareholdersCard: View {
         let ultimate = Ownership.ultimateOwners(of: company.id, holdings: store.holdings, on: store.today)
         Card(padding: 20) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("股东").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.secondary)
+                Text("股东").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Theme.muted)
                 ForEach(direct) { h in
                     HStack(spacing: 10) {
                         avatar(h.holder)
@@ -954,7 +1016,7 @@ struct ShareholdersCard: View {
                     }
                 }
                 if ultimate.contains(where: { u in !direct.contains { $0.holder == u.owner } }) {
-                    Text("穿透后").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.secondary).padding(.top, 6)
+                    Text("穿透后").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Theme.muted).padding(.top, 6)
                     ForEach(ultimate, id: \.owner) { u in
                         HStack(spacing: 10) {
                             avatar(u.owner)
@@ -966,7 +1028,7 @@ struct ShareholdersCard: View {
                     }
                 }
                 if !subs.isEmpty {
-                    Text("下属公司").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.secondary).padding(.top, 6)
+                    Text("下属公司").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Theme.muted).padding(.top, 6)
                     ForEach(subs) { h in
                         Button { router.open(company: h.companyID) } label: {
                             HStack(spacing: 10) {
@@ -1028,7 +1090,7 @@ struct RulesForCompany: View {
                                 .buttonStyle(.plain)
                                 .help("查看或记录这条规则的核对信息")
                             }
-                            Text(r.effective(for: company).schedule.summary).font(.caption).foregroundStyle(.secondary)
+                            Text(r.effective(for: company).schedule.summary).font(.caption).foregroundStyle(Theme.muted)
                         }
                         Spacer()
                         SelectField(options: partyOptions, selection: Binding<String>(

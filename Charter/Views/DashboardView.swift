@@ -37,66 +37,39 @@ struct DashboardView: View {
         let have = all.filter { $0.state.hasFile }.count
         let expired = all.filter { if case .expired = $0.state { true } else { false } }.count
         let expiring = all.filter { if case .expiring = $0.state { true } else { false } }.count
-        let needsUpdate = all.filter { $0.state == .needsUpdate }.count
-        let noDate = all.filter { $0.state == .noDate }.count
         let notObtained = all.filter { $0.state == .marked(.notObtained) }.count
-        let external = all.filter { $0.state == .marked(.external) }.count
-        let restricted = all.filter { $0.state == .marked(.restricted) }.count
-        let unverified = all.filter { $0.state == .marked(.unverified) }.count
-        let missing = all.filter { $0.state == .missing }.count
-        let pct = all.isEmpty ? 0 : Int((Double(have) / Double(all.count) * 100).rounded())
         let attention = attentionRows(scope: scope)
         let personalAttention = store.documentsNeedingAttention.filter { $0.owner.kind == .person }.count
         let jurisdictions = Set(companies.map(\.jurisdiction)).count
 
         Group {
-            if store.companies.isEmpty {
-                EmptyState(symbol: "building.2", title: "还没有公司",
-                           message: "先新建一个集团（从实控人或顶层公司开始），再逐层添加公司；也可以在设置里载入示例数据。",
-                           actionTitle: "新建集团") { router.sheet = .newGroup }
+            if store.isLoading {
+                ScrollView { skeleton.padding(Space.pageEdge).frame(maxWidth: 1240).frame(maxWidth: .infinity) }
+            } else if store.companies.isEmpty {
+                FullPageState {
+                    EmptyStateView(symbol: "building.2", title: "还没有公司",
+                                   message: "先新建一个集团（从实控人或顶层公司开始），再逐层添加公司；也可以在设置里载入示例数据。",
+                                   actionTitle: "新建集团") { router.sheet = .newGroup }
+                }
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        header(attention.count, personalAttention: personalAttention)
-                            .padding(.bottom, 6)
-
-                        attentionTable(attention)
-
-                        // 档案概况
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack {
-                                Text("档案概况").font(.system(size: 20, weight: .semibold))
-                                Spacer()
-                                Text(store.filterName(router.groupFilter)).font(.system(size: 13)).foregroundStyle(Theme.muted)
-                            }
-                            HStack(spacing: 12) {
-                                StatCard(title: "公司", value: "\(companies.count)", caption: "\(jurisdictions) 个法域", style: .ink) {
-                                    router.section = .companies
-                                }
-                                StatCard(title: "已归档比例", value: "\(pct)%", caption: "已归档 \(have) / \(all.count) 条",
-                                         progress: all.isEmpty ? 0 : Double(have) / Double(all.count))
-                                StatCard(title: "30 天内到期", value: "\(expiring)",
-                                         caption: expired > 0 ? "另有 \(expired) 份已过期" : (expiring == 0 ? "30 天内没有文件到期" : "点按查看即将到期的文件"),
-                                         style: expired > 0 ? .danger : (expiring > 0 ? .warn : .plain)) {
-                                    router.filesFilter = 1; router.filesOwnerKind = .company; router.filesHorizon = 30; router.section = .files
-                                }
-                                StatCard(title: "未取得", value: "\(notObtained)",
-                                         caption: notObtained > 0 ? "已明确标记暂未取得" : "没有标记为未取得的条目",
-                                         style: notObtained > 0 ? .warn : .plain)
-                            }
-                            .fixedSize(horizontal: false, vertical: true)
-                            statusBar(have: have, expiring: expiring, expired: expired, needsUpdate: needsUpdate,
-                                      noDate: noDate,
-                                      notObtained: notObtained, external: external, restricted: restricted,
-                                      unverified: unverified, missing: missing)
+                    VStack(alignment: .leading, spacing: Space.section40) {
+                        VStack(alignment: .leading, spacing: Space.xl24) {
+                            header
+                            hero(attention, personalAttention: personalAttention)
                         }
-                        .surfaceCard()
 
-                        companiesCard(archives)
+                        attentionList(attention)
+
+                        overview(companies: companies.count, jurisdictions: jurisdictions, have: have, total: all.count,
+                                 expiring: expiring, expired: expired, notObtained: notObtained)
+
+                        companiesList(archives)
                     }
-                    .padding(24)
+                    .padding(Space.pageEdge)
                     .frame(maxWidth: 1240)
                     .frame(maxWidth: .infinity)
+                    .appear()
                 }
             }
         }
@@ -105,47 +78,28 @@ struct DashboardView: View {
 
     // MARK: 顶部
 
-    private func header(_ n: Int, personalAttention: Int) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 14) {
-            Text(greeting).font(.system(size: 26, weight: .semibold)).tracking(-0.5)
-            Spacer()
+    private var header: some View {
+        HStack(spacing: Space.l16) {
+            Text(greeting).font(TypeStyle.pageTitle).tracking(Tracking.title).lineLimit(1)
+            Spacer(minLength: Space.m12)
             Button { router.sheet = .quickSearch } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
+                HStack(spacing: Space.s8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
                     Text("查找公司或人员").foregroundStyle(Theme.muted)
-                    Spacer(minLength: 20)
+                    Spacer(minLength: Space.l16)
                     Text("⌘K").font(.system(size: 11.5, weight: .bold))
-                        .padding(.horizontal, 8).frame(height: 24)
-                        .background(Theme.lime, in: .capsule).foregroundStyle(Theme.onLime)
+                        .padding(.horizontal, Space.s8).frame(height: 24)
+                        .background(Theme.band, in: .capsule).foregroundStyle(Theme.ink)
                 }
-                .font(.system(size: 14))
-                .padding(.leading, 16).padding(.trailing, 6).frame(width: 260, height: 40)
+                .font(TypeStyle.body)
+                .padding(.leading, Space.l16).padding(.trailing, 6).frame(width: 260, height: 38)
                 .background(Theme.surface, in: .capsule)
+                .overlay { Capsule().strokeBorder(Theme.hairline) }
                 .contentShape(.capsule)
             }
             .buttonStyle(.plain)
-            }
-            if n > 0 || personalAttention > 0 {
-                HStack(spacing: 12) {
-            if n > 0 {
-                Button { router.filesFilter = 2; router.filesOwnerKind = .company; router.section = .files } label: {
-                    Label("\(n) 份公司文件需处理", systemImage: "exclamationmark.triangle")
-                        .font(.system(size: 14, weight: .semibold))
-                        .padding(.horizontal, 14).frame(height: 34)
-                        .background(Theme.amberSoft, in: .capsule).foregroundStyle(Theme.amberText)
-                }
-                .buttonStyle(.plain)
-            }
-            if personalAttention > 0 {
-                Button("另有 \(personalAttention) 份个人文件需处理") {
-                    router.filesFilter = 2; router.filesOwnerKind = .person; router.section = .files
-                }
-                .buttonStyle(.link)
-                .foregroundStyle(Theme.amberText)
-            }
-                }
-            }
+            .accessibilityLabel("查找公司或人员")
+            .accessibilityHint("快捷键 Command K")
         }
     }
 
@@ -154,147 +108,280 @@ struct DashboardView: View {
         return h < 12 ? "早上好" : h < 18 ? "下午好" : "晚上好"
     }
 
-    // MARK: 状态条
+    // MARK: 柠檬绿主指标
 
-    private func statusBar(have: Int, expiring: Int, expired: Int, needsUpdate: Int, noDate: Int, notObtained: Int,
-                           external: Int, restricted: Int, unverified: Int, missing: Int) -> some View {
-        let segs: [(String, Int, Color)] = [
-            ("有效", max(have - expiring - expired - needsUpdate - noDate, 0), Theme.lime),
-            ("日期待核对", noDate, Theme.amber),
-            ("即将到期", expiring, Theme.amber),
-            ("需更新", needsUpdate, Theme.amber),
-            ("已过期", expired, Theme.danger),
-            ("外部保管", external, Theme.ink),
-            ("权限受限", restricted, Theme.muted),
-            ("待核对", unverified, Theme.amber),
-            ("未取得", notObtained, Theme.muted),
-            ("未归档", missing, Theme.muted),
-        ].filter { $0.1 > 0 }
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], alignment: .leading, spacing: 10) {
-            ForEach(segs, id: \.0) { s in
-                HStack(spacing: 8) {
-                    Circle().fill(s.2).frame(width: 8, height: 8)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("\(s.1)").font(.system(size: 16, weight: .semibold)).monospacedDigit()
-                        Text(s.0).font(.system(size: 12.5)).foregroundStyle(Theme.muted)
+    private func hero(_ rows: [Row], personalAttention: Int) -> some View {
+        let n = rows.count
+        return HStack(alignment: .bottom, spacing: Space.l16) {
+            VStack(alignment: .leading, spacing: Space.s8) {
+                if n > 0 {
+                    HStack(alignment: .firstTextBaseline, spacing: Space.s8) {
+                        Text("\(n)").font(TypeStyle.display).tracking(Tracking.display).numericTransition()
+                        Text("份文件需处理").font(TypeStyle.section).tracking(Tracking.section)
                     }
+                    Text(heroSubline(rows))
+                        .font(TypeStyle.body).foregroundStyle(Theme.onLime.opacity(0.7))
+                } else {
+                    Text("一切就绪").font(TypeStyle.display).tracking(Tracking.display)
+                    Text("当前范围内没有过期、即将到期或需要更新的公司文件。")
+                        .font(TypeStyle.body).foregroundStyle(Theme.onLime.opacity(0.7))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 8)
-            }
-        }
-        .padding(16)
-        .background(Theme.band.opacity(0.5), in: .rect(cornerRadius: 20))
-    }
-
-    // MARK: 需要处理
-
-    private func attentionTable(_ rows: [Row]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("需要处理").font(.system(size: 20, weight: .semibold))
-                    Text(rows.isEmpty ? "当前没有已归档的公司文件需要处理" : "\(rows.count) 份文件已过期、即将到期、需要更新或日期待核对")
-                        .font(.system(size: 13)).foregroundStyle(Theme.muted)
-                }
-                Spacer()
-                if rows.count > 8 {
-                    Button("查看全部") { router.filesFilter = 2; router.filesOwnerKind = .company; router.section = .files }.buttonStyle(PillButtonStyle(.secondary, size: .small))
-                }
-            }
-            BandHeader {
-                HStack {
-                    Text("公司").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("条目").frame(width: 150, alignment: .leading)
-                    Text("状态").frame(width: 110, alignment: .leading)
-                    Text("到期").frame(width: 96, alignment: .leading)
-                }
-            }
-            if rows.isEmpty {
-                HStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.ink)
-                    Text("没有需要处理的文件。").foregroundStyle(Theme.muted)
-                }
-                .padding(.vertical, 18).padding(.horizontal, 16)
-            }
-            VStack(spacing: 0) {
-                ForEach(Array(rows.prefix(8).enumerated()), id: \.element.id) { pair in
-                    let r = pair.element
+                if personalAttention > 0 {
                     Button {
-                        if r.owner.kind == .company { router.companyTab = 0; router.open(company: r.owner.id) }
-                        else { router.sheet = .document(r.document.id) }
+                        router.filesFilter = 2; router.filesOwnerKind = .person; router.section = .files
                     } label: {
-                        HStack {
-                            HStack(spacing: 10) {
-                                if r.owner.kind == .company, let c = store.company(r.owner.id) {
-                                    JurisdictionBadge(code: c.jurisdiction, size: 30)
-                                } else {
-                                    Avatar(name: store.name(of: r.owner))
-                                }
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(store.name(of: r.owner)).font(.system(size: 14, weight: .medium)).lineLimit(1)
-                                    Text(r.owner.kind == .company ? (store.company(r.owner.id)?.registrationNumber ?? "") : "人员")
-                                        .font(.mono(11.5)).foregroundStyle(Theme.muted)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            Text(r.name).font(.system(size: 13.5)).lineLimit(1).frame(width: 150, alignment: .leading)
-                            StatusPill(state: r.state).frame(width: 110, alignment: .leading)
-                            Text(Freshness.expiry(of: r.document, type: store.docType(r.document.typeID))?.description ?? "—")
-                                .font(.mono(12.5)).frame(width: 96, alignment: .leading)
-                        }
-                        .padding(.horizontal, 16).frame(height: 58)
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(RowButtonStyle())
-                    if pair.offset < min(rows.count, 8) - 1 { Divider().padding(.horizontal, 16).opacity(0.6) }
-                }
-            }
-        }
-        .surfaceCard()
-    }
-
-    // MARK: 公司
-
-    private func companiesCard(_ archives: [(Company, [ArchiveItem])]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("公司档案").font(.system(size: 20, weight: .semibold))
-                Spacer()
-                Button("矩阵视图") { router.companiesMatrix = true; router.section = .companies }
-                    .buttonStyle(PillButtonStyle(.secondary, size: .small))
-            }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 12)], spacing: 12) {
-                ForEach(archives, id: \.0.id) { pair in
-                    let counted = pair.1.filter { $0.state != .marked(.notApplicable) }
-                    let have = counted.filter(\.state.hasFile).count
-                    let bad = counted.filter(\.state.needsAttention).count
-                    Button { router.companyTab = 0; router.open(company: pair.0.id) } label: {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(spacing: 10) {
-                                JurisdictionBadge(code: pair.0.jurisdiction, size: 32)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(pair.0.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                                    Text(pair.0.registrationNumber.isEmpty ? store.jurisdictionName(pair.0.jurisdiction) : pair.0.registrationNumber)
-                                        .font(.mono(11.5)).foregroundStyle(Theme.muted).lineLimit(1)
-                                }
-                                Spacer(minLength: 0)
-                                if bad > 0 { Pill(text: "\(bad) 需处理", kind: .warn) }
-                            }
-                            HStack(spacing: 10) {
-                                ProgressCapsule(value: counted.isEmpty ? 0 : Double(have) / Double(counted.count))
-                                Text("\(have)/\(counted.count)").font(.mono(12)).foregroundStyle(Theme.muted)
-                            }
-                        }
-                        .padding(14)
-                        .background(Theme.band.opacity(0.6), in: .rect(cornerRadius: 18))
-                        .contentShape(.rect)
+                        Text("另有 \(personalAttention) 份个人文件需处理").underline()
+                            .font(TypeStyle.meta).foregroundStyle(Theme.onLime)
                     }
                     .buttonStyle(.plain)
                 }
             }
+            Spacer(minLength: Space.l16)
+            if let first = rows.first {
+                Button { open(first) } label: {
+                    HStack(spacing: 6) {
+                        Text("先处理第一份")
+                        Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold))
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .padding(.horizontal, 14).frame(height: 30)
+                    .background(Theme.emphasis, in: .capsule)
+                    .foregroundStyle(Theme.onEmphasis)
+                    .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .help("\(store.name(of: first.owner))：\(first.name)")
+            } else {
+                Image(systemName: "checkmark").font(.system(size: 18, weight: .bold))
+                    .frame(width: 44, height: 44)
+                    .background(Theme.onLime.opacity(0.1), in: .circle)
+                    .accessibilityHidden(true)
+            }
         }
-        .surfaceCard()
+        .foregroundStyle(Theme.onLime)
+        .padding(Space.xl24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.lime, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func heroSubline(_ rows: [Row]) -> String {
+        let expired = rows.filter { if case .expired = $0.state { true } else { false } }.count
+        let expiring = rows.filter { if case .expiring = $0.state { true } else { false } }.count
+        let other = rows.count - expired - expiring
+        var parts: [String] = []
+        if expired > 0 { parts.append("\(expired) 份已过期") }
+        if expiring > 0 { parts.append("\(expiring) 份即将到期") }
+        if other > 0 { parts.append("\(other) 份需更新或日期待核对") }
+        return parts.joined(separator: "，")
+    }
+
+    private func open(_ r: Row) {
+        if r.owner.kind == .company { router.companyTab = 0; router.open(company: r.owner.id) }
+        else { router.sheet = .document(r.document.id) }
+    }
+
+    // MARK: 需要处理
+
+    private func sectionHeader<Trailing: View>(_ title: String, _ subtitle: String? = nil,
+                                               @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(TypeStyle.section).tracking(Tracking.section)
+                if let subtitle { Text(subtitle).font(TypeStyle.meta).foregroundStyle(Theme.muted) }
+            }
+            Spacer()
+            trailing()
+        }
+    }
+
+    @ViewBuilder
+    private func attentionList(_ rows: [Row]) -> some View {
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: Space.m12) {
+                sectionHeader("需要处理", "已过期、即将到期、需要更新或日期待核对") {
+                    if rows.count > 8 {
+                        Button("查看全部 \(rows.count) 份") { router.filesFilter = 2; router.filesOwnerKind = .company; router.section = .files }
+                            .buttonStyle(PillButtonStyle(.quiet, size: .small))
+                    }
+                }
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("公司").frame(maxWidth: .infinity, alignment: .leading)
+                        Text("条目").frame(width: 150, alignment: .leading)
+                        Text("状态").frame(width: 110, alignment: .leading)
+                        Text("到期").frame(width: 96, alignment: .leading)
+                    }
+                    .font(TypeStyle.micro).foregroundStyle(Theme.muted)
+                    .padding(.horizontal, Space.l16).frame(height: 36)
+                    Rectangle().fill(Theme.hairline).frame(height: 1)
+                    ForEach(Array(rows.prefix(8).enumerated()), id: \.element.id) { pair in
+                        let r = pair.element
+                        if pair.offset > 0 { Rectangle().fill(Theme.hairline).frame(height: 1).padding(.horizontal, Space.l16) }
+                        Button { open(r) } label: {
+                            HStack {
+                                HStack(spacing: 10) {
+                                    if r.owner.kind == .company, let c = store.company(r.owner.id) {
+                                        JurisdictionBadge(code: c.jurisdiction, size: 28)
+                                    } else {
+                                        Avatar(name: store.name(of: r.owner), size: 28)
+                                    }
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(store.name(of: r.owner)).font(TypeStyle.rowTitle).lineLimit(1)
+                                        Text(r.owner.kind == .company ? (store.company(r.owner.id)?.registrationNumber ?? "") : "人员")
+                                            .font(.mono(11.5)).foregroundStyle(Theme.muted)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .help(store.name(of: r.owner))
+                                Text(r.name).font(.system(size: 13.5)).lineLimit(1).frame(width: 150, alignment: .leading)
+                                StatusPill(state: r.state).frame(width: 110, alignment: .leading)
+                                Text(Freshness.expiry(of: r.document, type: store.docType(r.document.typeID))?.description ?? "—")
+                                    .font(.mono(12.5)).foregroundStyle(r.state.emphasisColor)
+                                    .frame(width: 96, alignment: .leading)
+                            }
+                            .padding(.horizontal, Space.l16).frame(height: 56)
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(RowButtonStyle())
+                    }
+                }
+                .padding(.vertical, Space.xs4)
+                .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+            }
+        }
+    }
+
+    // MARK: 档案概况
+
+    private func overview(companies: Int, jurisdictions: Int, have: Int, total: Int,
+                          expiring: Int, expired: Int, notObtained: Int) -> some View {
+        let ratio = total == 0 ? 0 : Double(have) / Double(total)
+        let pct = Int((ratio * 100).rounded())
+        return VStack(alignment: .leading, spacing: Space.m12) {
+            sectionHeader("档案概况", store.filterName(router.groupFilter)) { EmptyView() }
+            HStack(alignment: .top, spacing: 0) {
+                metric("公司", "\(companies)", "\(jurisdictions) 个法域") { router.section = .companies }
+                metricDivider
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("已归档比例").font(TypeStyle.meta).foregroundStyle(Theme.muted)
+                    Text("\(pct)%").font(TypeStyle.title).tracking(Tracking.title).numericTransition()
+                    ProgressCapsule(value: ratio).frame(maxWidth: 160)
+                    Text("已归档 \(have) / \(total) 条").font(TypeStyle.meta).foregroundStyle(Theme.muted).lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Space.xl24)
+                metricDivider
+                metric("30 天内到期", "\(expiring)",
+                       expired > 0 ? "另有 \(expired) 份已过期" : (expiring == 0 ? "30 天内没有文件到期" : "点按查看即将到期的文件"),
+                       valueColor: expiring > 0 ? Theme.amberText : Theme.ink,
+                       captionColor: expired > 0 ? Theme.danger : Theme.muted) {
+                    router.filesFilter = 1; router.filesOwnerKind = .company; router.filesHorizon = 30; router.section = .files
+                }
+                metricDivider
+                metric("未取得", "\(notObtained)",
+                       notObtained > 0 ? "已明确标记暂未取得" : "没有标记为未取得的条目",
+                       valueColor: notObtained > 0 ? Theme.amberText : Theme.ink)
+            }
+            .padding(.vertical, Space.xl24)
+            .fixedSize(horizontal: false, vertical: true)
+            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+        }
+    }
+
+    private var metricDivider: some View {
+        Rectangle().fill(Theme.hairline).frame(width: 1).frame(maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func metric(_ title: String, _ value: String, _ caption: String,
+                        valueColor: Color = Theme.ink, captionColor: Color = Theme.muted,
+                        action: (() -> Void)? = nil) -> some View {
+        let content = VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(TypeStyle.meta).foregroundStyle(Theme.muted)
+            Text(value).font(TypeStyle.title).tracking(Tracking.title).numericTransition().foregroundStyle(valueColor)
+            Text(caption).font(TypeStyle.meta).foregroundStyle(captionColor).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Space.xl24)
+        .contentShape(.rect)
+        if let action {
+            Button(action: action) { content }.buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+        } else {
+            content.accessibilityElement(children: .combine)
+        }
+    }
+
+    // MARK: 公司
+
+    private func companiesList(_ archives: [(Company, [ArchiveItem])]) -> some View {
+        VStack(alignment: .leading, spacing: Space.m12) {
+            sectionHeader("公司档案") {
+                Button("矩阵视图") { router.companiesMatrix = true; router.section = .companies }
+                    .buttonStyle(PillButtonStyle(.quiet, size: .small))
+            }
+            VStack(spacing: 0) {
+                ForEach(Array(archives.enumerated()), id: \.element.0.id) { entry in
+                    let idx = entry.offset
+                    let pair = entry.element
+                    let counted = pair.1.filter { $0.state != .marked(.notApplicable) }
+                    let have = counted.filter(\.state.hasFile).count
+                    let bad = counted.filter(\.state.needsAttention).count
+                    if idx > 0 { Rectangle().fill(Theme.hairline).frame(height: 1).padding(.horizontal, Space.l16) }
+                    Button { router.companyTab = 0; router.open(company: pair.0.id) } label: {
+                        HStack(spacing: Space.m12) {
+                            JurisdictionBadge(code: pair.0.jurisdiction, size: 28)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(pair.0.name).font(TypeStyle.rowTitle).lineLimit(1)
+                                Text(pair.0.registrationNumber.isEmpty ? store.jurisdictionName(pair.0.jurisdiction) : pair.0.registrationNumber)
+                                    .font(.mono(11.5)).foregroundStyle(Theme.muted).lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .help(pair.0.name)
+                            if bad > 0 { Pill(text: "\(bad) 需处理", kind: .warn) }
+                            ProgressCapsule(value: counted.isEmpty ? 0 : Double(have) / Double(counted.count))
+                                .frame(width: 120)
+                            Text("\(have)/\(counted.count)").font(.mono(12)).foregroundStyle(Theme.muted)
+                                .frame(width: 52, alignment: .trailing)
+                        }
+                        .padding(.horizontal, Space.l16).frame(height: 56)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(RowButtonStyle())
+                }
+            }
+            .padding(.vertical, Space.xs4)
+            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+        }
+    }
+
+    // MARK: 加载
+
+    private var skeleton: some View {
+        VStack(alignment: .leading, spacing: Space.section40) {
+            HStack {
+                SkeletonBlock(width: 160, height: 28)
+                Spacer()
+                SkeletonBlock(width: 260, height: 38)
+            }
+            SkeletonBlock(height: 120)
+            VStack(alignment: .leading, spacing: Space.m12) {
+                SkeletonBlock(width: 120, height: 17)
+                VStack(spacing: Space.l16) {
+                    ForEach(0..<5, id: \.self) { _ in SkeletonBlock(height: 24) }
+                }
+                .padding(Space.l16)
+                .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+            }
+            HStack(spacing: Space.l16) {
+                ForEach(0..<4, id: \.self) { _ in SkeletonBlock(height: 72) }
+            }
+            .padding(Space.xl24)
+            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+        }
+        .accessibilityElement()
+        .accessibilityLabel("正在读取档案")
     }
 }
 
@@ -327,7 +414,7 @@ struct RowButtonStyle: ButtonStyle {
         @State private var hover = false
         var body: some View {
             configuration.label
-                .background(configuration.isPressed ? Theme.band : hover ? Theme.band.opacity(0.6) : .clear, in: .rect(cornerRadius: 14))
+                .background(configuration.isPressed ? Theme.band : hover ? Theme.band.opacity(0.6) : .clear, in: .rect(cornerRadius: Radius.row))
                 .onHover { hover = $0 }
         }
     }

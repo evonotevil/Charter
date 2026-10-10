@@ -18,6 +18,8 @@ struct CompanyEditor: View {
     @State private var confirmDelete = false
     @State private var askChange = false
     @State private var saveError: String?
+    @State private var attempted = false
+    @FocusState private var nameFocused: Bool
 
     @State private var groupID: String?
     @State private var parentRef: NodeRef?
@@ -52,6 +54,21 @@ struct CompanyEditor: View {
         return none + store.parties.map { p in (Optional(p.id), "\(p.name)（\(p.kind.label)）") }
     }
 
+    private var nameError: String? {
+        attempted && draft.name.trimmingCharacters(in: .whitespaces).isEmpty ? "请填写注册名" : nil
+    }
+
+    /// 同一法域里注册编号重复（只提示，不阻止保存）。
+    private var registrationError: String? {
+        let reg = draft.registrationNumber.trimmingCharacters(in: .whitespaces)
+        guard !reg.isEmpty else { return nil }
+        let dup = store.companies.first {
+            $0.id != draft.id && $0.jurisdiction == draft.jurisdiction
+                && $0.registrationNumber.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(reg) == .orderedSame
+        }
+        return dup.map { "与 \($0.name) 的注册编号相同，请核对" }
+    }
+
     /// 跟踪起始日不能为空：清空时保留原值。
     private var trackingSince: Binding<Day?> {
         Binding<Day?>(get: { draft.trackingSince }, set: { if let d = $0 { draft.trackingSince = d } })
@@ -63,8 +80,9 @@ struct CompanyEditor: View {
                       width: 720, height: 860) {
             VStack(alignment: .leading, spacing: 18) {
                 FormGroup(title: "基本信息") {
-                    FieldRow(label: "注册名") {
+                    FieldRow(label: "注册名", error: nameError) {
                         TextField("注册名（原文）", text: $draft.name).textFieldStyle(KitFieldStyle())
+                            .focused($nameFocused)
                     }
                     FieldRow(label: "别名", hint: "中文简称等，用逗号分隔，仅用于搜索") {
                         TextField("可选", text: $aliasText).textFieldStyle(KitFieldStyle())
@@ -78,7 +96,7 @@ struct CompanyEditor: View {
                     FieldRow(label: "公司类型") {
                         SelectField(options: entityFormChoices, selection: $draft.entityForm, minWidth: 220)
                     }
-                    FieldRow(label: "注册编号") {
+                    FieldRow(label: "注册编号", error: registrationError) {
                         TextField("可选", text: $draft.registrationNumber).textFieldStyle(KitFieldStyle())
                     }
                     FieldRow(label: "成立日期") {
@@ -202,13 +220,15 @@ struct CompanyEditor: View {
                 .buttonStyle(PillButtonStyle(.secondary))
                 .keyboardShortcut(.cancelAction)
             Button(original == nil ? "添加" : "保存") {
+                attempted = true
+                guard nameError == nil else { nameFocused = true; return }
                 if original != nil && !(appointmentDiff.isEmpty && holdingDiff.isEmpty) { askChange = true } else { save(asChange: false) }
             }
             .buttonStyle(PillButtonStyle(.primary))
             .keyboardShortcut(.defaultAction)
-            .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .onAppear {
+            if original == nil { nameFocused = true }
             aliasText = draft.aliases.joined(separator: "，")
             formerText = draft.formerNames.joined(separator: "，")
             holdings = store.holdings.filter { $0.companyID == draft.id }
@@ -358,6 +378,7 @@ struct CompanyEditor: View {
         }
         store.tidyGroups()
         store.refreshDerived()
+        store.showToast(original == nil ? "已添加 \(draft.name)" : "已保存 \(draft.name)")
         if original == nil {
             router.companyTab = 0
             router.open(company: draft.id)
