@@ -20,8 +20,15 @@ struct ChangeWizard: View {
     @State private var picking = false
     @State private var working = false
 
-    init(companyID: String, kind: ChangeKind = .directorChange) {
+    /// 从人员行、股东行发起时预选的任职或持股（打开时已勾选“离任”或“转出”）。
+    private let preselectedAppointmentID: String?
+    private let preselectedHoldingID: String?
+
+    init(companyID: String, kind: ChangeKind = .directorChange,
+         endingAppointmentID: String? = nil, endingHoldingID: String? = nil) {
         self.companyID = companyID
+        preselectedAppointmentID = endingAppointmentID
+        preselectedHoldingID = endingHoldingID
         _plan = State(initialValue: ChangePlan(companyID: companyID, kind: kind))
     }
 
@@ -372,7 +379,17 @@ struct ChangeWizard: View {
 
     // MARK: 操作
 
-    private func prefill() { resetForKind() }
+    private func prefill() {
+        resetForKind()
+        if plan.kind == .directorChange, let id = preselectedAppointmentID,
+           currentAppointments.contains(where: { $0.id == id }) {
+            plan.endingAppointmentIDs.insert(id)
+        }
+        if plan.kind == .shareholderChange, let id = preselectedHoldingID,
+           currentHoldings.contains(where: { $0.id == id }) {
+            plan.endingHoldingIDs.insert(id)
+        }
+    }
 
     private func resetForKind() {
         plan.endingAppointmentIDs = []; plan.newAppointments = []

@@ -13,6 +13,7 @@ struct StoreSnapshot {
     var records: [ObligationRecord]
     var changes: [ChangeRecord]
     var groups: [CorporateGroup]?
+    var requests: [DocumentRequest] = []
     var settings: SharedSettings
     var modified: [String: Date]
 
@@ -29,6 +30,7 @@ struct StoreSnapshot {
             records: folder.load("obligations", [ObligationRecord].self) ?? [],
             changes: folder.load("changes", [ChangeRecord].self) ?? [],
             groups: folder.load("groups", [CorporateGroup].self),
+            requests: folder.load("requests", [DocumentRequest].self) ?? [],
             settings: folder.load("settings", SharedSettings.self) ?? SharedSettings(),
             modified: Dictionary(uniqueKeysWithValues: collections.compactMap { name in
                 folder.modificationDate(name).map { (name, $0) }

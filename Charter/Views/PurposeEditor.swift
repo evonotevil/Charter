@@ -7,7 +7,7 @@ struct PurposeEditTarget: Identifiable {
 }
 
 /// 导出用途（文件包模板）的编辑器：名称、需要的文件类别、是否附董事护照、签发时限。
-/// “准备文件包”和“设置 → 导出用途”共用，保存后写回模板库。
+/// “准备文件包”和“设置 → 文件包用途”共用，保存后写回模板库。
 struct PurposeEditor: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -73,7 +73,7 @@ struct PurposeEditor: View {
                 VStack(alignment: .leading, spacing: 6) {
                     FormGroup(title: "需要的文件类别（已选 \(draft.categories.count) 类）") {
                         if allCategories.isEmpty {
-                            Text("模板库里还没有文件类别。先在“设置 → 档案条目”里添加条目。")
+                            Text("模板库里还没有文件类别。先在“设置 → 档案清单”里添加条目。")
                                 .font(TypeStyle.body).foregroundStyle(Theme.muted)
                         } else {
                             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .leading),

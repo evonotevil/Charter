@@ -34,6 +34,20 @@ extension AppStore {
         return companyIDs(in: g, on: day)
     }
 
+    /// 唯一的“需处理”口径：当前集团范围内、过期/快过期/需更新/日期待核对的公司文件。
+    /// 总览主指标、侧栏“文件”角标、文件页“需处理 N”都用这个数。
+    func attentionCompanyDocuments(forFilter filter: String?) -> [Document] {
+        let scope = companyIDs(forFilter: filter)
+        return documentsNeedingAttention.filter {
+            $0.owner.kind == .company && (scope?.contains($0.owner.id) ?? true)
+        }
+    }
+
+    func attentionCount(forFilter filter: String?) -> Int { attentionCompanyDocuments(forFilter: filter).count }
+
+    /// 个人文件的需处理数，只作为总览主指标的次要一行。
+    var attentionPersonalCount: Int { documentsNeedingAttention.filter { $0.owner.kind == .person }.count }
+
     func filterName(_ filter: String?) -> String {
         guard let filter else { return "全部公司" }
         if filter == Router.ungrouped { return "未归入集团" }

@@ -2,17 +2,159 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
+/// 设置的各页。左侧分组导航与主窗口一致；其他页面可以直接跳到某一页。
+enum SettingsPane: String, CaseIterable, Identifiable {
+    case sync, reminders, archiveItems, purposes, rules, backup, modules
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sync: "数据与同步"
+        case .reminders: "提醒"
+        case .archiveItems: "档案清单"
+        case .purposes: "文件包用途"
+        case .rules: "合规规则"
+        case .backup: "备份与配置"
+        case .modules: "功能模块"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .sync: "icloud"
+        case .reminders: "bell"
+        case .archiveItems: "list.bullet.rectangle"
+        case .purposes: "shippingbox"
+        case .rules: "calendar.badge.clock"
+        case .backup: "clock.arrow.circlepath"
+        case .modules: "square.grid.2x2"
+        }
+    }
+
+    static let storageKey = "settingsPane"
+
+    struct Group: Identifiable {
+        var title: String?
+        var panes: [SettingsPane]
+        var id: String { title ?? "main" }
+    }
+
+    static func groups(complianceOn: Bool) -> [Group] {
+        [
+            Group(title: nil, panes: [.sync, .reminders]),
+            Group(title: "模板库", panes: complianceOn ? [.archiveItems, .purposes, .rules] : [.archiveItems, .purposes]),
+            Group(title: "高级", panes: [.backup, .modules]),
+        ]
+    }
+}
+
+/// 从应用任意位置打开设置并直接停在某一页。
+extension SettingsPane {
+    @MainActor func open(with openSettings: OpenSettingsAction) {
+        UserDefaults.standard.set(rawValue, forKey: SettingsPane.storageKey)
+        openSettings()
+    }
+}
+
+/// 链接样式的“去设置”入口，用在问题出现的地方。
+struct SettingsJumpLink: View {
+    @Environment(\.openSettings) private var openSettings
+    var title: String
+    var pane: SettingsPane
+    var before: () -> Void = {}
+    var body: some View {
+        Button {
+            before()
+            pane.open(with: openSettings)
+        } label: {
+            Label(title, systemImage: "slider.horizontal.3")
+                .font(TypeStyle.metadata)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.muted)
+        .pointerStyle(.link)
+        .help("在设置中打开“\(pane.title)”")
+    }
+}
+
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
+    @AppStorage(SettingsPane.storageKey) private var paneRaw = SettingsPane.sync.rawValue
+
+    private var pane: SettingsPane {
+        let p = SettingsPane(rawValue: paneRaw) ?? .sync
+        return (p == .rules && !store.complianceOn) ? .sync : p
+    }
+
     var body: some View {
-        TabView {
-            GeneralSettings().tabItem { Label("通用", systemImage: "gearshape") }
-            ArchiveItemsSettings().tabItem { Label("档案条目", systemImage: "list.bullet.rectangle") }
-            if store.complianceOn {
-                RulesSettings().tabItem { Label("合规规则", systemImage: "calendar.badge.clock") }
+        HStack(spacing: 0) {
+            sidebar
+            Rectangle().fill(Theme.hairline).frame(width: 1)
+            Group {
+                switch pane {
+                case .sync: GeneralSettings(pane: .sync)
+                case .reminders: GeneralSettings(pane: .reminders)
+                case .archiveItems: ArchiveItemsSettings()
+                case .purposes: PacketSettings()
+                case .rules: RulesSettings()
+                case .backup: GeneralSettings(pane: .backup)
+                case .modules: GeneralSettings(pane: .modules)
+                }
             }
-            PacketSettings().tabItem { Label("导出用途", systemImage: "shippingbox") }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .id(pane)
         }
+        .background(Theme.canvas)
+        .navigationTitle(pane.title)
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: Space.l16) {
+            ForEach(SettingsPane.groups(complianceOn: store.complianceOn)) { group in
+                VStack(alignment: .leading, spacing: 2) {
+                    if let t = group.title {
+                        Text(t).font(TypeStyle.micro).foregroundStyle(Theme.muted)
+                            .padding(.leading, Space.m12).padding(.bottom, 4)
+                    }
+                    ForEach(group.panes) { p in row(p) }
+                }
+            }
+            Spacer()
+            syncFooter
+        }
+        .padding(.horizontal, Space.m12).padding(.top, Space.l16).padding(.bottom, Space.m12)
+        .frame(width: 210)
+        .background(Theme.band)
+    }
+
+    private func row(_ p: SettingsPane) -> some View {
+        let on = p == pane
+        return Button { paneRaw = p.rawValue } label: {
+            HStack(spacing: 10) {
+                Image(systemName: p.symbol).font(.system(size: 13, weight: .medium)).frame(width: 18)
+                Text(p.title).font(.system(size: 13, weight: on ? .semibold : .regular))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(on ? Theme.onInk : Theme.ink.opacity(0.75))
+            .padding(.horizontal, Space.m12).frame(height: 32)
+            .background(on ? Theme.selection : Color.clear, in: .rect(cornerRadius: 8, style: .continuous))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var syncFooter: some View {
+        let s = SyncMonitor.shared.state
+        return Button { paneRaw = SettingsPane.sync.rawValue } label: {
+            HStack(spacing: 6) {
+                Image(systemName: s.symbol)
+                Text(s.title).lineLimit(1)
+            }
+            .font(.caption)
+            .foregroundStyle(s.needsAttention ? Theme.amberText : Theme.muted)
+            .padding(.leading, Space.m12)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -20,9 +162,11 @@ struct SettingsView: View {
 
 struct GeneralSettings: View {
     @Environment(AppStore.self) private var store
+    var pane: SettingsPane = .sync
     @State private var confirmSample = false
     @State private var confirmClear = false
     @State private var pendingConfig: PendingConfig?
+    @State private var restoring: DataSnapshot?
     @State private var newDay = ""
 
     private struct PendingConfig: Identifiable {
@@ -35,10 +179,68 @@ struct GeneralSettings: View {
     private var inICloud: Bool { store.store.root.path.contains("Mobile Documents") }
 
     var body: some View {
-        @Bindable var store = store
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
-                folderCard
+                SettingsPaneHeader(title: pane.title, detail: paneDetail)
+                switch pane {
+                case .sync: syncPane
+                case .reminders: remindersPane
+                case .modules: modulesPane
+                default: backupPane
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Theme.canvas)
+        .confirmSheet("载入示例数据？", isPresented: $confirmSample,
+                      message: "示例数据会覆盖当前数据文件夹里的公司、人员和负责方。建议先更换为空文件夹。",
+                      confirmTitle: "载入", destructive: true) {
+            SampleData.install(into: store)
+        }
+        .confirmSheet("清空所有数据？", isPresented: $confirmClear,
+                      message: "以下内容会被永久删除，数据文件夹里的归档文件也会一起删除，无法撤销。设置和模板库（法域、档案条目、规则、用途）会保留。",
+                      details: store.clearSummary.lines,
+                      confirmTitle: "清空", destructive: true) {
+            store.clearAllData()
+        }
+        .confirmSheet(restoring.map { "恢复到 \(AppStore.snapshotTitle($0.date)) 的状态？" } ?? "恢复到这份快照？",
+                      isPresented: Binding(get: { restoring != nil }, set: { if !$0 { restoring = nil } }),
+                      message: "当前状态会先自动保存一份快照，之后也可以再恢复回来。快照只包含档案记录，不包含 PDF 文件本身。",
+                      details: restoring.map { snapshotDetails($0) } ?? [],
+                      confirmTitle: "恢复") {
+            if let snap = restoring { store.restore(snapshot: snap) }
+            restoring = nil
+        }
+        .onAppear { store.refreshSnapshots() }
+        .sheet(item: $pendingConfig) { pending in
+            ConfigImportSheet(bundle: pending.bundle, fileName: pending.fileName)
+        }
+    }
+
+    private var paneDetail: String {
+        switch pane {
+        case .sync: "档案数据保存在哪里，以及它现在是否已经同步。"
+        case .reminders: "什么时候、由哪台 Mac 提醒你文件到期。"
+        case .modules: "按需打开的功能。关闭后已有数据仍会保留。"
+        default: "快照、配置迁移，以及会删除数据的操作。"
+        }
+    }
+
+    @ViewBuilder private var syncPane: some View {
+        folderCard
+        let s = SyncMonitor.shared.state
+        section("同步状态") {
+            SettingRow(symbol: s.symbol, title: s.title, detail: s.detail) {
+                Button("立即检查") { SyncMonitor.shared.refresh() }
+                    .buttonStyle(PillButtonStyle(.secondary, size: .small))
+            }
+        }
+    }
+
+    @ViewBuilder private var remindersPane: some View {
+        @Bindable var store = store
                 section("提醒") {
                     SettingRow(symbol: "bell.badge", title: "到期前提醒",
                                detail: "文件到期前按这些天数提醒，每天 \(store.settings.notificationHour):00 发出。") {
@@ -75,26 +277,19 @@ struct GeneralSettings: View {
                         }
                     }
                 }
+    }
+
+    @ViewBuilder private var modulesPane: some View {
                 section("模块") {
                     SettingRow(symbol: "checklist", title: "合规申报与交办",
-                               detail: "显示“今天”“合规日历”“负责方”，跟踪年报、税表等申报截止日并交办给负责方。关闭后已有数据仍会保留。") {
+                               detail: "在总览“接下来 30 天”里显示年报、税表等申报截止日，并可打开合规日历、交办给负责方。关闭后总览只显示文件，已有数据仍会保留。") {
                         Toggle("", isOn: Binding(get: { store.complianceOn }, set: { store.settings.complianceEnabled = $0; store.saveSettings() }))
                             .labelsHidden().toggleStyle(KitSwitchStyle()).fixedSize()
                     }
                 }
-                section("示例数据") {
-                    SettingRow(symbol: "shippingbox", title: "载入示例数据",
-                               detail: "一套虚构的远澜集团数据，会覆盖当前文件夹里的公司、人员和负责方。建议先更换为空文件夹。") {
-                        Button("载入…") { confirmSample = true }
-                            .buttonStyle(PillButtonStyle(.secondary, size: .small))
-                    }
-                    SettingRow(symbol: "trash", title: "清空所有数据",
-                               detail: "删除公司、集团、人员、关系、文件（含数据文件夹里的归档文件）、负责方和事项记录。设置和模板库保留。适合试用结束后重新开始。") {
-                        Button("清空…") { confirmClear = true }
-                            .buttonStyle(PillButtonStyle(.secondary, size: .small))
-                            .disabled(store.isLoading || store.isImporting || store.loadFailed)
-                    }
-                }
+    }
+
+    @ViewBuilder private var backupPane: some View {
                 section("配置") {
                     SettingRow(symbol: "square.and.arrow.up", title: "导出配置",
                                detail: "把提醒设置和模板库（法域、文件类型、档案条目、规则、用途）存成一个文件，可在另一套数据里导入。不含公司、文件等档案数据。") {
@@ -108,26 +303,75 @@ struct GeneralSettings: View {
                             .disabled(store.isLoading || store.loadFailed)
                     }
                 }
+                backupSection
+                section("危险操作") {
+                    SettingRow(symbol: "shippingbox", title: "载入示例数据",
+                               detail: "一套虚构的远澜集团数据，会覆盖当前文件夹里的公司、人员和负责方。建议先更换为空文件夹。") {
+                        Button("载入…") { confirmSample = true }
+                            .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                    }
+                    SettingRow(symbol: "trash", title: "清空所有数据",
+                               detail: "删除公司、集团、人员、关系、文件（含数据文件夹里的归档文件）、负责方和事项记录。设置和模板库保留。适合试用结束后重新开始。") {
+                        Button("清空…") { confirmClear = true }
+                            .buttonStyle(PillButtonStyle(.danger, size: .small))
+                            .disabled(store.isLoading || store.isImporting || store.loadFailed)
+                    }
+                }
+    }
+
+    // MARK: 备份与恢复
+
+    private var backupSection: some View {
+        section("备份与恢复") {
+            SettingRow(symbol: "clock.arrow.circlepath", title: "本地快照",
+                       detail: "每天第一次打开，以及导入、批量移除、清空数据、导入配置之前，自动保存一份档案记录的快照（不含 PDF），保留最近 \(Snapshots.keep) 份。") {
+                HStack(spacing: 8) {
+                    Button("在访达中显示") { store.revealSnapshots() }
+                        .buttonStyle(PillButtonStyle(.quiet, size: .small))
+                    Button("立即备份") { store.backUpNow() }
+                        .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                        .disabled(store.isLoading || store.loadFailed)
+                }
             }
-            .padding(28)
-            .frame(maxWidth: 760, alignment: .leading)
-            .frame(maxWidth: .infinity)
+            if store.snapshots.isEmpty {
+                Text("还没有快照。").font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                    .padding(.leading, 52)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(store.snapshots.prefix(5).enumerated()), id: \.element.id) { pair in
+                        snapshotRow(pair.element)
+                        if pair.offset < min(store.snapshots.count, 5) - 1 {
+                            Rectangle().fill(Theme.hairline).frame(height: 1)
+                        }
+                    }
+                }
+                .padding(.leading, 52)
+            }
         }
-        .background(Theme.canvas)
-        .confirmSheet("载入示例数据？", isPresented: $confirmSample,
-                      message: "示例数据会覆盖当前数据文件夹里的公司、人员和负责方。建议先更换为空文件夹。",
-                      confirmTitle: "载入", destructive: true) {
-            SampleData.install(into: store)
+    }
+
+    private func snapshotRow(_ snap: DataSnapshot) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(AppStore.snapshotTitle(snap.date)).font(TypeStyle.rowTitle).foregroundStyle(Theme.ink).monospacedDigit()
+                Text(([snap.reason] + snapshotCounts(snap)).joined(separator: " · "))
+                    .font(TypeStyle.metadata).foregroundStyle(Theme.muted).lineLimit(1)
+            }
+            Spacer(minLength: 12)
+            Button("恢复…") { restoring = snap }
+                .buttonStyle(PillButtonStyle(.quiet, size: .small))
+                .disabled(store.isLoading || store.isImporting)
         }
-        .confirmSheet("清空所有数据？", isPresented: $confirmClear,
-                      message: "以下内容会被永久删除，数据文件夹里的归档文件也会一起删除，无法撤销。设置和模板库（法域、档案条目、规则、用途）会保留。",
-                      details: store.clearSummary.lines,
-                      confirmTitle: "清空", destructive: true) {
-            store.clearAllData()
-        }
-        .sheet(item: $pendingConfig) { pending in
-            ConfigImportSheet(bundle: pending.bundle, fileName: pending.fileName)
-        }
+        .padding(.vertical, 8)
+    }
+
+    private func snapshotCounts(_ snap: DataSnapshot) -> [String] {
+        [snap.companies.map { "\($0) 家公司" }, snap.documents.map { "\($0) 份文件" }].compactMap { $0 }
+    }
+
+    private func snapshotDetails(_ snap: DataSnapshot) -> [String] {
+        ["快照原因：\(snap.reason)"] + snapshotCounts(snap).map { "快照里有 \($0)" }
+            + ["当前：\(store.companies.count) 家公司、\(store.documents.count) 份文件"]
     }
 
     private func exportConfig() {
@@ -166,8 +410,9 @@ struct GeneralSettings: View {
                 Text(store.store.root.lastPathComponent).font(.system(size: 22, weight: .heavy)).tracking(-0.44)
                     .foregroundStyle(Theme.ink).lineLimit(1)
                 HStack(spacing: 6) {
-                    Circle().fill(inICloud ? Theme.lime : Theme.muted.opacity(0.5)).frame(width: 7, height: 7)
-                    Text(inICloud ? "在 iCloud 云盘中，两台 Mac 自动同步" : "仅保存在这台 Mac 上")
+                    let sync = SyncMonitor.shared.state
+                    Circle().fill(sync.needsAttention ? Theme.amberText : (inICloud ? Theme.lime : Theme.muted.opacity(0.5))).frame(width: 7, height: 7)
+                    Text(inICloud ? "在 iCloud 云盘中 · \(sync.title)" : "仅保存在这台 Mac 上")
                         .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
                 }
                 Text(store.store.root.path).font(.system(size: 11)).foregroundStyle(Theme.muted.opacity(0.8))
@@ -726,7 +971,7 @@ struct PacketSettings: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
-                SettingsHero(symbol: "shippingbox.fill", label: "导出用途",
+                SettingsHero(symbol: "shippingbox.fill", label: "文件包用途",
                              title: store.library.packets.isEmpty ? "还没有用途" : "\(store.library.packets.count) 个用途",
                              status: "准备文件包时按用途挑选材料，例如银行开户、年度审计、KYC 更新",
                              dot: store.library.packets.isEmpty ? Theme.muted.opacity(0.5) : Theme.lime) {

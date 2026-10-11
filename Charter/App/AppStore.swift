@@ -15,6 +15,8 @@ final class AppStore {
     var documents: [Document] = [] { didSet { archiveCache.removeAll() } }
     var records: [ObligationRecord] = []
     var changes: [ChangeRecord] = []
+    /// 请负责方补发的记录（等回件），见 RequestStore.swift。
+    var requests: [DocumentRequest] = []
     var corporateGroups: [CorporateGroup] = []
     var settings = SharedSettings()
     var library = TemplateLibrary(version: 1, jurisdictions: [], documentTypes: [], rules: [], packets: []) { didSet { archiveCache.removeAll() } }
@@ -37,6 +39,13 @@ final class AppStore {
     private(set) var loadFailed = false
     private(set) var isLoading = false
     var isImporting = false
+    /// 撤销与重做（见 Undo.swift）。只在内存里，重新载入后清空。
+    var undoStack: [UndoEntry] = []
+    var redoStack: [UndoEntry] = []
+    /// 有未完成的导入草稿（见 PendingImport.swift）。
+    var pendingImport: PendingImport?
+    /// 数据文件夹里的本地快照（见 Snapshots.swift），设置页显示。
+    var snapshots: [DataSnapshot] = []
     @ObservationIgnored private var sideEffectTask: Task<Void, Never>?
     @ObservationIgnored private var loadingTask: Task<Void, Never>?
     @ObservationIgnored private var loadGeneration = UUID()
@@ -82,6 +91,7 @@ final class AppStore {
         guard !isImporting else { errorMessage = "文件正在归档，请完成后再切换数据文件夹。"; return }
         preferences.set(url.path, forKey: AppStore.dataRootKey)
         store = FolderStore(root: url)
+        SyncMonitor.shared.start(root: url)
         load()
     }
 
@@ -109,9 +119,11 @@ final class AppStore {
                 self.documents = snapshot.documents
                 self.records = snapshot.records
                 self.changes = snapshot.changes
+                self.requests = snapshot.requests
                 self.settings = snapshot.settings
                 self.corporateGroups = snapshot.groups ?? Self.legacyGroups(companies: snapshot.companies, holdings: snapshot.holdings, today: self.today)
                 self.lastLoaded = snapshot.modified
+                self.clearUndoHistory()
                 self.loadFailed = false
                 self.isLoading = false
                 self.errorMessage = nil
@@ -122,6 +134,7 @@ final class AppStore {
                 }
                 if snapshot.groups == nil, !self.corporateGroups.isEmpty { self.saveGroups() }
                 self.refreshDerived()
+                self.afterLoad()
             } catch {
                 guard let self, !Task.isCancelled, self.loadGeneration == generation else { return }
                 self.isLoading = false
@@ -132,7 +145,7 @@ final class AppStore {
 
     func waitForLoad() async { await loadingTask?.value }
 
-    static let collections = ["companies", "people", "holdings", "appointments", "parties", "documents", "obligations", "changes", "settings", "groups"]
+    static let collections = ["companies", "people", "holdings", "appointments", "parties", "documents", "obligations", "changes", "settings", "groups", "requests"]
 
     /// 回到前台时检查另一台 Mac 是否改过数据。
     func reloadIfChangedElsewhere() {
@@ -150,6 +163,7 @@ final class AppStore {
         do {
             try store.save(value, as: name)
             lastLoaded[name] = store.modificationDate(name)
+            SyncMonitor.shared.refreshSoon()
         } catch {
             errorMessage = "保存失败：\(error.localizedDescription)"
         }
@@ -179,6 +193,7 @@ final class AppStore {
     func saveChanges() { persist(changes, "changes"); refreshDerived() }
     func saveSettings() { persist(settings, "settings"); refreshDerived() }
     func saveGroups() { persist(corporateGroups, "groups") }
+    func saveRequests() { persist(requests, "requests") }
     func saveLibrary() {
         guard !loadFailed else { return }
         do { try store.saveTemplates(library) } catch { errorMessage = "保存模板失败：\(error.localizedDescription)" }
@@ -443,11 +458,14 @@ final class AppStore {
         saveCompanies()
     }
 
+    /// 直接删除，提示条可撤销（10 秒），也可以 ⌘Z。
     func delete(company c: Company) {
-        companies.removeAll { $0.id == c.id }
-        holdings.removeAll { $0.companyID == c.id || $0.holder == NodeRef(kind: .company, id: c.id) }
-        appointments.removeAll { $0.companyID == c.id }
-        saveCompanies(); saveHoldings(); saveAppointments()
+        performUndoable("删除公司", toast: "已删除“\(c.name)”。") {
+            companies.removeAll { $0.id == c.id }
+            holdings.removeAll { $0.companyID == c.id || $0.holder == NodeRef(kind: .company, id: c.id) }
+            appointments.removeAll { $0.companyID == c.id }
+            saveCompanies(); saveHoldings(); saveAppointments()
+        }
     }
 
     func upsert(_ p: Person) {
@@ -501,10 +519,13 @@ final class AppStore {
     func reveal(_ d: Document) { NSWorkspace.shared.activateFileViewerSelecting([fileURL(d)]) }
     func open(_ d: Document) { NSWorkspace.shared.open(fileURL(d)) }
 
+    /// 只移除记录，文件夹里的文件保留，所以撤销只需把记录放回。
     func delete(document d: Document) {
-        documents.removeAll { $0.id == d.id }
-        for i in documents.indices where documents[i].supersededBy == d.id { documents[i].supersededBy = nil }
-        saveDocuments()
+        performUndoable("移除文件记录", toast: "已移除这份文件的记录，文件夹里的文件仍保留。") {
+            documents.removeAll { $0.id == d.id }
+            for i in documents.indices where documents[i].supersededBy == d.id { documents[i].supersededBy = nil }
+            saveDocuments()
+        }
     }
 
     // MARK: 提示条
@@ -513,12 +534,12 @@ final class AppStore {
         showToast(text, kind: .success, actionTitle: "撤销", action: undo)
     }
 
-    /// 带种类的提示条：成功可带“撤销”，失败可带“重试”。有操作时停留 6 秒，否则 3 秒。
+    /// 带种类的提示条：成功可带“撤销”，失败可带“重试”。有操作时停留 10 秒，否则 3 秒。
     func showToast(_ text: String, kind: ToastView.Kind, actionTitle: String = "撤销", action: (() -> Void)? = nil) {
         let t = Toast(text: text, undo: action, kind: kind, undoTitle: actionTitle)
         toast = t
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(action == nil ? 3 : 6))
+            try? await Task.sleep(for: .seconds(action == nil ? 3 : 10))
             if self.toast == t { self.toast = nil }
         }
     }

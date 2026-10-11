@@ -272,8 +272,9 @@ struct ToastOverlay: View {
             Spacer()
             if let t = store.toast {
                 ToastView(text: t.text, kind: t.kind, actionTitle: t.undo == nil ? nil : t.undoTitle) {
+                    if store.toast?.id == t.id { store.toast = nil }
+                    // 撤销本身会再弹一条“已撤销”，所以先收起再执行
                     t.undo?()
-                    store.toast = nil
                 }
                 .padding(.bottom, 92)
                 .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))

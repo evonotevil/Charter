@@ -44,6 +44,8 @@ extension AppStore {
             errorMessage = "数据还没有正常载入，暂不能清空。请检查数据文件夹后重新载入。"
             return
         }
+        snapshotBeforeChange("清空所有数据前")
+        clearUndoHistory()
         let fileURLs = documents.map { fileURL($0) }
         do {
             let e = FolderStore.encoder
@@ -57,6 +59,7 @@ extension AppStore {
                 ("obligations", e.encode([ObligationRecord]())),
                 ("changes", e.encode([ChangeRecord]())),
                 ("groups", e.encode([CorporateGroup]())),
+                ("requests", e.encode([DocumentRequest]())),
             ])
         } catch {
             errorMessage = "清空失败，数据没有改动：\(error.localizedDescription)。请确认数据文件夹可写入后重试。"
@@ -71,6 +74,7 @@ extension AppStore {
         records = []
         changes = []
         corporateGroups = []
+        requests = []
         refreshDerived()
 
         // 记录写入成功后再删除归档文件，并清理留下的空文件夹。
@@ -109,6 +113,7 @@ extension AppStore {
     /// 从 Charter 移除多份文件的记录（数据文件夹里的文件本身保留），一次写入。
     func removeDocuments(_ ids: Set<String>) {
         guard !ids.isEmpty else { return }
+        let before = captureState()
         var next = documents.filter { !ids.contains($0.id) }
         for i in next.indices where next[i].supersededBy.map({ ids.contains($0) }) == true {
             next[i].supersededBy = nil
@@ -122,7 +127,10 @@ extension AppStore {
         let removed = documents.count - next.count
         documents = next
         refreshDerived()
-        showToast("已从 Charter 移除 \(removed) 份文件的记录，文件夹里的文件仍保留。")
+        let undoID = recordUndo("移除 \(removed) 份文件记录", before: before)
+        showToast("已从 Charter 移除 \(removed) 份文件的记录，文件夹里的文件仍保留。") { [weak self] in
+            if let undoID { self?.undo(undoID) }
+        }
     }
 }
 
@@ -155,6 +163,7 @@ extension AppStore {
 
     /// 删除负责方，并把公司默认负责方、按规则指定和事项记录里的引用清空。一次写入。
     func delete(party p: Party) {
+        let before = captureState()
         var nextParties = parties
         nextParties.removeAll { $0.id == p.id }
         var nextCompanies = companies
@@ -164,12 +173,15 @@ extension AppStore {
         }
         var nextRecords = records
         for i in nextRecords.indices where nextRecords[i].partyID == p.id { nextRecords[i].partyID = nil }
+        var nextRequests = requests
+        for i in nextRequests.indices where nextRequests[i].partyID == p.id { nextRequests[i].partyID = nil }
         do {
             let e = FolderStore.encoder
             try persistCollections([
                 ("parties", e.encode(nextParties)),
                 ("companies", e.encode(nextCompanies)),
                 ("obligations", e.encode(nextRecords)),
+                ("requests", e.encode(nextRequests)),
             ])
         } catch {
             errorMessage = "删除负责方失败，数据没有改动：\(error.localizedDescription)"
@@ -178,8 +190,12 @@ extension AppStore {
         parties = nextParties
         companies = nextCompanies
         records = nextRecords
+        requests = nextRequests
         refreshDerived()
-        showToast("已删除负责方“\(p.name)”。")
+        let undoID = recordUndo("删除负责方", before: before)
+        showToast("已删除负责方“\(p.name)”。") { [weak self] in
+            if let undoID { self?.undo(undoID) }
+        }
     }
 }
 
@@ -313,6 +329,8 @@ extension AppStore {
             return
         }
         errorMessage = nil
+        snapshotBeforeChange("导入配置前")
+        clearUndoHistory()
         var lib = library
         switch mode {
         case .replace:

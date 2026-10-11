@@ -41,15 +41,17 @@ struct CompaniesView: View {
         @Bindable var router = router
         VStack(alignment: .leading, spacing: 0) {
             PageHeader(title: "公司") {
-                PillSegmented(options: [(false, "列表"), (true, "矩阵")], selection: $router.companiesMatrix)
-                    .help("列表：逐家查看；矩阵：公司 × 档案类别一览")
+                PillSegmented(options: [(Router.CompaniesMode.list, "列表"), (Router.CompaniesMode.matrix, "矩阵"), (Router.CompaniesMode.structure, "结构")],
+                              selection: $router.companiesMode)
+                    .help("列表：逐家查看；矩阵：公司 × 档案类别一览；结构：股权结构图")
             }
-            .padding(.horizontal, Space.pageEdge).padding(.top, Space.xl24).padding(.bottom, Space.xl24)
+            .padding(.horizontal, Space.pageEdge).padding(.top, Space.xl24)
+            .padding(.bottom, router.companiesMode == .structure ? 0 : Space.xl24)
             Group {
-                if router.companiesMatrix {
-                    OverviewView()
-                } else {
-                    companyList
+                switch router.companiesMode {
+                case .list: companyList
+                case .matrix: OverviewView()
+                case .structure: StructureView(embedded: true)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -59,6 +61,9 @@ struct CompaniesView: View {
     private var companyList: some View {
         GeometryReader { geometry in
         let sections = self.sections
+        let firstSection: [String: (id: String, title: String)] = sections.reduce(into: [:]) { acc, sec in
+            for r in sec.rows where acc[r.companyID] == nil { acc[r.companyID] = (id: sec.id, title: sec.title) }
+        }
         HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: Space.s8) {
                 HStack(spacing: Space.s8) {
@@ -85,10 +90,20 @@ struct CompaniesView: View {
                                 GroupIcon(groupID: sec.id == Router.ungrouped ? Router.ungrouped : sec.id, size: 18)
                                 Text(sec.title).font(TypeStyle.micro).foregroundStyle(Theme.muted)
                                     .lineLimit(1)
+                                if sec.id != Router.ungrouped && router.groupFilter == sec.id {
+                                    Spacer(minLength: 4)
+                                    Button("上传材料…") { router.chooseFiles(context: .group(sec.id)) }
+                                        .buttonStyle(PillButtonStyle(.quiet, size: .small))
+                                        .fixedSize()
+                                        .help("归档到\(sec.title)的公司。拖入文件即可归档到这里")
+                                }
                             }
                             .padding(.horizontal, Space.s8).padding(.top, Space.l16).padding(.bottom, Space.xs4)
                             ForEach(sec.rows) { r in
-                                if let c = store.company(r.companyID) { row(c, r) }
+                                if let c = store.company(r.companyID) {
+                                    let first = firstSection[c.id]
+                                    row(c, r, alsoIn: first != nil && first?.id != sec.id ? first?.title : nil)
+                                }
                             }
                         }
                     }
@@ -116,6 +131,7 @@ struct CompaniesView: View {
             .frame(width: min(300, max(240, geometry.size.width - 560)))
             .frame(maxHeight: .infinity, alignment: .top)
             .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+            .modifier(GroupListDrop(groupID: router.groupFilter, groupName: store.group(router.groupFilter)?.name))
             .padding(.leading, Space.pageEdge).padding(.bottom, Space.pageEdge)
 
             Group {
@@ -154,12 +170,30 @@ struct CompaniesView: View {
         let scope = store.companyIDs(forFilter: router.groupFilter)
         if let id = router.selectedCompanyID,
            store.company(id) != nil, scope?.contains(id) ?? true { return }
-        router.selectedCompanyID = filtered.first?.id
+        router.selectedCompanyID = mostUrgent(filtered)?.id
     }
 
-    private func row(_ c: Company, _ r: GroupRow) -> some View {
-        let on = router.selectedCompanyID == c.id
+    /// 默认选中最需要处理的公司：已过期 > 即将到期 > 需更新/待核对 > 完成度最低。
+    private func mostUrgent(_ list: [Company]) -> Company? {
+        func key(_ c: Company) -> (Int, Int, Int, Double) {
+            let items = store.archive(of: c)
+            let expired = items.contains { if case .expired = $0.state { true } else { false } }
+            let expiring = items.contains { if case .expiring = $0.state { true } else { false } }
+            let other = items.contains { $0.state == .needsUpdate || $0.state == .noDate }
+            let counted = items.filter { $0.state != .marked(.notApplicable) }
+            let ratio = counted.isEmpty ? 2 : Double(counted.filter(\.state.hasFile).count) / Double(counted.count)
+            return (expired ? 0 : 1, expiring ? 0 : 1, other ? 0 : 1, ratio)
+        }
+        let keyed = list.map { ($0, key($0)) }
+        return keyed.min { a, b in a.1 != b.1 ? a.1 < b.1 : a.0.name < b.0.name }?.0
+    }
+
+    /// alsoIn 非空：这家公司已在前面的集团出现过，本行是重复行，弱化显示。
+    private func row(_ c: Company, _ r: GroupRow, alsoIn: String? = nil) -> some View {
+        let duplicate = alsoIn != nil
+        let on = router.selectedCompanyID == c.id && !duplicate
         let severity = subtitleSeverity(c)
+        let alert = alertText(c)
         return Button { select(c.id) } label: {
             HStack(spacing: 10) {
                 Text(c.jurisdiction)
@@ -169,16 +203,23 @@ struct CompaniesView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(c.name).font(.system(size: 13.5, weight: .semibold)).lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(subtitle(c, r)).font(.system(size: 11.5)).lineLimit(1)
-                        .foregroundStyle(subtitleColor(severity, selected: on))
+                    Text(alsoIn.map { "也属于 \($0)" } ?? subtitle(c, r)).font(.system(size: 11.5)).lineLimit(1)
+                        .foregroundStyle(on ? Theme.onSelection.opacity(0.72) : Theme.muted)
                 }
                 Spacer(minLength: 0)
+                if severity != .normal, !duplicate {
+                    Circle().fill(severity == .overdue ? Theme.danger : Theme.amber)
+                        .frame(width: 7, height: 7)
+                        .help(alert)
+                        .accessibilityLabel(alert)
+                }
             }
             .foregroundStyle(on ? Theme.onSelection : Theme.ink)
+            .opacity(duplicate ? 0.55 : 1)
             .padding(.leading, 8 + CGFloat(min(r.depth, 4)) * 12).padding(.trailing, 8).padding(.vertical, 8)
             .frame(minHeight: 48)
             .background {
-                if highlightID == c.id {
+                if highlightID == c.id && !duplicate {
                     RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
                         .fill(Theme.selection)
                         .matchedGeometryEffect(id: "railSelection", in: railNS)
@@ -196,35 +237,41 @@ struct CompaniesView: View {
             Button("导出材料…") { router.sheet = .exportAll(c.id) }
             Button("在股权结构中打开") {
                 router.groupFilter = store.groups(containing: c.id).first?.id
-                router.section = .structure
+                router.openStructure()
             }
         }
         .accessibilityLabel(c.name)
-        .accessibilityValue(subtitle(c, r))
+        .accessibilityValue(alsoIn.map { "也属于 \($0)" } ?? (alert.isEmpty ? subtitle(c, r) : subtitle(c, r) + "，" + alert))
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private func subtitle(_ c: Company, _ r: GroupRow) -> String {
+        let items = store.archive(of: c)
+        let counted = items.filter { $0.state != .marked(.notApplicable) }
+        var parts = [store.jurisdictionName(c.jurisdiction), "档案 \(counted.filter { $0.state.hasFile }.count)/\(counted.count)"]
+        if let pct = r.percent { parts.append("上级持股 \(Ownership.percentLabel(pct))") }
+        return parts.joined(separator: "，")
+    }
+
+    /// 行末小圆点的说明：合规逾期/临近、文件过期等。
+    private func alertText(_ c: Company) -> String {
+        var alerts: [String] = []
         if store.complianceOn, let o = store.openObligations.first(where: { $0.company.id == c.id }) {
             let left = o.daysLeft(from: store.today)
-            if left <= 30 { return left < 0 ? "\(o.rule.name)已逾期" : "\(left) 天后：\(o.rule.name)" }
+            if left <= 30 { alerts.append(left < 0 ? "合规事项“\(o.rule.name)”已逾期" : "合规事项“\(o.rule.name)”\(left) 天后到期") }
         }
         let items = store.archive(of: c)
         let expired = items.filter { if case .expired = $0.state { true } else { false } }.count
         let expiring = items.filter { if case .expiring = $0.state { true } else { false } }.count
         let updating = items.filter { $0.state == .needsUpdate }.count
         let noDate = items.filter { $0.state == .noDate }.count
-        let alerts = [
+        alerts += [
             expired > 0 ? "\(expired) 份已过期" : nil,
             updating > 0 ? "\(updating) 份需更新" : nil,
             expiring > 0 ? "\(expiring) 份即将到期" : nil,
             noDate > 0 ? "\(noDate) 份日期待核对" : nil,
         ].compactMap { $0 }
-        if !alerts.isEmpty { return alerts.joined(separator: "，") }
-        let counted = items.filter { $0.state != .marked(.notApplicable) }
-        var parts = [store.jurisdictionName(c.jurisdiction), "档案 \(counted.filter { $0.state.hasFile }.count)/\(counted.count)"]
-        if let pct = r.percent { parts.append("上级持股 \(Ownership.percentLabel(pct))") }
-        return parts.joined(separator: "，")
+        return alerts.joined(separator: "，")
     }
 
     private enum SubtitleSeverity { case normal, attention, overdue }
@@ -236,6 +283,9 @@ struct CompaniesView: View {
         let items = store.archive(of: c)
         if items.contains(where: { if case .expired = $0.state { true } else { false } }) { return .overdue }
         if items.contains(where: \.state.needsAttention) { return .attention }
+        if store.complianceOn,
+           let o = store.openObligations.first(where: { $0.company.id == c.id }),
+           o.daysLeft(from: store.today) <= 30 { return .attention }
         return .normal
     }
 
@@ -282,6 +332,13 @@ struct CompanyDetailView: View {
                     .padding(Space.xl24)
                 hairline
                 keyFacts
+                // 正在等负责方补发时，关键信息下面一行说明
+                if !store.openRequests(for: ref).isEmpty {
+                    hairline
+                    CompanyWaitingLine(companyID: company.id)
+                        .padding(.horizontal, Space.xl24).padding(.vertical, Space.m12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 hairline
                 HStack {
                     PillSegmented(options: tabOptions, selection: $tab)
@@ -325,6 +382,10 @@ struct CompanyDetailView: View {
             .frame(maxWidth: .infinity)
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        // 整个详情区都接受拖入，默认归档到这家公司
+        .archiveDropTarget("松开即可归档到 \(company.name)") { urls in
+            router.startImport(urls: urls, context: .company(company.id))
+        }
         .onAppear { tab = normalized(router.companyTab) }
         .onChange(of: router.companyTab) { tab = normalized(router.companyTab) }
     }
@@ -420,7 +481,7 @@ struct CompanyDetailView: View {
                         if !company.entityForm.isEmpty { Pill(text: company.entityForm) }
                         if company.status != .active { Pill(text: company.status.label, kind: .strong) }
                         ForEach(groups) { g in
-                            Button { router.groupFilter = g.id; router.section = .structure } label: { Pill(text: g.name, kind: .lime) }
+                            Button { router.openStructure(group: g.id) } label: { Pill(text: g.name, kind: .lime) }
                                 .buttonStyle(.plain).help("在股权结构中查看\(g.name)")
                         }
                     }
@@ -441,6 +502,14 @@ struct CompanyDetailView: View {
             .buttonStyle(PillButtonStyle(.secondary))
             .fixedSize()
             .help("导出全部现行材料，也可包含历史版本")
+            Button("上传材料…") { router.chooseFiles(context: .company(company.id)) }
+                .buttonStyle(PillButtonStyle(.secondary))
+                .fixedSize()
+                .help("选择 PDF、照片或文件夹，归档到这家公司。拖入文件即可归档到这里")
+            Button("记录变更…") { router.sheet = .change(companyID: company.id) }
+                .buttonStyle(PillButtonStyle(.secondary))
+                .fixedSize()
+                .help("换董事、股权转让、改名或迁址：更新记录，并标出需要重开的文件")
             Button("准备文件包…") { router.sheet = .packet(companyID: company.id) }
                 .buttonStyle(PillButtonStyle(.primary))
                 .fixedSize()
@@ -494,18 +563,21 @@ struct CompanyDetailView: View {
                 sideTitle("董事及高管", officers.count)
                 if officers.isEmpty { Text("未录入").font(.system(size: 13)).foregroundStyle(Theme.muted) }
                 ForEach(officers) { a in
-                    Button { router.open(person: a.personID) } label: {
-                        HStack(spacing: 10) {
-                            Avatar(name: store.name(of: NodeRef(kind: .person, id: a.personID)))
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(store.name(of: NodeRef(kind: .person, id: a.personID))).font(.system(size: 13.5, weight: .medium))
-                                Text(a.title + (a.from.map { "，自 \($0.description)" } ?? "")).font(.system(size: 11.5)).foregroundStyle(Theme.muted)
+                    HStack(spacing: 4) {
+                        Button { router.open(person: a.personID) } label: {
+                            HStack(spacing: 10) {
+                                Avatar(name: store.name(of: NodeRef(kind: .person, id: a.personID)))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(store.name(of: NodeRef(kind: .person, id: a.personID))).font(.system(size: 13.5, weight: .medium))
+                                    Text(a.title + (a.from.map { "，自 \($0.description)" } ?? "")).font(.system(size: 11.5)).foregroundStyle(Theme.muted)
+                                }
+                                Spacer(minLength: 0)
                             }
-                            Spacer(minLength: 0)
+                            .contentShape(.rect)
                         }
-                        .contentShape(.rect)
+                        .buttonStyle(.plain)
+                        ChangeRowMenu(companyID: company.id, appointmentID: a.id)
                     }
-                    .buttonStyle(.plain)
                 }
             }
 
@@ -525,6 +597,8 @@ struct CompanyDetailView: View {
                         }
                         Spacer(minLength: 4)
                         Text(Ownership.percentLabel(h.percent)).font(.mono(13.5, .semibold))
+                        ChangeRowMenu(companyID: company.id, holdingID: h.id)
+                            .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
                     }
                 }
                 if !b.owners.isEmpty || b.unknown > 0.005 {
@@ -742,7 +816,8 @@ struct CompanyDetailView: View {
             .background(dropTargeted ? Theme.lime : Theme.surface, in: .rect(cornerRadius: Radius.surface))
             .overlay(RoundedRectangle(cornerRadius: Radius.surface).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 5])).foregroundStyle(dropTargeted ? Theme.ink : Theme.hairline))
             .dropDestination(for: URL.self) { urls, _ in
-                router.sheet = .importFiles(urls)
+                guard !urls.isEmpty else { return false }
+                router.startImport(urls: urls, context: .company(company.id))
                 return true
             } isTargeted: { dropTargeted = $0 }
         }
@@ -1107,5 +1182,23 @@ struct RulesForCompany: View {
 
     private var partyOptions: [(String, String)] {
         [("", "默认（\(store.party(company.defaultPartyID)?.name ?? "未指定")）")] + store.parties.map { ($0.id, $0.name) }
+    }
+}
+
+/// 公司列表在筛选某个集团时接受拖入，归档到这个集团的公司。
+private struct GroupListDrop: ViewModifier {
+    @Environment(Router.self) private var router
+    var groupID: String?
+    var groupName: String?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let groupID, groupID != Router.ungrouped, let groupName {
+            content.archiveDropTarget("松开即可归档到\(groupName)") { urls in
+                router.startImport(urls: urls, context: .group(groupID))
+            }
+        } else {
+            content
+        }
     }
 }

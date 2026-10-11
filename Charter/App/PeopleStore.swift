@@ -73,9 +73,11 @@ extension AppStore {
     /// 删除没有任何引用的人员。
     func deletePerson(_ id: String) {
         guard referenceCount(person: id) == 0 else { return }
-        people.removeAll { $0.id == id }
-        savePeople()
-        showToast("已删除。")
+        let name = person(id)?.name ?? ""
+        performUndoable("删除人员", toast: name.isEmpty ? "已删除。" : "已删除“\(name)”。") {
+            people.removeAll { $0.id == id }
+            savePeople()
+        }
     }
 
     /// 把 from 合并进 into：任职、持股、代持、文件、集团顶层都改到 into 名下，from 的姓名记为别名。

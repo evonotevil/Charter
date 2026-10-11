@@ -77,6 +77,8 @@ struct DeadlineBasisSection: View {
                 router.sheet = .confirmRule(ruleID: o.rule.id, companyID: o.company.id)
             }
             .buttonStyle(PillButtonStyle(.secondary, size: .small))
+            Spacer(minLength: 8)
+            SettingsJumpLink(title: "截止日算法不对？", pane: .rules)
         }
     }
 

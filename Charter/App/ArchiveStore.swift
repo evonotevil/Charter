@@ -113,8 +113,13 @@ extension AppStore {
         saveCompanies()
     }
 
+    /// 标记原因：直接生效，提示条可撤销，也可以 ⌘Z。
     func setMark(_ mark: ItemMark?, item: String, company: String) {
-        editArchive(company) { $0.marks[item] = mark }
+        let name = docType(item)?.name ?? "条目"
+        performUndoable(mark == nil ? "清除标记" : "标记原因",
+                        toast: mark.map { "已把“\(name)”标记为\($0.label)" } ?? "已清除“\(name)”的标记") {
+            editArchive(company) { $0.marks[item] = mark }
+        }
     }
 
     func setNote(_ note: String, item: String, company: String) {
@@ -126,6 +131,14 @@ extension AppStore {
         editArchive(company) { a in
             a.removed.removeAll { $0 == typeID }
             if !a.added.contains(typeID) { a.added.append(typeID) }
+        }
+    }
+
+    /// 从公司档案清单里去掉一个条目：直接生效，提示条可撤销。
+    func dropItem(_ typeID: String, from company: String) {
+        let name = docType(typeID)?.name ?? "条目"
+        performUndoable("移除条目", toast: "已从这家公司的清单移除“\(name)”") {
+            removeItem(typeID, from: company)
         }
     }
 

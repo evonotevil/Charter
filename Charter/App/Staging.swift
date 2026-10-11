@@ -43,11 +43,22 @@ extension AppStore {
 
     /// 用户明确确认后才写入档案。旧版同类文件会自动标为“旧版”，不删除。
     @discardableResult
-    func commitStaged(_ id: String, typeID: String, owner: NodeRef, issued: Day?, expiry: Day?, form: String, note: String = "") async throws -> Document {
+    func commitStaged(_ id: String, typeID: String, owner: NodeRef, issued: Day?, expiry: Day?, form: String, note: String = "",
+                      keepBoth: Bool = false) async throws -> Document {
         guard let s = staged[id] else { throw CocoaError(.fileNoSuchFile) }
-        let requests = [ArchiveRequest(url: s.url, typeID: typeID, owner: owner, issued: issued, expiry: expiry, form: form, note: note)]
+        let requests = [ArchiveRequest(url: s.url, typeID: typeID, owner: owner, issued: issued, expiry: expiry, form: form, note: note,
+                                       keepBoth: keepBoth)]
+        let before = captureState()
         guard let doc = try await archiveBatch(requests).first else { throw CocoaError(.fileWriteUnknown) }
         discardStaged(id)
+        // 这份文件正好是某个补发请求在等的：关闭请求，提示条可撤销整次归档（请求随之回到等回件）
+        let received = closeRequests(receiving: [doc])
+        if !received.isEmpty {
+            let undoID = recordUndo("归档文件", before: before, createdFiles: [doc.filePath])
+            showToast("已归档\(docType(doc.typeID)?.name ?? "文件")" + received + "。") { [weak self] in
+                if let undoID { self?.undo(undoID) }
+            }
+        }
         s.onArchived?(doc)
         return doc
     }

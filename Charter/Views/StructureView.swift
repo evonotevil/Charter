@@ -6,6 +6,8 @@ struct StructureView: View {
     @Environment(AppStore.self) private var store
     @Environment(Router.self) private var router
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 嵌在公司页（“结构”视图）里：页面标题由公司页显示，这里不再重复。
+    var embedded = false
     @State private var stopIndex: Int?
     @State private var stops: [Day] = []
     @State private var snapshot: StructureSnapshot?
@@ -138,9 +140,9 @@ struct StructureView: View {
                     .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
             }
         }
-        .navigationTitle("股权结构")
+        .navigationTitle(embedded ? "公司" : "股权结构")
         .toolbar {
-            ToolbarItemGroup {
+            ToolbarItemGroup(placement: .primaryAction) {
                 ControlGroup {
                     Button { animate(.smooth) { savedZoom = Double(GraphInteraction.clamp(z - 0.1)) } } label: { Image(systemName: "minus") }
                         .help("缩小")
@@ -319,13 +321,17 @@ struct StructureView: View {
 
     private var title: some View {
         VStack(alignment: .leading, spacing: 4) {
+            if !embedded {
+                Text("股权结构").font(TypeStyle.pageTitle).tracking(Tracking.title)
+                    .lineLimit(1)
+            }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(store.filterName(graphGroup)).font(TypeStyle.pageTitle).tracking(Tracking.title)
-                    .lineLimit(1).truncationMode(.tail)
-                Text("\(snapshot?.companies.count ?? 0) 家公司")
-                    .font(TypeStyle.meta).foregroundStyle(Theme.muted).numericTransition()
+                Text(store.filterName(graphGroup)).lineLimit(1).truncationMode(.tail)
+                Text("·")
+                Text("\(snapshot?.companies.count ?? 0) 家公司").numericTransition()
                 Spacer(minLength: 0)
             }
+            .font(TypeStyle.meta).foregroundStyle(Theme.muted)
             .help("打开侧栏可切换集团")
             Group {
                 if isToday {
@@ -337,7 +343,7 @@ struct StructureView: View {
             }
             .font(TypeStyle.body)
         }
-        .padding(.horizontal, Space.pageEdge).padding(.top, Space.xl24).padding(.bottom, Space.s8)
+        .padding(.horizontal, Space.pageEdge).padding(.top, embedded ? 0 : Space.xl24).padding(.bottom, Space.s8)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -806,6 +812,7 @@ struct InspectorPanel: View {
                     .buttonStyle(.plain)
                     Spacer()
                     Text(a.titles).foregroundStyle(Theme.muted).multilineTextAlignment(.trailing)
+                    ChangeRowMenu(companyID: ref.id, appointmentID: officers.first { $0.personID == a.personID }?.id)
                 }
             }
         }
@@ -831,6 +838,8 @@ struct InspectorPanel: View {
                                 }
                                 Spacer()
                                 Text(Ownership.percentLabel(h.percent)).fontWeight(.bold).monospacedDigit()
+                                ChangeRowMenu(companyID: ref.id, holdingID: h.id)
+                                    .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
                             }
                         }
                     }

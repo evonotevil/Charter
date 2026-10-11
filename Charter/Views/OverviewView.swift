@@ -177,12 +177,12 @@ struct OverviewView: View {
                 }
                 if let gid = b.groupID {
                     ActionMenu(systemImage: "ellipsis", kind: .quiet, size: .small, entries: [
+                        .item("上传材料…", systemImage: "square.and.arrow.down") { router.chooseFiles(context: .group(gid)) },
                         .item("在此集团新建公司…", systemImage: "building.2") { router.sheet = .newCompanyInGroup(gid) },
                         .item("编辑集团…", systemImage: "pencil") { router.sheet = .editGroup(gid) },
                         .divider,
                         .item("查看股权结构", systemImage: "point.3.connected.trianglepath.dotted") {
-                            router.groupFilter = gid
-                            router.section = .structure
+                            router.openStructure(group: gid)
                         },
                     ])
                     .fixedSize()
@@ -203,6 +203,7 @@ struct OverviewView: View {
         .padding(Space.xl24)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+        .modifier(GroupCardDrop(groupID: b.groupID, title: b.title))
     }
 
     private func grid(_ b: Block, rows: [GroupRow], archives: [String: [ArchiveItem]]) -> some View {
@@ -527,6 +528,24 @@ struct StateGlyph: View {
             Image(systemName: "minus").foregroundStyle(Theme.muted.opacity(0.6))
         case .missing:
             Image(systemName: "circle.dashed").foregroundStyle(Theme.muted.opacity(0.6))
+        }
+    }
+}
+
+/// 集团卡片接受拖入：归档到这个集团的公司（识别时先在集团内匹配）。
+private struct GroupCardDrop: ViewModifier {
+    @Environment(Router.self) private var router
+    var groupID: String?
+    var title: String
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let groupID {
+            content.archiveDropTarget("松开即可归档到\(title)") { urls in
+                router.startImport(urls: urls, context: .group(groupID))
+            }
+        } else {
+            content
         }
     }
 }

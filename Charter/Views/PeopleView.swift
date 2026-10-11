@@ -199,7 +199,6 @@ struct PersonDetail: View {
     var person: Person
     @State private var editing = false
     @State private var merging = false
-    @State private var confirmDelete = false
 
     private var ref: NodeRef { NodeRef(kind: .person, id: person.id) }
 
@@ -237,17 +236,23 @@ struct PersonDetail: View {
                     section("现任职务", count: companyIDs.count) {
                         ForEach(companyIDs, id: \.self) { cid in
                             let roles = byCompany[cid] ?? []
-                            companyLine(cid, trailing: Self.titles(roles),
-                                        detail: roles.compactMap(\.from).min().map { "自 \($0.description)" })
+                            HStack(spacing: Space.m12) {
+                                companyLine(cid, trailing: Self.titles(roles),
+                                            detail: roles.compactMap(\.from).min().map { "自 \($0.description)" })
+                                ChangeRowMenu(companyID: cid, appointmentID: roles.first?.id)
+                            }
                         }
                     }
                 }
                 if !direct.isEmpty {
                     section("直接持股", count: direct.count) {
                         ForEach(direct) { h in
-                            companyLine(h.companyID, trailing: Ownership.percentLabel(h.percent),
-                                        detail: h.isNominee ? "名义股东，代\(h.beneficialOwner.map { store.name(of: $0) } ?? "他人")持有" : nil,
-                                        warn: h.isNominee, numeric: true)
+                            HStack(spacing: Space.m12) {
+                                companyLine(h.companyID, trailing: Ownership.percentLabel(h.percent),
+                                            detail: h.isNominee ? "名义股东，代\(h.beneficialOwner.map { store.name(of: $0) } ?? "他人")持有" : nil,
+                                            warn: h.isNominee, numeric: true)
+                                ChangeRowMenu(companyID: h.companyID, holdingID: h.id)
+                            }
                         }
                     }
                 }
@@ -295,14 +300,6 @@ struct PersonDetail: View {
         .sheet(isPresented: $merging) {
             MergePersonSheet(person: person)
         }
-        .confirmSheet("删除“\(person.name)”？", isPresented: $confirmDelete,
-                      message: "这个人没有任职、持股、代持、文件或集团顶层记录，删除后不影响其他数据。",
-                      details: ["从人员列表中移除“\(person.name)”", "公司、持股和文件都不会改动", "删除后不能撤销"],
-                      confirmTitle: "删除", destructive: true) {
-            let next = store.people.first(where: { $0.id != person.id })?.id
-            store.deletePerson(person.id)
-            router.selectedPersonID = next
-        }
     }
 
     // MARK: 顶部
@@ -336,7 +333,11 @@ struct PersonDetail: View {
                     Button("合并…") { merging = true }
                         .buttonStyle(PillButtonStyle(.secondary))
                         .help("把这个人合并到另一个人名下（重复录入时使用）")
-                    Button("删除") { confirmDelete = true }
+                    Button("删除") {
+                        let next = store.people.first(where: { $0.id != person.id })?.id
+                        store.deletePerson(person.id)
+                        router.selectedPersonID = next
+                    }
                         .buttonStyle(PillButtonStyle(.secondary))
                         .disabled(!blockers.isEmpty)
                         .help(blockers.isEmpty ? "删除这个人" : "不能删除：\(blockers.joined(separator: "，"))")

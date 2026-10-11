@@ -421,7 +421,7 @@ struct DocumentRow: View {
         }
         .sheet(item: $pending) { ArchiveConfirmSheet(file: $0) }
         .sheet(isPresented: $reissuing) {
-            CopyTextSheet(title: "请补发：\(store.docType(d.typeID)?.name ?? "文件")", text: store.reissueText(for: d))
+            ReissueRequestSheet(owner: d.owner, typeIDs: [d.typeID])
         }
         .contextMenu {
             if let extraMenu {

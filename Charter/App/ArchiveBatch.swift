@@ -8,6 +8,8 @@ struct ArchiveRequest {
     var expiry: Day?
     var form: String = "扫描件"
     var note: String = ""
+    /// 另存为一份：不取代同类现行文件。
+    var keepBoth = false
 }
 
 extension AppStore {
@@ -31,8 +33,9 @@ extension AppStore {
                 throw ArchiveError.invalidTarget
             }
         }
-        let copies = try await StorageWorker.perform {
+        let (copies, keepBothIDs) = try await StorageWorker.perform {
             var copies: [Document] = []
+            var keepBothIDs: Set<String> = []
             do {
                 for request in requests {
                     let access = request.url.startAccessingSecurityScopedResource()
@@ -44,16 +47,17 @@ extension AppStore {
                                             expiryDate: request.expiry, form: request.form, filePath: path,
                                             originalFileName: request.url.lastPathComponent, addedOn: day)
                     document.notes = request.note
+                    if request.keepBoth { keepBothIDs.insert(document.id) }
                     copies.append(document)
                 }
-                return copies
+                return (copies, keepBothIDs)
             } catch {
                 for document in copies { try? FileManager.default.removeItem(at: folder.absoluteURL(for: document.filePath)) }
                 throw error
             }
         }
         do {
-            let next = copies.reduce(documents) { DocumentVersions.inserting($1, into: $0) }
+            let next = copies.reduce(documents) { DocumentVersions.inserting($1, into: $0, keepBoth: keepBothIDs.contains($1.id)) }
             let names = Self.collections
             let modified = try await StorageWorker.perform {
                 var writes = [("documents", try FolderStore.encoder.encode(next))]

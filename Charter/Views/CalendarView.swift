@@ -7,6 +7,8 @@ import UniformTypeIdentifiers
 struct CalendarView: View {
     @Environment(AppStore.self) private var store
     @Environment(Router.self) private var router
+    /// 全页打开时的“返回”。
+    var onBack: (() -> Void)? = nil
     @State private var range: Router.CalendarRange = .all
     @State private var customFrom = Day.today()
     @State private var customTo = Day.today().adding(months: 1)
@@ -64,7 +66,15 @@ struct CalendarView: View {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                     VStack(alignment: .leading, spacing: Space.l16) {
                         PageHeader(title: "合规日历", subtitle: "按月排列所有截止日。筛选出的事项可一并交办或导出为清单。") {
-                            EmptyView()
+                            if let onBack {
+                                Button {
+                                    onBack()
+                                } label: {
+                                    Label("返回", systemImage: "chevron.left")
+                                }
+                                .buttonStyle(PillButtonStyle(.secondary))
+                                .keyboardShortcut(.cancelAction)
+                            }
                         }
                         .padding(.bottom, Space.s8)
                         filterBar

@@ -14,24 +14,32 @@ struct RootView: View {
         } detail: {
             ZStack {
                 Theme.canvas.ignoresSafeArea()
-                switch router.section {
-                case .overview: DashboardView()
-                case .people: PeopleView()
-                case .today: TodayView()
-                case .calendar: CalendarView()
-                case .companies: CompaniesView()
-                case .structure: StructureView()
-                case .files: FilesView()
-                case .parties: PartiesView()
+                if router.showCalendar {
+                    // 合规日历全页：从总览“查看全部日程”或负责方页打开，“返回”回到原页面
+                    CalendarView(onBack: { router.showCalendar = false })
+                } else {
+                    switch router.section {
+                    case .overview: DashboardView()
+                    case .people: PeopleView()
+                    case .companies: CompaniesView()
+                    case .files: FilesView()
+                    case .parties: PartiesView()
+                    }
                 }
                 ToastOverlay()
+            }
+            // 窗口其他地方拖入：落到当前公司或当前集团；页面里更具体的拖放区优先
+            .dropDestination(for: URL.self) { urls, _ in
+                guard !urls.isEmpty, router.sheet == nil else { return false }
+                router.startImport(urls: urls, context: router.currentImportContext(groupsExist: { store.group($0) != nil }))
+                return true
             }
             // 工具栏不画系统底色（切换页面时系统底色会闪一下白），
             // 改为自己画一条画布色渐隐，内容滚到标题下方时依然看不到重叠。
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
             .overlay(alignment: .top) {
                 // 股权结构是平移画布，右侧详情面板顶到窗口顶部，不需要这条渐隐
-                if router.section != .structure {
+                if !(router.section == .companies && router.companiesMode == .structure && !router.showCalendar) {
                 GeometryReader { g in
                     let top = g.safeAreaInsets.top
                     let fade: CGFloat = 12
@@ -49,6 +57,8 @@ struct RootView: View {
         }
         // 页面内已有大标题，工具栏左上角不再重复显示页面名
         .toolbar(removing: .title)
+        // 切换页面时关闭盖在上面的合规日历
+        .onChange(of: router.section) { router.showCalendar = false }
         .disabled(store.isLoading || store.isImporting || store.loadFailed)
         .overlay {
             if store.isLoading {
@@ -88,7 +98,10 @@ struct RootView: View {
         .fileImporter(isPresented: $router.showImporter,
                       allowedContentTypes: [.pdf, .image, .folder], allowsMultipleSelection: true) { result in
             if case .success(let urls) = result, !urls.isEmpty {
-                DispatchQueue.main.async { router.sheet = .importFiles(urls) }
+                let context = router.importContext
+                DispatchQueue.main.async { router.startImport(urls: urls, context: context) }
+            } else {
+                router.importContext = nil
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -125,11 +138,17 @@ struct RootView: View {
         case .editCompany(let id):
             CompanyEditor(company: store.company(id))
         case .importFiles(let urls):
-            ImportView(urls: urls)
+            ImportView(urls: urls, context: router.importContext)
+        case .resumeImport:
+            ImportView(urls: [], context: store.pendingImport?.context, resume: store.pendingImport)
         case .packet(let id):
             PacketView(companyID: id)
         case .change(let id):
             ChangeWizard(companyID: id)
+        case .changeFrom(let id, let kind, let a, let h):
+            ChangeWizard(companyID: id, kind: kind, endingAppointmentID: a, endingHoldingID: h)
+        case .packetFor(let id, let p):
+            PacketView(companyID: id, purposeID: p)
         case .confirmRule(let r, let c):
             RuleConfirmSheet(ruleID: r, companyID: c)
         case .document(let id):
@@ -181,16 +200,13 @@ struct Sidebar: View {
             .padding(.bottom, Space.l16)
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(Router.Section.allCases.filter { !$0.isCompliance }) { s in navRow(s) }
-                    if store.complianceOn {
-                        Text("合规").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Theme.muted)
-                            .padding(.leading, Space.m12).padding(.top, Space.l16).padding(.bottom, Space.xs4)
-                        ForEach(Router.Section.allCases.filter(\.isCompliance)) { s in navRow(s) }
-                    }
+                    ForEach(Router.Section.allCases) { s in navRow(s) }
                 }
             }
             .scrollIndicators(.never)
-            attentionCard
+            // 底部：真实同步状态 + 设置入口（与熊掌记、Notion 一致，账户与设置放在侧栏底部）
+            SidebarFooter()
+                .padding(.top, Space.m12)
         }
         .padding(.horizontal, Space.m12).padding(.top, Space.s8).padding(.bottom, Space.m12)
         .onAppear { highlighted = router.section }
@@ -213,26 +229,34 @@ struct Sidebar: View {
             },
             .item("新建集团", systemImage: "square.stack.3d.up") { router.sheet = .newGroup },
             .divider,
-            .item("导入文件…", systemImage: "square.and.arrow.down", shortcut: "⌘I") { router.showImporter = true },
+            .item("上传材料…", systemImage: "square.and.arrow.down", shortcut: "⌘I") {
+                router.chooseFiles(context: router.currentImportContext(groupsExist: { store.group($0) != nil }))
+            },
         ]
     }
 
     private func navRow(_ s: Router.Section) -> some View {
         let on = router.section == s
         let n = badge(for: s)
-        let index = Router.Section.allCases.filter { !$0.isCompliance }.firstIndex(of: s)
+        let index = Router.Section.allCases.firstIndex(of: s)
         return Button {
             // 切换页面本身不做淡入淡出（两页叠在一起时工具栏会闪一下），只让选中底色在行间滑动
             withAnimation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion)) {
                 highlighted = s
             }
-            router.section = s
+            router.go(s)
         } label: {
             HStack(spacing: Space.m12) {
                 Image(systemName: s.symbol).font(.system(size: 15, weight: .medium)).frame(width: 20)
                 Text(s.title).font(.system(size: 14, weight: on ? .semibold : .medium))
                 Spacer(minLength: Space.xs4)
                 if n > 0 { CountBadge(count: n, inverted: on) }
+                if s == .files, store.pendingImport != nil, !router.isImportOpen {
+                    // 待处理导入：一个琥珀色小点，悬停说明
+                    Circle().fill(on ? Theme.onSelection : Theme.amberText).frame(width: 7, height: 7)
+                        .help("上次导入还有 \(store.pendingImport?.remaining ?? 0) 份文件未完成")
+                        .accessibilityLabel("有待处理的导入")
+                }
             }
             .foregroundStyle(on ? Theme.onSelection : Theme.ink)
             .padding(.horizontal, Space.m12).frame(height: 36)
@@ -246,61 +270,26 @@ struct Sidebar: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .help(index.map { "\(s.title)（⌘\($0 + 1)）" } ?? s.title)
+        .help(helpText(s, index: index, count: n))
         .accessibilityLabel(s.title)
         .accessibilityValue(n > 0 ? "\(n) 项待处理" : "")
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// 底部提醒：白色承载面，琥珀色图标，细线描边。
-    @ViewBuilder
-    private var attentionCard: some View {
-        let n = store.documentsNeedingAttention.count
-        if n > 0 {
-            Button {
-                router.filesFilter = 2
-                router.filesOwnerKind = nil
-                router.section = .files
-            } label: {
-                VStack(alignment: .leading, spacing: Space.s8) {
-                    HStack(spacing: Space.s8) {
-                        Circle().fill(Theme.amber).frame(width: 8, height: 8)
-                        Text("需要处理").font(TypeStyle.micro).foregroundStyle(Theme.amberText)
-                        Spacer(minLength: 0)
-                        Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.muted)
-                    }
-                    HStack(alignment: .firstTextBaseline, spacing: Space.xs4) {
-                        Text("\(n)").font(.system(size: 28, weight: .heavy)).tracking(Tracking.title).numericTransition()
-                        Text("份文件").font(.system(size: 13, weight: .semibold))
-                    }
-                    Text("过期、即将到期或需更新").font(TypeStyle.micro).foregroundStyle(Theme.muted)
-                }
-                .foregroundStyle(Theme.ink)
-                .padding(Space.l16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.surface, in: .rect(cornerRadius: 16, style: .continuous))
-                .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.hairline) }
-                .contentShape(.rect)
+    private func helpText(_ s: Router.Section, index: Int?, count: Int) -> String {
+        var t = index.map { "\(s.title)（⌘\($0 + 1)）" } ?? s.title
+        if count > 0 {
+            switch s {
+            case .files: t += "：\(count) 份公司文件需处理"
+            default: break
             }
-            .buttonStyle(.plain)
-            .padding(.top, Space.m12)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(n) 份文件需处理")
-            .accessibilityHint("打开文件页并只显示需要处理的文件")
-            .accessibilityAddTraits(.isButton)
-        } else {
-            HStack(spacing: 6) {
-                Image(systemName: store.store.isInICloud ? "icloud" : "internaldrive")
-                Text(store.store.isInICloud ? "已通过 iCloud 同步" : "数据保存在本机")
-            }
-            .font(.caption).foregroundStyle(Theme.muted).padding(.leading, Space.m12).padding(.top, Space.m12)
         }
+        return t
     }
 
     private func badge(for s: Router.Section) -> Int {
         switch s {
-        case .today: store.openObligations.filter { $0.daysLeft(from: store.today) <= 14 }.count
-        case .files: store.documentsNeedingAttention.count
+        case .files: store.attentionCount(forFilter: router.groupFilter)
         default: 0
         }
     }
@@ -422,5 +411,71 @@ private struct GroupSwitcherRow: View {
         .onHover { hover = $0 }
         .accessibilityLabel("\(name)，\(count) 家公司")
         .accessibilityAddTraits(checked ? .isSelected : [])
+    }
+}
+
+
+/// 侧栏底部：点同步状态看详情，点齿轮打开设置。
+struct SidebarFooter: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.openSettings) private var openSettings
+    @State private var showing = false
+
+    var body: some View {
+        let s = SyncMonitor.shared.state
+        HStack(spacing: Space.s8) {
+            Button { showing.toggle() } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: s.symbol)
+                        .symbolEffect(.pulse, isActive: isBusy(s))
+                    Text(s.title).lineLimit(1)
+                }
+                .font(.caption)
+                .foregroundStyle(s.needsAttention ? Theme.amberText : Theme.muted)
+                .padding(.leading, Space.m12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help("查看同步详情")
+            .popover(isPresented: $showing, arrowEdge: .top) { detail(s) }
+
+            Button { SettingsPane.sync.open(with: openSettings) } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.muted)
+                    .frame(width: 28, height: 28)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help("设置（⌘,）")
+            .accessibilityLabel("设置")
+        }
+        .onAppear { SyncMonitor.shared.start(root: store.store.root) }
+    }
+
+    private func isBusy(_ s: SyncMonitor.State) -> Bool {
+        switch s { case .checking, .syncing: true; default: false }
+    }
+
+    private func detail(_ s: SyncMonitor.State) -> some View {
+        VStack(alignment: .leading, spacing: Space.s8) {
+            Label(s.title, systemImage: s.symbol)
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.ink)
+            Text(s.detail).font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: Space.s8) {
+                Button("立即检查") { SyncMonitor.shared.refresh() }
+                    .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                Button("同步设置…") {
+                    showing = false
+                    SettingsPane.sync.open(with: openSettings)
+                }
+                .buttonStyle(PillButtonStyle(.quiet, size: .small))
+            }
+            .padding(.top, 4)
+        }
+        .padding(Space.l16)
+        .frame(width: 280, alignment: .leading)
     }
 }

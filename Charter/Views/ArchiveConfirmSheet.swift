@@ -13,6 +13,8 @@ struct ArchiveConfirmSheet: View {
     @State private var acknowledged = false
     @State private var error: String?
     @State private var working = false
+    /// 已有同类现行文件时“另存为一份”（默认替换）。
+    @State private var keepBoth = false
 
     private var targetCompany: Company? { owner.flatMap { $0.kind == .company ? store.company($0.id) : nil } }
 
@@ -84,6 +86,10 @@ struct ArchiveConfirmSheet: View {
                     }
                 }
 
+                if let current = currentVersion {
+                    versionNotice(current)
+                }
+
                 if let old = file.replaces {
                     FormGroup(title: "新旧版本") {
                         HStack(alignment: .top, spacing: 16) {
@@ -136,6 +142,29 @@ struct ArchiveConfirmSheet: View {
         .onChange(of: typeID) { acknowledged = false }
     }
 
+    /// 同一归属、同一类别已有的现行文件（比待归档文件新的不算：那种情况下待归档文件会直接进历史版本）。
+    private var currentVersion: Document? {
+        guard let owner, !typeID.isEmpty else { return nil }
+        let day = issued ?? store.today
+        return store.documents.first {
+            $0.owner == owner && $0.typeID == typeID && $0.supersededBy == nil && !(($0.issueDate ?? store.today) > day)
+        }
+    }
+
+    private func versionNotice(_ old: Document) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(ImportView.versionNotice(old, keepBoth: keepBoth))
+                .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Toggle("另存为一份", isOn: $keepBoth)
+                .toggleStyle(KitCheckboxStyle())
+                .font(TypeStyle.metadata)
+                .help("勾选后不替换现有版本，两份都保留为现行文件")
+        }
+        .padding(.horizontal, 4)
+    }
+
     private func versionCard(title: String, doc: Document) -> some View {
         versionCard(title: title, date: doc.issueDate, name: doc.originalFileName)
     }
@@ -163,7 +192,8 @@ struct ArchiveConfirmSheet: View {
         Task {
             defer { working = false }
             do {
-                _ = try await store.commitStaged(file.id, typeID: typeID, owner: owner, issued: issued, expiry: expiry, form: file.form, note: note)
+                _ = try await store.commitStaged(file.id, typeID: typeID, owner: owner, issued: issued, expiry: expiry, form: file.form, note: note,
+                                                 keepBoth: keepBoth && currentVersion != nil)
                 dismiss()
             } catch {
                 self.error = "归档未完成：\(error.localizedDescription)"

@@ -14,10 +14,22 @@ struct PacketView: View {
     @State private var completedEntries = 0
     @State private var totalEntries = 0
     @State private var editingPurpose: PurposeEditTarget?
+    @State private var reissue: ReissueTarget?
+    @State private var sendingNote = false
 
-    init(companyID: String?) {
+    init(companyID: String?, purposeID: String? = nil) {
         _companyID = State(initialValue: companyID)
+        _templateID = State(initialValue: purposeID ?? "")
         companyLocked = companyID != nil
+    }
+
+    /// 每家公司上一次生成文件包用的用途（打开时默认选它）。
+    static func lastPurpose(companyID: String) -> String? {
+        UserDefaults.standard.string(forKey: "charter.packet.lastPurpose.\(companyID)")
+    }
+
+    static func rememberPurpose(_ purposeID: String, companyID: String) {
+        UserDefaults.standard.set(purposeID, forKey: "charter.packet.lastPurpose.\(companyID)")
     }
 
     enum Phase: Equatable {
@@ -60,7 +72,14 @@ struct PacketView: View {
         .onExitCommand { if case .done = phase { dismiss() } }
         .onAppear {
             if companyID == nil { companyID = store.companies.first?.id }
-            if templateID.isEmpty || template == nil { templateID = store.library.packets.first?.id ?? "" }
+            if templateID.isEmpty || template == nil {
+                let last = companyID.flatMap { Self.lastPurpose(companyID: $0) }
+                if let last, store.library.packets.contains(where: { $0.id == last }) {
+                    templateID = last
+                } else {
+                    templateID = store.library.packets.first?.id ?? ""
+                }
+            }
             reload()
         }
         .onChange(of: companyID) { reload() }
@@ -74,6 +93,10 @@ struct PacketView: View {
                               templateID = store.library.packets.first?.id ?? ""
                               reload()
                           })
+        }
+        .reissueSheet($reissue)
+        .sheet(isPresented: $sendingNote) {
+            CopyTextSheet(title: "发送说明", subtitle: "可直接粘贴进邮件正文，列出包含的文件和尚缺的材料。", text: sendNote())
         }
         .confirmSheet("生成部分材料包？", isPresented: $confirmPartial,
                       message: "目录和文件名会标明“部分材料包”，并列出缺少的 \(s.missing.count) 项。",
@@ -306,15 +329,24 @@ struct PacketView: View {
         switch phase {
         case .choosing, .building:
             if !s.isComplete && !items.isEmpty {
-                let party = company.flatMap { store.party($0.defaultPartyID) }
-                Button("向负责方询问材料") {
-                    guard let c = company, let p = party else { return }
-                    Mailer.requestMissing(s.missing.map { "\($0.title(typeName: nil))：\(s.reason($0))" },
-                                          company: c, purpose: template?.name ?? "", party: p)
+                let gaps = requestableTypeIDs(s)
+                let waiting = gaps.filter { id in company.map { store.openRequest(owner: NodeRef(kind: .company, id: $0.id), typeID: id) != nil } ?? false }
+                let toAsk = gaps.filter { !waiting.contains($0) }
+                if gaps.isEmpty {
+                    EmptyView()
+                } else if toAsk.isEmpty {
+                    Label("缺的 \(gaps.count) 份已在等负责方补发", systemImage: "hourglass")
+                        .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                } else {
+                    // 一次合并成一封请求，记在“在等回件”里
+                    Button("请负责方补发缺少的 \(toAsk.count) 份") {
+                        guard let c = company else { return }
+                        reissue = ReissueTarget(owner: NodeRef(kind: .company, id: c.id), typeIDs: toAsk)
+                    }
+                    .buttonStyle(PillButtonStyle(.secondary))
+                    .disabled(phase != .choosing)
+                    .help("生成一封合并的补发请求，跟进日到了会在总览提醒")
                 }
-                .buttonStyle(PillButtonStyle(.secondary))
-                .disabled(party == nil || phase != .choosing)
-                .help(party == nil ? "这家公司还没有指定负责方，可在“编辑公司资料”里设置" : "起草邮件，列出缺少的 \(s.missing.count) 项")
             }
         case .failed:
             Button("返回清单") { phase = .choosing }
@@ -322,6 +354,9 @@ struct PacketView: View {
         case .done(let url, let complete, let missing):
             Button("在访达中显示") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                 .buttonStyle(PillButtonStyle(.secondary))
+            Button("复制发送说明") { sendingNote = true }
+                .buttonStyle(PillButtonStyle(.accent))
+                .help("一段可直接粘贴进邮件的文字：包含哪些文件、还缺什么、预计何时补齐")
             Button("用邮件发送") {
                 guard let service = NSSharingService(named: .composeEmail) else { return }
                 service.subject = url.deletingPathExtension().lastPathComponent
@@ -360,6 +395,57 @@ struct PacketView: View {
         }
     }
 
+    /// 缺件里可以请负责方补发的公司文件类型（个人护照和“未选入”的不算）。
+    private func requestableTypeIDs(_ s: PacketSummary) -> [String] {
+        guard let c = company else { return [] }
+        let archive = store.archive(of: c)
+        var out: [String] = []
+        for item in s.missing where !item.isPersonal && item.problem != nil {
+            let id = item.document?.typeID ?? archive.first { $0.type?.category == item.category }?.typeID
+            if let id, !out.contains(id) { out.append(id) }
+        }
+        return out
+    }
+
+    /// 完成后的发送说明：公司、用途、包含的文件（签发日）、尚缺的材料和预计补齐时间。
+    private func sendNote() -> String {
+        let s = summary
+        let name = company?.name ?? ""
+        var lines: [String] = []
+        lines.append("\(name) \(template?.name ?? "")文件包（\(store.today.long)）")
+        lines.append("")
+        lines.append("已包含（\(s.included.count) 份）：")
+        for (i, item) in s.included.enumerated() {
+            let title = item.title(typeName: item.document.flatMap { store.docType($0.typeID)?.name })
+            let issued = item.document?.issueDate.map { "，\($0.long)签发" } ?? ""
+            lines.append(String(format: "%02d", i + 1) + " " + title + issued)
+        }
+        if !s.missing.isEmpty {
+            lines.append("")
+            lines.append("尚缺（\(s.missing.count) 项）：")
+            for item in s.missing {
+                lines.append("— \(item.title(typeName: nil))：\(s.reason(item))")
+            }
+            if let c = company {
+                let owner = NodeRef(kind: .company, id: c.id)
+                let pending = requestableTypeIDs(s).compactMap { store.openRequest(owner: owner, typeID: $0) }
+                if let latest = pending.map(\.followUpOn).max() {
+                    var names: [String] = []
+                    for r in pending {
+                        let n = store.party(r.partyID)?.name ?? "负责方"
+                        if !names.contains(n) { names.append(n) }
+                    }
+                    lines.append("")
+                    lines.append("已请 \(names.joined(separator: "、")) 补发，预计 \(latest.short)前补齐，收到后另行发送。")
+                } else {
+                    lines.append("")
+                    lines.append("缺少的文件补齐后另行发送。")
+                }
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
     private func build() {
         guard let c = company, let t = template else { return }
         let s = summary
@@ -375,6 +461,7 @@ struct PacketView: View {
                         totalEntries = total
                     }
                 }
+                Self.rememberPurpose(t.id, companyID: c.id)
                 withAnimation(.snappy) { phase = .done(url, complete: s.isComplete, missing: s.missing.count) }
             } catch {
                 phase = .failed(error.localizedDescription)

@@ -18,6 +18,24 @@ struct Recognition: Hashable {
     var issueDate: Day?
     var expiryDate: Day?
     var usedModel = false
+    /// 识别依据（简短中文说明），按重要性排列。
+    var evidence: [String] = []
+    /// 把握程度 0–1。
+    var confidence: Double = 0
+    /// 类型来自文件内容中的关键词（而不只是文件名）。
+    var typeFromContent = false
+    /// 经过文字识别（OCR）。
+    var usedOCR = false
+
+    /// 需要人看一眼：把握不足，或公司、类型没认出来。
+    var needsReview: Bool { confidence < 0.8 || companyID == nil || typeID == nil }
+}
+
+/// 提取到的文字：按页分开，并记下是否用了 OCR。
+struct ExtractedText: Sendable {
+    var pages: [String]
+    var usedOCR: Bool
+    var text: String { pages.joined(separator: "\n") }
 }
 
 /// 识别时需要的上下文（从 AppStore 复制出来，便于在后台线程使用）。
@@ -33,13 +51,21 @@ struct RecognitionContext: Sendable {
 enum Recognizer {
 
     static func recognize(file url: URL, context: RecognitionContext) async -> Recognition {
-        let text = await Task.detached(priority: .userInitiated) { Recognizer.extractText(url) }.value
-        var r = heuristic(text: text, fileName: url.deletingPathExtension().lastPathComponent, context: context)
+        let extracted = await Task.detached(priority: .userInitiated) { Recognizer.extract(url) }.value
+        let text = extracted.text
+        var r = heuristic(pages: extracted.pages, fileName: url.deletingPathExtension().lastPathComponent, context: context)
         r.text = text
+        r.usedOCR = extracted.usedOCR
+        let heuristicType = r.typeID
+        var modelAgrees = false
+        var modelDisagrees = false
         #if canImport(FoundationModels)
         if let m = await modelGuess(text: text, fileName: url.lastPathComponent, context: context) {
             r.usedModel = true
-            if let t = m.typeID, context.types.contains(where: { $0.id == t }) { r.typeID = t }
+            if let t = m.typeID, context.types.contains(where: { $0.id == t }) {
+                if heuristicType == t { modelAgrees = true } else if heuristicType != nil { modelDisagrees = true }
+                r.typeID = t
+            }
             if let n = m.companyName, !n.isEmpty {
                 r.companyNameGuess = n
                 if let c = matchCompany(n, context: context) { r.companyID = c }
@@ -51,32 +77,58 @@ enum Recognizer {
             r.incorporationDate = m.incorporationDate ?? r.incorporationDate
         }
         #endif
+        if modelAgrees { r.evidence.append("Apple 智能判断一致") }
+        if modelDisagrees { r.evidence.append("Apple 智能的判断与关键词不同") }
+        if r.usedOCR { r.evidence.append("扫描件，经文字识别（OCR）") }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { r.evidence.append("没有读到文字") }
+        r.confidence = confidence(r, textLength: trimmed.count, modelAgrees: modelAgrees, modelDisagrees: modelDisagrees)
         return r
+    }
+
+    /// 由各项信号估算把握程度。
+    static func confidence(_ r: Recognition, textLength: Int, modelAgrees: Bool, modelDisagrees: Bool) -> Double {
+        var c = 0.35
+        if r.typeID != nil { c += r.typeFromContent ? 0.3 : 0.12 }
+        if r.companyID != nil { c += 0.25 }
+        if modelAgrees { c += 0.15 }
+        if modelDisagrees { c -= 0.1 }
+        if r.usedOCR { c -= 0.1 }
+        if textLength == 0 { c -= 0.2 } else if textLength < 80 { c -= 0.12 }
+        return min(max(c, 0), 1)
     }
 
     // MARK: 文字提取
 
-    static func extractText(_ url: URL) -> String {
+    /// 旧接口：只要文字。
+    static func extractText(_ url: URL) -> String { extract(url).text }
+
+    static func extract(_ url: URL) -> ExtractedText {
         let ext = url.pathExtension.lowercased()
         if ext == "pdf", let pdf = PDFDocument(url: url) {
-            var out = ""
-            let pages = min(pdf.pageCount, 4)
-            for i in 0..<pages {
-                guard let page = pdf.page(at: i) else { continue }
+            var pages: [String] = []
+            var usedOCR = false
+            let count = min(pdf.pageCount, 4)
+            for i in 0..<count {
+                guard let page = pdf.page(at: i) else { pages.append(""); continue }
                 let s = page.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if s.count > 40 {
-                    out += s + "\n"
+                    pages.append(s)
                 } else {
                     let img = page.thumbnail(of: NSSize(width: 1700, height: 2200), for: .mediaBox)
-                    if let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) { out += ocr(cg) + "\n" }
+                    if let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                        pages.append(ocr(cg)); usedOCR = true
+                    } else {
+                        pages.append(s)
+                    }
                 }
             }
-            return out
+            return ExtractedText(pages: pages, usedOCR: usedOCR)
         }
         if let img = NSImage(contentsOf: url), let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-            return ocr(cg)
+            return ExtractedText(pages: [ocr(cg)], usedOCR: true)
         }
-        return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        return ExtractedText(pages: [(try? String(contentsOf: url, encoding: .utf8)) ?? ""], usedOCR: false)
     }
 
     static func ocr(_ image: CGImage) -> String {
@@ -93,27 +145,70 @@ enum Recognizer {
     // MARK: 关键词规则（没有端侧模型时也能用）
 
     static func heuristic(text: String, fileName: String, context: RecognitionContext) -> Recognition {
+        heuristic(pages: [text], fileName: fileName, context: context)
+    }
+
+    static func heuristic(pages: [String], fileName: String, context: RecognitionContext) -> Recognition {
         var r = Recognition()
+        let text = pages.joined(separator: "\n")
+        let lowerPages = pages.map { $0.lowercased() }
+        let lowerName = fileName.lowercased()
         let hay = (fileName + "\n" + text).lowercased()
 
-        var best: (String, Int)?
+        // 类型：按关键词计分，并记下最能说明问题的关键词出现在哪一页
+        var best: (id: String, score: Int, keyword: String?, page: Int?)?
         for t in context.types {
             var score = 0
+            var bestKey: (String, Int?)?
             for k in t.localNames + t.hints + [t.name] where !k.isEmpty {
-                if hay.contains(k.lowercased()) { score += k.count > 6 ? 3 : 2 }
+                let lk = k.lowercased()
+                guard hay.contains(lk) else { continue }
+                score += k.count > 6 ? 3 : 2
+                let page = lowerPages.firstIndex { $0.contains(lk) }
+                if let cur = bestKey {
+                    // 优先：出现在正文里的、较长的关键词
+                    let curScore = (cur.1 != nil ? 1000 : 0) + cur.0.count
+                    let newScore = (page != nil ? 1000 : 0) + k.count
+                    if newScore > curScore { bestKey = (k, page) }
+                } else {
+                    bestKey = (k, page)
+                }
             }
-            if score > 0, score > (best?.1 ?? 0) { best = (t.id, score) }
+            if score > 0, score > (best?.score ?? 0) { best = (t.id, score, bestKey?.0, bestKey?.1) }
         }
-        r.typeID = best?.0
+        r.typeID = best?.id
+        if let best, let key = best.keyword {
+            if let page = best.page {
+                r.typeFromContent = true
+                let head = String(lowerPages[page].prefix(300))
+                let place = head.contains(key.lowercased()) ? "标题" : "正文"
+                r.evidence.append("第 \(page + 1) 页\(place)含“\(key)”")
+            } else if lowerName.contains(key.lowercased()) {
+                r.evidence.append("从文件名推断（含“\(key)”）")
+            }
+        } else {
+            r.evidence.append("未能判断文件类型")
+        }
 
-        var bestCompany: (String, Int)?
+        var bestCompany: (String, Int, String)?
         for c in context.companies {
             for n in c.names where n.count >= 3 {
-                if hay.contains(n.lowercased()), n.count > (bestCompany?.1 ?? 0) { bestCompany = (c.id, n.count) }
+                if hay.contains(n.lowercased()), n.count > (bestCompany?.1 ?? 0) { bestCompany = (c.id, n.count, n) }
             }
         }
         r.companyID = bestCompany?.0
-        if let cid = r.companyID { r.jurisdiction = context.companies.first { $0.id == cid }?.jurisdiction }
+        if let cid = r.companyID {
+            r.jurisdiction = context.companies.first { $0.id == cid }?.jurisdiction
+            if let n = bestCompany?.2 { r.evidence.append("公司名称“\(n)”") }
+        } else if let guess = companyNameGuess(in: text) {
+            r.companyNameGuess = guess
+            r.evidence.append("文件上的公司名称“\(guess)”，档案中还没有")
+        }
+
+        if let no = registrationNumber(in: text) {
+            r.registrationNumber = no
+            r.evidence.append("编号 \(no)")
+        }
 
         let dates = findDates(in: text)
         let issueWords = ["date of issue", "issued", "dated", "签发", "簽發", "发出日期", "發出日期", "発行", "証明する", "this day", "발급", "date:"]
@@ -122,6 +217,31 @@ enum Recognizer {
         r.expiryDate = dateNear(expiryWords, in: text, dates: dates)
         if r.expiryDate == r.issueDate { r.expiryDate = nil }
         return r
+    }
+
+    /// 文件上看起来像公司名称的第一行（含 Limited、Ltd、Inc、有限公司等）。
+    static func companyNameGuess(in text: String) -> String? {
+        let suffixes = ["limited", "ltd", "inc.", "incorporated", "corporation", "corp.", "pte", "llc", "有限公司", "株式会社", "주식회사"]
+        for raw in text.split(whereSeparator: \.isNewline).prefix(80) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard line.count >= 4, line.count <= 80 else { continue }
+            let l = line.lowercased()
+            guard suffixes.contains(where: { l.contains($0) }) else { continue }
+            // 跳过句子（如 “... is a limited company”）
+            if l.hasPrefix("this ") || l.hasPrefix("i ") || l.contains(" is ") || l.contains(" was ") { continue }
+            return line
+        }
+        return nil
+    }
+
+    /// 注册编号、证书编号等。
+    static func registrationNumber(in text: String) -> String? {
+        let pattern = #"(?i)(?:company\s+(?:no|number)|registration\s+(?:no|number)|certificate\s+(?:no|number)|incorporation\s+(?:no|number)|registered\s+no|编号|編號|登记号码|登記號碼|公司编号|公司編號)\.?\s*[:：.]?\s*([A-Z0-9][A-Z0-9-]{3,19})"#
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = text as NSString
+        guard let m = re.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)), m.numberOfRanges > 1 else { return nil }
+        let v = ns.substring(with: m.range(at: 1))
+        return v.contains(where: \.isNumber) ? v : nil
     }
 
     static func matchCompany(_ name: String, context: RecognitionContext) -> String? {

@@ -7,6 +7,10 @@ struct CompanyArchiveView: View {
     @Environment(Router.self) private var router
     var company: Company
     @State private var width: CGFloat = 800
+    /// 打开时这家公司还没有任何文件：显示“首次印象”拖放区，直到离开页面或清单齐全。
+    @State private var firstImpression = false
+    /// 第一印象下方“下一步”里已被关掉的项（按公司记在 UserDefaults）。
+    @State private var dismissedSteps: Set<String> = []
 
     var body: some View {
         let compact = width < 700
@@ -21,11 +25,17 @@ struct CompanyArchiveView: View {
                 Spacer()
                 Button("自定义清单") { router.sheet = .companyItems(company.id) }
                     .buttonStyle(PillButtonStyle(.quiet, size: .small))
-                    .help("只为这家公司增加或去掉条目；法域通用条目在“设置 → 档案条目”里改")
+                    .help("只为这家公司增加或去掉条目")
+                SettingsJumpLink(title: "编辑\(store.jurisdictionName(company.jurisdiction))通用清单", pane: .archiveItems) {
+                    UserDefaults.standard.set(company.jurisdiction, forKey: ArchiveItemsSettings.scopeKey)
+                }
             }
             Text("按法域起始清单管理；可按实际需要调整。未持有材料可标记保管方、权限受限或不适用。")
                 .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
+            if !hasDocuments || (firstImpression && counted.contains(where: { !$0.state.hasFile })) {
+                firstImpressionBlock(counted)
+            }
             VStack(spacing: 0) {
                 ArchiveHeaderRow(compact: compact)
                 ForEach(Array(main.enumerated()), id: \.element.id) { pair in
@@ -45,6 +55,225 @@ struct CompanyArchiveView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onAppear {
+            firstImpression = !hasDocuments
+            dismissedSteps = NextStepMemory.dismissed(company.id)
+        }
+        .onChange(of: company.id) { _, id in dismissedSteps = NextStepMemory.dismissed(id) }
+    }
+
+    private var hasDocuments: Bool {
+        let ref = NodeRef(kind: .company, id: company.id)
+        return store.documents.contains { $0.owner == ref }
+    }
+
+    /// 新公司的第一印象：大拖放区、清单预览、可以稍后再补的提示。
+    private func firstImpressionBlock(_ expected: [ArchiveItem]) -> some View {
+        let names = expected.map(\.name)
+        let listed = names.prefix(4).joined(separator: "、")
+        let jurisdiction = store.jurisdictionName(company.jurisdiction)
+        let need = names.isEmpty
+            ? "注册证书、章程、董事名册等文件都可以拖进来。"
+            : "\(jurisdiction)公司通常需要：\(listed)" + (names.count > 4 ? "等 \(names.count) 份。" : "。")
+        return VStack(alignment: .leading, spacing: Space.m12) {
+            ArchiveDropZone(title: "把 \(company.name) 的文件拖进来",
+                            subtitle: need + "Charter 会识别并逐项归位。",
+                            action: { router.chooseFiles(context: .company(company.id)) },
+                            onDrop: { urls in router.startImport(urls: urls, context: .company(company.id)) })
+            if !expected.isEmpty {
+                VStack(alignment: .leading, spacing: Space.s8) {
+                    Text("清单预览").font(TypeStyle.meta).foregroundStyle(Theme.muted)
+                    FlowChips(items: expected)
+                }
+                .padding(.top, Space.xs4)
+            }
+            nextSteps
+            Text("也可以稍后再补，档案清单会提醒缺什么。")
+                .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+        }
+        .padding(.bottom, Space.s8)
+    }
+
+    // MARK: 下一步（添加董事、设置负责方）
+
+    private var needsDirector: Bool {
+        !dismissedSteps.contains(NextStepMemory.director)
+            && !store.appointments.contains { $0.companyID == company.id && $0.isActive(on: store.today) }
+    }
+
+    private var needsParty: Bool {
+        !dismissedSteps.contains(NextStepMemory.party) && company.defaultPartyID == nil
+    }
+
+    @ViewBuilder
+    private var nextSteps: some View {
+        if needsDirector || needsParty {
+            VStack(alignment: .leading, spacing: Space.s8) {
+                Text("下一步").font(TypeStyle.meta).foregroundStyle(Theme.muted)
+                if needsDirector { directorStep }
+                if needsParty { partyStep }
+            }
+            .padding(.top, Space.xs4)
+        }
+    }
+
+    private var directorStep: some View {
+        NextStepRow(systemImage: "person.badge.plus", title: "添加董事",
+                    detail: "董事名册和在职证明会据此核对。",
+                    onDismiss: { dismissStep(NextStepMemory.director) }) {
+            Button("添加董事…") { router.sheet = .editCompany(company.id) }
+                .buttonStyle(PillButtonStyle(.secondary, size: .small))
+        }
+    }
+
+    private var partyChoices: [(String?, String)] {
+        let none: [(String?, String)] = [(nil, "选择负责方")]
+        return none + store.parties.map { p in (Optional(p.id), p.name) }
+    }
+
+    private var partyBinding: Binding<String?> {
+        Binding(get: { company.defaultPartyID }, set: { newValue in
+            guard let id = newValue, var c = store.company(company.id) else { return }
+            let name = store.party(id)?.name ?? "负责方"
+            c.defaultPartyID = id
+            store.performUndoable("设置负责方", toast: "已把 \(name) 设为负责方") { store.upsert(c) }
+        })
+    }
+
+    @ViewBuilder
+    private var partyStep: some View {
+        NextStepRow(systemImage: "person.2", title: "设置负责方",
+                    detail: "请补发和催办默认发给它。",
+                    onDismiss: { dismissStep(NextStepMemory.party) }) {
+            if store.parties.isEmpty {
+                Button("编辑公司资料…") { router.sheet = .editCompany(company.id) }
+                    .buttonStyle(PillButtonStyle(.secondary, size: .small))
+            } else {
+                SelectField(options: partyChoices, selection: partyBinding, placeholder: "选择负责方", minWidth: 180)
+            }
+        }
+    }
+
+    private func dismissStep(_ key: String) {
+        dismissedSteps.insert(key)
+        NextStepMemory.dismiss(key, companyID: company.id)
+    }
+}
+
+/// 新公司“下一步”被关掉的记录，按公司存。
+enum NextStepMemory {
+    static let director = "director"
+    static let party = "party"
+    private static func key(_ companyID: String) -> String { "charter.nextSteps.dismissed.\(companyID)" }
+
+    static func dismissed(_ companyID: String) -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: key(companyID)) ?? [])
+    }
+
+    static func dismiss(_ step: String, companyID: String) {
+        var set = dismissed(companyID)
+        set.insert(step)
+        UserDefaults.standard.set(Array(set).sorted(), forKey: key(companyID))
+    }
+}
+
+/// 一行可关掉的下一步：图标、标题与说明、操作、关闭按钮。
+private struct NextStepRow<Action: View>: View {
+    var systemImage: String
+    var title: String
+    var detail: String
+    var onDismiss: () -> Void
+    @ViewBuilder var action: Action
+
+    var body: some View {
+        HStack(spacing: Space.m12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.muted)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(TypeStyle.rowTitle).foregroundStyle(Theme.ink)
+                Text(detail).font(TypeStyle.metadata).foregroundStyle(Theme.muted).lineLimit(1)
+            }
+            Spacer(minLength: Space.s8)
+            action
+            Button(action: onDismiss) {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+            }
+            .buttonStyle(PillButtonStyle(.quiet, size: .small))
+            .help("不再提示")
+            .accessibilityLabel("不再提示\(title)")
+        }
+        .padding(.horizontal, Space.m12).padding(.vertical, Space.s8)
+        .background(Theme.band, in: .rect(cornerRadius: 12, style: .continuous))
+    }
+}
+
+/// 清单预览：未归档为虚线空心，归档后变为柠檬绿浅底。
+private struct FlowChips: View {
+    var items: [ArchiveItem]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ChipFlow(spacing: 6) {
+            ForEach(items) { item in
+                let done = item.state.hasFile
+                HStack(spacing: 4) {
+                    if done {
+                        Image(systemName: "checkmark").font(.system(size: 9, weight: .bold))
+                    }
+                    Text(item.name).lineLimit(1)
+                }
+                .font(.system(size: 12, weight: done ? .semibold : .regular))
+                .foregroundStyle(done ? Theme.limeText : Theme.muted)
+                .padding(.horizontal, 10).frame(height: 26)
+                .background(done ? Theme.limeSoft : Color.clear, in: .capsule)
+                .overlay {
+                    if !done {
+                        Capsule().strokeBorder(Theme.hairline, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(item.name)，\(done ? "已归档" : "未归档")")
+            }
+        }
+        .animation(Motion.resolved(Motion.standard, reduceMotion: reduceMotion), value: items.map(\.state.hasFile))
+    }
+}
+
+/// 简单的换行排布。
+private struct ChipFlow: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
+        for v in subviews {
+            let size = v.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > maxWidth {
+                y += rowHeight + spacing
+                x = 0; rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return CGSize(width: min(widest, maxWidth), height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for v in subviews {
+            let size = v.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + size.width > bounds.maxX {
+                y += rowHeight + spacing
+                x = bounds.minX; rowHeight = 0
+            }
+            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
 
@@ -92,6 +321,8 @@ struct ArchiveRow: View {
     @State private var editingNote = false
     @State private var noteText = ""
     @State private var hover = false
+    @State private var dropTargeted = false
+    @State private var reissue: ReissueTarget?
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -107,6 +338,19 @@ struct ArchiveRow: View {
                             Text("旧版 \(item.olderVersions)").font(.system(size: 10.5, weight: .medium)).foregroundStyle(Theme.muted)
                                 .padding(.horizontal, 6).frame(height: 18)
                                 .background(Theme.band, in: .capsule)
+                        }
+                        // 已经在等负责方补发：常驻一个安静的标签；有缺口时悬停给出“请补发”
+                        if let waiting = store.openRequest(owner: ownerRef, typeID: item.typeID) {
+                            Text("在等\(store.party(waiting.partyID)?.name ?? "负责方")补发")
+                                .font(.system(size: 10.5, weight: .medium)).foregroundStyle(Theme.muted)
+                                .lineLimit(1)
+                                .padding(.horizontal, 6).frame(height: 18)
+                                .background(Theme.band, in: .capsule)
+                                .help("已等 \(store.daysWaiting(waiting)) 天，\(waiting.followUpOn.short)跟进")
+                        } else if canRequest && (hover || focused) {
+                            Button("请补发") { requestReissue() }
+                                .buttonStyle(PillButtonStyle(.quiet, size: .small))
+                                .help("请负责方补发这一份")
                         }
                     }
                     let sub = [item.type?.localNames.first.flatMap { $0 == item.name ? nil : $0 }, noteShown(d).isEmpty ? nil : "备注：\(noteShown(d))"]
@@ -131,7 +375,7 @@ struct ArchiveRow: View {
 
             HStack(spacing: 6) {
                 Button(d == nil ? "归档" : "归档新版") { uploading = true }
-                    .buttonStyle(PillButtonStyle(d == nil ? .primary : .secondary, size: .small))
+                    .buttonStyle(PillButtonStyle(.secondary, size: .small))
                 ActionMenu(systemImage: "ellipsis", kind: .quiet, size: .small, entries: menuEntries(d))
                     .fixedSize()
                     .help("更多操作")
@@ -143,8 +387,25 @@ struct ArchiveRow: View {
         }
         .font(.system(size: 12.5))
         .padding(.horizontal, Space.l16).padding(.vertical, Space.s8).frame(minHeight: 56)
-        .background(hover || focused ? Theme.band.opacity(0.7) : .clear, in: .rect(cornerRadius: Radius.row))
+        .background(dropTargeted ? Theme.limeSoft : hover || focused ? Theme.band.opacity(0.7) : .clear, in: .rect(cornerRadius: Radius.row))
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: Radius.row)
+                    .strokeBorder(Theme.limeText.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                    .allowsHitTesting(false)
+            }
+        }
         .contentShape(.rect)
+        // 把一份文件拖到某一行：直接按这一条目归档；拖入多份时交给整家公司的导入
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let first = urls.first else { return false }
+            if urls.count > 1 {
+                router.startImport(urls: urls, context: .company(company.id))
+            } else {
+                stage(first, replacing: d)
+            }
+            return true
+        } isTargeted: { dropTargeted = $0 }
         // 用浅色底代替系统的方形焦点框
         .focusable()
         .focusEffectDisabled()
@@ -159,20 +420,15 @@ struct ArchiveRow: View {
             if let d { router.sheet = .document(d.id) } else { uploading = true }
         }
         .accessibilityAction(named: "归档材料") { uploading = true }
+        .accessibilityAction(named: "请负责方补发") { if canRequest { requestReissue() } }
         .onHover { hover = $0 }
         .onTapGesture(count: 2) { if let d { router.sheet = .document(d.id) } }
         .fileImporter(isPresented: $uploading, allowedContentTypes: [.pdf, .image]) { result in
             guard case .success(let url) = result else { return }
-            Task { @MainActor in
-                do {
-                    pending = try await store.stage(url: url, typeID: item.typeID, owner: NodeRef(kind: .company, id: company.id),
-                                                    replaces: d, form: d?.form ?? "扫描件")
-                } catch {
-                    store.errorMessage = "读取文件失败：\(error.localizedDescription)"
-                }
-            }
+            stage(url, replacing: d)
         }
         .sheet(item: $pending) { ArchiveConfirmSheet(file: $0) }
+        .reissueSheet($reissue)
         .popover(isPresented: $editingNote, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("\(item.name)：备注").font(TypeStyle.rowTitle)
@@ -200,6 +456,20 @@ struct ArchiveRow: View {
         let typeID = item.typeID
         let companyID = company.id
         var entries: [MenuEntry] = []
+        if canRequest {
+            if let waiting = store.openRequest(owner: ownerRef, typeID: typeID) {
+                entries.append(.item("已在等\(store.party(waiting.partyID)?.name ?? "负责方")补发", systemImage: "hourglass", disabled: true) {})
+            } else {
+                entries.append(.item("请负责方补发…", systemImage: "paperplane") {
+                    // 等菜单浮层收起后再弹出
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(250))
+                        requestReissue()
+                    }
+                })
+            }
+            entries.append(.divider)
+        }
         if let d {
             let docID = d.id
             entries.append(.item("查看与编辑（到期日、备注）…", systemImage: "doc.text.magnifyingglass") { router.sheet = .document(docID) })
@@ -225,8 +495,22 @@ struct ArchiveRow: View {
             })
         }
         entries.append(.divider)
-        entries.append(.item("本公司不再管理此条目", systemImage: "minus.circle") { store.removeItem(typeID, from: companyID) })
+        entries.append(.item("本公司不再管理此条目", systemImage: "minus.circle") { store.dropItem(typeID, from: companyID) })
         return entries
+    }
+
+    private var ownerRef: NodeRef { NodeRef(kind: .company, id: company.id) }
+
+    /// 缺失、过期、即将到期或需要更新的条目可以请负责方补发。
+    private var canRequest: Bool {
+        switch item.state {
+        case .missing, .expired, .expiring, .needsUpdate: true
+        default: false
+        }
+    }
+
+    private func requestReissue() {
+        reissue = ReissueTarget(owner: ownerRef, typeIDs: [item.typeID])
     }
 
     private var dateIsTheProblem: Bool {
@@ -239,6 +523,18 @@ struct ArchiveRow: View {
     private func expiryText(_ d: Document?) -> String {
         guard let d else { return "—" }
         return Freshness.expiryLabel(of: d, type: item.type)
+    }
+
+    /// 按这一条目暂存文件，弹出归档确认。
+    private func stage(_ url: URL, replacing d: Document?) {
+        Task { @MainActor in
+            do {
+                pending = try await store.stage(url: url, typeID: item.typeID, owner: NodeRef(kind: .company, id: company.id),
+                                                replaces: d, form: d?.form ?? "扫描件")
+            } catch {
+                store.errorMessage = "读取文件失败：\(error.localizedDescription)"
+            }
+        }
     }
 
     /// 有文件时显示文件备注，否则显示条目备注。
@@ -269,7 +565,7 @@ struct CompanyItemsSheet: View {
                     && ($0.jurisdictions.isEmpty || $0.jurisdictions.contains(c.jurisdiction))
             }
             SheetScaffold(title: "自定义清单",
-                          subtitle: "只调整 \(c.name) 的档案条目。\(jName)所有公司通用的条目在“设置 → 档案条目”里改。",
+                          subtitle: "只调整 \(c.name) 的档案条目。\(jName)所有公司通用的条目在“设置 → 档案清单”里改。",
                           width: 600, height: 760) {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 6) {
@@ -297,7 +593,7 @@ struct CompanyItemsSheet: View {
                             HStack {
                                 Text(store.docType(id)?.name ?? id).font(TypeStyle.body).foregroundStyle(Theme.ink)
                                 Spacer()
-                                Button("去掉") { store.removeItem(id, from: c.id) }
+                                Button("去掉") { store.dropItem(id, from: c.id) }
                                     .buttonStyle(PillButtonStyle(.quiet, size: .small))
                             }
                         }

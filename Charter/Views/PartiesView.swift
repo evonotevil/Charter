@@ -5,7 +5,6 @@ struct PartiesView: View {
     @Environment(Router.self) private var router
     @State private var selection: String?
     @State private var editing: Party?
-    @State private var deleting: Party?
     @State private var hovered: String?
     @State private var highlightID: String?
     @Namespace private var railNS
@@ -45,7 +44,7 @@ struct PartiesView: View {
 
                 Group {
                     if let p = store.party(selection) {
-                        PartyDetail(party: p, onEdit: { editing = p }, onDelete: { deleting = p }).id(p.id)
+                        PartyDetail(party: p, onEdit: { editing = p }, onDelete: { delete(p) }).id(p.id)
                     } else {
                         EmptyStateView(symbol: "person.2", title: "负责方",
                                        message: "负责方可以是外部代理、公司内部的部门，或某个人。事项和文件补发都会交给他们。",
@@ -68,20 +67,6 @@ struct PartiesView: View {
             if selection == nil { selection = store.parties.first?.id }
             highlightID = selection
         }
-        .confirmSheet(deleting.map { "删除负责方“\($0.name)”？" } ?? "删除负责方？",
-                      isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                      message: deleteMessage,
-                      details: deleting.map { store.references(toParty: $0.id).lines } ?? [],
-                      confirmTitle: "删除", destructive: true) {
-            if let p = deleting { delete(p) }
-        }
-    }
-
-    private var deleteMessage: String {
-        guard let p = deleting else { return "" }
-        return store.references(toParty: p.id).isEmpty
-            ? "没有公司或事项指向这个负责方。删除后无法撤销。"
-            : "以下引用会一并清除，相关公司和事项需要重新指定负责方。删除后无法撤销。"
     }
 
     private func delete(_ p: Party) {
@@ -90,9 +75,9 @@ struct PartiesView: View {
         if selection == p.id, let i = list.firstIndex(where: { $0.id == p.id }) {
             next = i + 1 < list.count ? list[i + 1].id : (i > 0 ? list[i - 1].id : nil)
         }
+        // 直接删除，提示条可撤销（引用会一起恢复）
         store.delete(party: p)
         if store.party(p.id) == nil { selection = next }
-        deleting = nil
     }
 
     private func row(_ p: Party) -> some View {
@@ -106,7 +91,7 @@ struct PartiesView: View {
                     Text(caption).font(.system(size: 12)).lineLimit(1).opacity(0.65)
                 }
                 Spacer(minLength: 0)
-                Button { deleting = p } label: {
+                Button { delete(p) } label: {
                     Image(systemName: "trash").font(.system(size: 12, weight: .medium))
                         .frame(width: 26, height: 26).contentShape(.rect)
                 }
@@ -136,11 +121,11 @@ struct PartiesView: View {
         .contextMenu {
             Button("编辑") { editing = p }
             Divider()
-            Button("删除…", role: .destructive) { deleting = p }
+            Button("删除", role: .destructive) { delete(p) }
         }
         .accessibilityLabel(p.name)
         .accessibilityAddTraits(on ? .isSelected : [])
-        .accessibilityAction(named: "删除") { deleting = p }
+        .accessibilityAction(named: "删除") { delete(p) }
     }
 }
 
@@ -170,9 +155,11 @@ struct PartyDetail: View {
                             .help("删除这个负责方，并清除指向它的引用")
                         Button("编辑", action: onEdit)
                             .buttonStyle(PillButtonStyle(.secondary))
-                        Button("下月事项") { router.openCalendar(.init(partyID: party.id, range: .nextMonth)) }
-                            .buttonStyle(PillButtonStyle(.primary))
-                            .help("在合规日历中查看\(party.name)下个月的全部事项，可一并交办或导出")
+                        if store.complianceOn {
+                            Button("下月事项") { router.openCalendar(.init(partyID: party.id, range: .nextMonth)) }
+                                .buttonStyle(PillButtonStyle(.primary))
+                                .help("在合规日历中查看\(party.name)下个月的全部事项，可一并交办或导出")
+                        }
                     }
                     .fixedSize()
                 }
@@ -208,6 +195,15 @@ struct PartyDetail: View {
                 .fixedSize(horizontal: false, vertical: true)
                 hairline
 
+                // 在等这个负责方补发的文件
+                if !store.openRequests(partyID: party.id).isEmpty {
+                    PartyRequestsList(partyID: party.id)
+                        .padding(Space.xl24)
+                    hairline
+                }
+
+                // 合规事项只在开启“合规申报与交办”时显示
+                if store.complianceOn {
                 VStack(alignment: .leading, spacing: Space.s8) {
                     ComplianceSectionHeader(title: "正在负责的事项", trailing: "在日历中查看全部") {
                         router.openCalendar(.init(partyID: party.id))
@@ -224,6 +220,8 @@ struct PartyDetail: View {
                 }
                 .padding(Space.xl24)
                 hairline
+
+                }
 
                 VStack(alignment: .leading, spacing: Space.s8) {
                     ComplianceSectionHeader(title: "负责的公司", trailing: "\(companies.count) 家")

@@ -15,7 +15,6 @@ struct CompanyEditor: View {
     @State private var aliasText = ""
     @State private var formerText = ""
     @State private var newPersonName = ""
-    @State private var confirmDelete = false
     @State private var askChange = false
     @State private var saveError: String?
     @State private var attempted = false
@@ -24,6 +23,15 @@ struct CompanyEditor: View {
     @State private var groupID: String?
     @State private var parentRef: NodeRef?
     @State private var parentPercent: Double = 100
+    @State private var parentNominee = false
+
+    /// 新建时可拖入注册证书：读出公司资料预填，保存后把这份文件归档到新公司。
+    @State private var seedURL: URL?
+    @State private var seedReading = false
+    @State private var seedNote: String?
+    @State private var seedFailed = false
+    @State private var seedTargeted = false
+    @State private var seedPicking = false
 
     init(company: Company?, groupID: String? = nil) {
         original = company
@@ -61,12 +69,53 @@ struct CompanyEditor: View {
     /// 同一法域里注册编号重复（只提示，不阻止保存）。
     private var registrationError: String? {
         let reg = draft.registrationNumber.trimmingCharacters(in: .whitespaces)
-        guard !reg.isEmpty else { return nil }
+        // 新建时由下方“可能已存在”提示负责
+        guard !reg.isEmpty, original != nil else { return nil }
         let dup = store.companies.first {
             $0.id != draft.id && $0.jurisdiction == draft.jurisdiction
                 && $0.registrationNumber.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(reg) == .orderedSame
         }
         return dup.map { "与 \($0.name) 的注册编号相同，请核对" }
+    }
+
+    /// 新建时：名称或注册编号与已有公司相同（忽略大小写和空格），可能是同一家公司。
+    private var possibleDuplicate: Company? {
+        guard original == nil else { return nil }
+        let name = Self.normalized(draft.name)
+        let reg = Self.normalized(draft.registrationNumber)
+        guard !name.isEmpty || !reg.isEmpty else { return nil }
+        return store.companies.first { c in
+            (!name.isEmpty && (Self.normalized(c.name) == name || c.aliases.contains { Self.normalized($0) == name }))
+                || (!reg.isEmpty && Self.normalized(c.registrationNumber) == reg)
+        }
+    }
+
+    private static func normalized(_ s: String) -> String {
+        s.lowercased().filter { !$0.isWhitespace }
+    }
+
+    private func duplicateNotice(_ c: Company) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Label("可能已存在：\(c.name)", systemImage: "exclamationmark.triangle.fill")
+                .font(TypeStyle.meta)
+                .foregroundStyle(Theme.amberText)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("打开这家公司") {
+                router.companyTab = 0
+                router.open(company: c.id)
+                dismiss()
+            }
+            .buttonStyle(PillButtonStyle(.quiet, size: .small))
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, Kit.labelWidth + 12)
+        .transition(.opacity)
+    }
+
+    /// 集团里排在最前的顶层公司（新公司默认挂在它下面）。
+    private func topCompany(of groupID: String?) -> NodeRef? {
+        guard let gid = groupID, let g = store.group(gid) else { return nil }
+        return g.tops.first { $0.kind == .company && store.company($0.id) != nil }
     }
 
     /// 跟踪起始日不能为空：清空时保留原值。
@@ -79,6 +128,11 @@ struct CompanyEditor: View {
                       subtitle: original?.name,
                       width: 720, height: 860) {
             VStack(alignment: .leading, spacing: 18) {
+                if original == nil {
+                    FormGroup(title: "从文件开始（可选）") {
+                        seedWell
+                    }
+                }
                 FormGroup(title: "基本信息") {
                     FieldRow(label: "注册名", error: nameError) {
                         TextField("注册名（原文）", text: $draft.name).textFieldStyle(KitFieldStyle())
@@ -98,6 +152,9 @@ struct CompanyEditor: View {
                     }
                     FieldRow(label: "注册编号", error: registrationError) {
                         TextField("可选", text: $draft.registrationNumber).textFieldStyle(KitFieldStyle())
+                    }
+                    if let dup = possibleDuplicate {
+                        duplicateNotice(dup)
                     }
                     FieldRow(label: "成立日期") {
                         DateField(day: $draft.incorporationDate)
@@ -131,18 +188,22 @@ struct CompanyEditor: View {
                     }
                     if original == nil, let gid = groupID, let g = store.group(gid) {
                         let parents: [(NodeRef?, String)] = parentChoices(g)
-                        FieldRow(label: "上级（股东）") {
+                        FieldRow(label: "上级公司", hint: "默认挂在集团顶层公司下面，保存后出现在股权结构图里。") {
                             SelectField(options: parents, selection: $parentRef, minWidth: 220)
                         }
                         if parentRef != nil {
-                            FieldRow(label: "持股比例") {
+                            FieldRow(label: "持股比例",
+                                     error: parentPercent <= 0 || parentPercent > 100 ? "持股比例需大于 0、不超过 100%" : nil) {
                                 HStack(spacing: 6) {
                                     TextField("", value: $parentPercent, format: .number)
                                         .multilineTextAlignment(.trailing)
-                                        .textFieldStyle(KitFieldStyle())
+                                        .textFieldStyle(KitFieldStyle(invalid: parentPercent <= 0 || parentPercent > 100))
                                         .frame(width: 90)
                                     Text("%").font(TypeStyle.body).foregroundStyle(Theme.muted)
                                 }
+                            }
+                            FieldRow(label: "代持") {
+                                Toggle("上级公司代他人持有", isOn: $parentNominee).toggleStyle(KitCheckboxStyle())
                             }
                         }
                     }
@@ -204,7 +265,12 @@ struct CompanyEditor: View {
             }
         } leading: {
             if original != nil {
-                Button("删除公司") { confirmDelete = true }
+                Button("删除公司") {
+                    // 直接删除，提示条和 ⌘Z 可撤销
+                    if let c = original { store.delete(company: c) }
+                    router.selectedCompanyID = nil
+                    dismiss()
+                }
                     .buttonStyle(PillButtonStyle(.secondary))
             }
             if let saveError {
@@ -233,19 +299,16 @@ struct CompanyEditor: View {
             formerText = draft.formerNames.joined(separator: "，")
             holdings = store.holdings.filter { $0.companyID == draft.id }
             appointments = store.appointments.filter { $0.companyID == draft.id }
+            if original == nil, parentRef == nil { parentRef = topCompany(of: groupID) }
         }
+        .onChange(of: groupID) { _, g in
+            if original == nil { parentRef = topCompany(of: g) }
+        }
+        .animation(.snappy, value: possibleDuplicate?.id)
         .sheet(isPresented: $askChange) {
             RecordChangePrompt(changes: appointmentDiff + holdingDiff,
                                onRecord: { save(asChange: true) },
                                onCorrect: { save(asChange: false) })
-        }
-        .confirmSheet("删除 \(draft.name)？", isPresented: $confirmDelete,
-                      message: "文件夹里的文件不会动。",
-                      details: ["公司记录会被删除", "这家公司的持股和任职记录会一并删除"],
-                      confirmTitle: "删除", destructive: true) {
-            if let c = original { store.delete(company: c) }
-            router.selectedCompanyID = nil
-            dismiss()
         }
     }
 
@@ -347,7 +410,7 @@ struct CompanyEditor: View {
         candidate.append(contentsOf: holdings)
         if original == nil, let parentRef {
             candidate.append(Holding(holder: parentRef, companyID: draft.id, percent: parentPercent,
-                                     from: draft.incorporationDate))
+                                     isNominee: parentNominee, from: draft.incorporationDate))
         }
         return candidate
     }
@@ -386,6 +449,118 @@ struct CompanyEditor: View {
             router.selectedCompanyID = draft.id
         }
         dismiss()
+        if original == nil, let url = seedURL {
+            // 等这张表收起后，再把拖入的那份文件归档到新公司
+            let id = draft.id
+            let r = router
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(400))
+                r.startImport(urls: [url], context: .company(id))
+            }
+        }
+    }
+
+    // MARK: 从文件开始
+
+    private var seedWell: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Image(systemName: seedURL == nil ? "arrow.down.doc" : "doc.text")
+                    .font(.system(size: 18, weight: .semibold))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(seedURL?.lastPathComponent ?? "拖入注册证书，自动填写名称、编号和成立日期")
+                        .font(TypeStyle.rowTitle)
+                        .lineLimit(1).truncationMode(.middle)
+                    Text(seedURL == nil ? "也可以点这里选择文件。保存后这份文件会归档到新公司。" : "保存后这份文件会归档到新公司。")
+                        .font(TypeStyle.metadata).opacity(0.75)
+                }
+                Spacer(minLength: 8)
+                if seedReading {
+                    ProgressView().controlSize(.small)
+                } else if seedURL != nil {
+                    Button("移除") { clearSeed() }
+                        .buttonStyle(PillButtonStyle(.quiet, size: .small))
+                }
+            }
+            .foregroundStyle(Theme.onLime)
+            .padding(.horizontal, 18).padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.lime.opacity(seedTargeted ? 1 : 0.85), in: .rect(cornerRadius: 16, style: .continuous))
+            .overlay {
+                if seedTargeted {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Theme.onLime.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                        .padding(5)
+                }
+            }
+            .contentShape(.rect(cornerRadius: 16))
+            .onTapGesture { if !seedReading { seedPicking = true } }
+            .dropDestination(for: URL.self) { urls, _ in
+                guard let url = urls.first, !seedReading else { return false }
+                readSeed(url)
+                return true
+            } isTargeted: { seedTargeted = $0 }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { seedPicking = true }
+            .help("拖入注册证书，或点按选择文件")
+
+            if seedFailed {
+                Text("未能读出公司信息，请手动填写。")
+                    .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+            } else if let seedNote {
+                Text(seedNote)
+                    .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .fileImporter(isPresented: $seedPicking, allowedContentTypes: [.pdf, .image]) { result in
+            if case .success(let url) = result { readSeed(url) }
+        }
+    }
+
+    private func clearSeed() {
+        seedURL = nil
+        seedNote = nil
+        seedFailed = false
+    }
+
+    /// 识别在后台进行；读到的名称、法域、编号、成立日期填进表单。
+    private func readSeed(_ url: URL) {
+        seedURL = url
+        seedReading = true
+        seedFailed = false
+        seedNote = nil
+        let context = store.recognitionContext
+        Task { @MainActor in
+            let access = url.startAccessingSecurityScopedResource()
+            let r = await Recognizer.recognize(file: url, context: context)
+            if access { url.stopAccessingSecurityScopedResource() }
+            var filled: [String] = []
+            if let name = r.companyNameGuess?.trimmingCharacters(in: .whitespaces), name.count > 2 {
+                draft.name = name; filled.append("名称")
+            }
+            if let j = r.jurisdiction, store.jurisdiction(j) != nil {
+                draft.jurisdiction = j
+                let forms = store.jurisdiction(j)?.entityForms ?? []
+                if !draft.entityForm.isEmpty && !forms.contains(draft.entityForm) { draft.entityForm = "" }
+                filled.append("法域")
+            }
+            if let n = r.registrationNumber, !n.isEmpty {
+                draft.registrationNumber = n; filled.append("注册编号")
+            }
+            if let d = r.incorporationDate {
+                draft.incorporationDate = d; filled.append("成立日期")
+            }
+            seedReading = false
+            if filled.isEmpty {
+                seedFailed = true
+            } else {
+                let basis = r.evidence.isEmpty ? "" : "依据：" + r.evidence.joined(separator: "，") + "。"
+                seedNote = "已填写" + filled.joined(separator: "、") + "，请核对。" + basis
+            }
+        }
     }
 }
 

@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// 设置 → 档案条目：按法域维护每家公司要管理的条目。新建公司时自动套用，之后可逐家调整。
+/// 设置 → 档案清单：按法域维护每家公司要管理的条目。新建公司时自动套用，之后可逐家调整。
 /// 布局：左栏为法域选择和条目清单，右栏为所选条目的编辑表单。
 struct ArchiveItemsSettings: View {
     @Environment(AppStore.self) private var store
     static let personScope = "__person"
+    static let scopeKey = "settingsArchiveScope"
     @State private var code: String?
     @State private var selectedType: String?
     @State private var addingJurisdiction = false
@@ -18,17 +19,30 @@ struct ArchiveItemsSettings: View {
 
     var body: some View {
         let pendingDelete = deletingType
-        HStack(alignment: .top, spacing: 20) {
-            listPane
-                .frame(width: 340)
-                .frame(maxHeight: .infinity, alignment: .top)
-            typeEditor
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        Group {
+            if code == nil {
+                overview
+            } else {
+                HStack(alignment: .top, spacing: 20) {
+                    listPane
+                        .frame(width: 340)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                    typeEditor
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+                .padding(24)
+                .transition(.opacity)
+            }
         }
-        .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.canvas)
-        .onAppear { if code == nil { code = store.library.jurisdictions.first?.code } }
+        .onAppear {
+            // 从公司页“编辑通用清单”跳来时，直接停在那家公司的法域
+            if let wanted = UserDefaults.standard.string(forKey: Self.scopeKey) {
+                UserDefaults.standard.removeObject(forKey: Self.scopeKey)
+                if store.library.jurisdictions.contains(where: { $0.code == wanted }) { code = wanted }
+            }
+        }
         .onChange(of: code) { selectedType = nil }
         .sheet(isPresented: $addingJurisdiction) { jurisdictionForm }
         .sheet(isPresented: Binding(get: { creatingIn != nil }, set: { if !$0 { creatingIn = nil } })) {
@@ -51,16 +65,12 @@ struct ArchiveItemsSettings: View {
 
     private var listPane: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SettingsPaneHeader(title: "档案条目",
-                               detail: "每个法域的公司默认管理哪些文件。新建公司时自动套用。")
-            HStack(spacing: 8) {
-                SelectField(options: scopeOptions,
-                            selection: Binding(get: { code ?? "" }, set: { code = $0 }),
-                            placeholder: "选择法域", minWidth: 200)
-                Spacer(minLength: 0)
-                Button { jAttempted = false; addingJurisdiction = true } label: { Label("新建法域", systemImage: "plus") }
-                    .buttonStyle(PillButtonStyle(.quiet, size: .small))
+            Button { withAnimation(Motion.standard) { code = nil } } label: {
+                Label("全部法域", systemImage: "chevron.left").font(TypeStyle.metadata)
             }
+            .buttonStyle(.plain).foregroundStyle(Theme.muted)
+            SettingsPaneHeader(title: scopeTitle,
+                               detail: code == Self.personScope ? "挂在人名下的文件。" : "这个法域的公司默认管理哪些文件。新建公司时自动套用。")
             if let code {
                 itemList(code)
             } else {
@@ -69,6 +79,71 @@ struct ArchiveItemsSettings: View {
                     .surfaceCard(padding: 18, radius: 18)
             }
         }
+    }
+
+    private var scopeTitle: String {
+        guard let code else { return "档案清单" }
+        return code == Self.personScope ? "人员文件" : store.jurisdictionName(code)
+    }
+
+    // MARK: 首页：法域卡片
+
+    private var overview: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                SettingsPaneHeader(title: "档案清单",
+                                   detail: "每个法域的公司默认管理哪些文件。新建公司时自动套用，之后可以逐家调整。") {
+                    Button { jAttempted = false; addingJurisdiction = true } label: { Label("新建法域", systemImage: "plus") }
+                        .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14)], spacing: 14) {
+                    ForEach(store.library.jurisdictions, id: \.code) { j in
+                        let n = store.companies.filter { $0.jurisdiction == j.code }.count
+                        card(title: j.name, code: j.code,
+                             count: store.templateItems(for: j.code).count,
+                             note: n > 0 ? "\(n) 家公司在用" : "暂无公司",
+                             customized: store.library.archiveItems?[j.code] != nil) { open(j.code) }
+                    }
+                    card(title: "人员文件", code: nil, count: personTypes.count,
+                         note: "\(store.people.count) 位人员", customized: false) { open(Self.personScope) }
+                }
+                Text("内置条目是管理用的起始清单，不代表已核验的法定要求。")
+                    .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+            }
+            .padding(28)
+            .frame(maxWidth: 820, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .transition(.opacity)
+    }
+
+    private func open(_ c: String) { withAnimation(Motion.standard) { code = c } }
+
+    private func card(title: String, code: String?, count: Int, note: String, customized: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(title).font(.system(size: 17, weight: .bold)).foregroundStyle(Theme.ink).lineLimit(1)
+                    Spacer(minLength: 6)
+                    if let code { Text(code).font(TypeStyle.metadata).foregroundStyle(Theme.muted) }
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("\(count)").font(.system(size: 30, weight: .heavy)).monospacedDigit().foregroundStyle(Theme.ink)
+                    Text("个条目").font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                }
+                HStack(spacing: 6) {
+                    Text(note).font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                    if customized { Pill(text: "已调整", kind: .neutral) }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.muted)
+                }
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
     }
 
     private var personTypes: [DocumentType] { store.library.documentTypes.filter { $0.owner == .person } }

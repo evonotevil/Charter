@@ -5,6 +5,9 @@ enum SampleData {
 
     @MainActor
     static func install(into s: AppStore) {
+        // 会覆盖现有数据：有数据时先存一份本地快照
+        if !s.companies.isEmpty || !s.documents.isEmpty || !s.people.isEmpty { s.snapshotBeforeChange("载入示例数据前") }
+        s.clearUndoHistory()
         let today = s.today
         let since = today.adding(days: -20)
 
@@ -82,6 +85,8 @@ enum SampleData {
 
         s.records = []
         s.documents = []
+        s.requests = []
+        s.saveRequests()
         s.saveParties(); s.savePeople(); s.saveHoldings(); s.saveAppointments(); s.saveChanges(); s.saveCompanies()
         s.corporateGroups = AppStore.legacyGroups(companies: s.companies, holdings: s.holdings, today: today)
         s.saveGroups()

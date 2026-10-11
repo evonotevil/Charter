@@ -794,6 +794,8 @@ struct CopyTextSheet: View {
     var title: String
     var subtitle: String?
     @State var text: String
+    /// 复制之后（例如催办后顺延跟进日）。
+    var onCopy: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
 
@@ -816,6 +818,7 @@ struct CopyTextSheet: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
                 copied = true
+                onCopy?()
                 Task { try? await Task.sleep(for: .milliseconds(600)); dismiss() }
             }
             .buttonStyle(PillButtonStyle(.primary)).keyboardShortcut(.defaultAction)

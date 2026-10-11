@@ -9,7 +9,6 @@ struct DocumentSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State var document: Document
     @State private var replacing = false
-    @State private var confirmDelete = false
     @State private var reissuing = false
     @State private var pending: StagedFile?
     @State private var saveError: String?
@@ -119,8 +118,20 @@ struct DocumentSheet: View {
                 .item("归档新版…", systemImage: "square.and.arrow.up") { replacing = true },
                 .item("请补发…", systemImage: "text.bubble") { reissuing = true },
                 .divider,
-                .item("从 Charter 移除记录", systemImage: "trash", destructive: true) { confirmDelete = true }
+                .item("从 Charter 移除记录", systemImage: "trash", destructive: true) {
+                    store.delete(document: document)
+                    dismiss()
+                }
             ], arrowEdge: .top)
+            if needsReissue {
+                if let waiting = store.openRequest(owner: document.owner, typeID: document.typeID) {
+                    Text("已在等\(store.party(waiting.partyID)?.name ?? "负责方")补发")
+                        .font(TypeStyle.metadata).foregroundStyle(Theme.muted).lineLimit(1)
+                } else {
+                    Button("请负责方补发") { reissuing = true }
+                        .buttonStyle(PillButtonStyle(.secondary))
+                }
+            }
             if let saveError {
                 Label(saveError, systemImage: "exclamationmark.triangle.fill")
                     .font(TypeStyle.metadata)
@@ -151,20 +162,35 @@ struct DocumentSheet: View {
         }
         .sheet(item: $pending) { ArchiveConfirmSheet(file: $0) }
         .sheet(isPresented: $reissuing) {
-            CopyTextSheet(title: "请补发：\(typeName)", text: store.reissueText(for: document))
+            ReissueRequestSheet(owner: document.owner, typeIDs: [document.typeID])
         }
-        .confirmSheet("从 Charter 移除这份文件的记录？", isPresented: $confirmDelete,
-                      message: "只移除 Charter 里的记录，文件夹里的 PDF 不会被删除。",
-                      confirmTitle: "移除", destructive: true) {
-            store.delete(document: document)
-            dismiss()
+    }
+
+    /// 过期、即将到期或需要更新时，底栏直接给出“请负责方补发”。
+    private var needsReissue: Bool {
+        switch store.freshness(document) {
+        case .expired, .expiring, .needsUpdate: true
+        default: false
         }
     }
 
     private func save() {
         do {
-            try store.updateDocument(document)
-            store.showToast("文件信息已保存")
+            let original = store.documents.first { $0.id == document.id }
+            let edited = document
+            let appStore = store
+            let undoID = try appStore.undoable("修改文件信息") { try appStore.updateDocument(edited) }
+            var text = "文件信息已保存"
+            if let original, original.owner != edited.owner {
+                text = "已改归属到 \(appStore.name(of: edited.owner))"
+            } else if let original, original.typeID != edited.typeID {
+                text = "已改为“\(appStore.docType(edited.typeID)?.name ?? "文件")”"
+            }
+            if let undoID {
+                appStore.showToast(text) { [weak appStore] in appStore?.undo(undoID) }
+            } else {
+                appStore.showToast(text)
+            }
             dismiss()
         } catch {
             saveError = error.localizedDescription
