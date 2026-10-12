@@ -235,6 +235,27 @@ struct AppRegression {
         precondition(s.holdings == holdingSnapshot && s.errorMessage?.contains("超过 100%") == true)
         s.holdings = oldHoldings
 
+        // Removing a manual membership preserves the company, other groups and holdings.
+        let originalGroups = s.corporateGroups
+        let manualA = CorporateGroup(name: "Manual A", tops: [], extraCompanyIDs: [c.id])
+        let manualB = CorporateGroup(name: "Manual B", tops: [], extraCompanyIDs: [c.id])
+        let derivedGroup = CorporateGroup(name: "Derived", tops: [owner], extraCompanyIDs: [c.id])
+        s.corporateGroups = [manualA, manualB, derivedGroup]
+        s.saveGroups()
+        let groupCompanies = s.companies
+        let groupHoldings = s.holdings
+        precondition(s.canRemove(companyID: c.id, from: manualA.id))
+        precondition(s.remove(companyID: c.id, from: manualA.id))
+        precondition(!s.companyIDs(in: s.group(manualA.id)!).contains(c.id))
+        precondition(s.companyIDs(in: s.group(manualB.id)!).contains(c.id))
+        precondition(!s.remove(companyID: c.id, from: manualA.id))
+        precondition(!s.remove(companyID: c.id, from: derivedGroup.id))
+        precondition(s.companyIDs(in: s.group(derivedGroup.id)!).contains(c.id))
+        precondition(s.companies == groupCompanies && s.holdings == groupHoldings)
+        try check(try folder.load("groups", [CorporateGroup].self) == s.corporateGroups)
+        s.corporateGroups = originalGroups
+        s.saveGroups()
+
         // A corrupt collection keeps the last complete state and blocks writes.
         let savedCompanies = s.companies
         try Data("broken-json".utf8).write(to: folder.url("companies"))

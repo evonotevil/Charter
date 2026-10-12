@@ -155,6 +155,8 @@ final class Router {
         case newCompanyInGroup(String)
         case newGroup
         case editGroup(String)
+        /// 集中查看和批量调整某个集团的成员。
+        case groupMembers(String)
         case addRelation(companyID: String, upward: Bool)
         case companyItems(String)
         case quickSearch
@@ -180,6 +182,7 @@ final class Router {
             case .newCompanyInGroup(let g): "new-in-\(g)"
             case .newGroup: "new-group"
             case .editGroup(let g): "group-\(g)"
+            case .groupMembers(let g): "members-\(g)"
             case .addRelation(let c, let up): "rel-\(c)-\(up)"
             case .companyItems(let c): "items-\(c)"
             case .quickSearch: "quick-search"
@@ -263,6 +266,10 @@ final class Router {
     var filesHorizon = 30
     /// 公司页的视图。
     var companiesMode: CompaniesMode = .list
+    /// 股权结构：打开“核对股东”时，节点按股东完整度标色。
+    var structureCheck = false
+    /// 股权结构：向上穿透的起点公司；nil 表示按集团向下展开。
+    var structureUpward: String?
     /// 全页显示合规日历（盖在当前页面上，“返回”关闭；切换侧栏页面时也关闭）。
     var showCalendar = false
     var sheet: Sheet?
@@ -331,8 +338,10 @@ final class Router {
     }
 
     /// 公司页的股权结构视图（可指定集团）。
-    func openStructure(group: String? = nil) {
+    func openStructure(group: String? = nil, check: Bool = false, upwardFrom company: String? = nil) {
         if let group { groupFilter = group }
+        structureUpward = company
+        if check { structureCheck = true }
         companiesMode = .structure
         showCalendar = false
         section = .companies

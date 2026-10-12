@@ -300,6 +300,9 @@ struct ArchiveItemsSettings: View {
                             .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
                     }
                     .padding(.top, -10)
+                    if let code, code != Self.personScope, t.owner == .company {
+                        entityFormPicker(i, code: code)
+                    }
                     DocumentTypeForm(type: Binding(get: { store.library.documentTypes[i] }, set: { store.library.documentTypes[i] = $0; store.saveLibrary() }),
                                      onCanvas: true)
                 }
@@ -309,6 +312,42 @@ struct ArchiveItemsSettings: View {
         } else {
             EmptyStateView(symbol: "list.bullet.rectangle", title: "选择条目以查看和编辑", message: "可在这里修改名称、当地名称、识别线索和有效期。")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// 适用的实体类型：不选表示该法域所有类型都需要；选了之后，其他类型的公司不会出现这个条目。
+    @ViewBuilder
+    private func entityFormPicker(_ i: Int, code: String) -> some View {
+        let forms = store.jurisdiction(code)?.entityForms ?? []
+        let chosen = Set(store.library.documentTypes[i].entityForms ?? [])
+        if !forms.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("适用的实体类型").font(TypeStyle.rowTitle).foregroundStyle(Theme.ink)
+                Text(chosen.isEmpty ? "所有\(store.jurisdictionName(code))公司都需要。选择类型后，只有这些类型的公司会出现这个条目。"
+                                    : "只有所选类型的公司会出现这个条目；其他类型的公司自动隐藏，不算缺件。")
+                    .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                SettingsChipFlow(spacing: 6) {
+                    ForEach(forms, id: \.self) { f in
+                        let on = chosen.contains(f)
+                        Button {
+                            var set = chosen
+                            if on { set.remove(f) } else { set.insert(f) }
+                            store.library.documentTypes[i].entityForms = set.isEmpty ? nil : forms.filter { set.contains($0) }
+                            store.saveLibrary()
+                        } label: {
+                            HStack(spacing: 4) {
+                                if on { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)) }
+                                Text(f).font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundStyle(on ? Theme.limeText : Theme.ink)
+                            .padding(.horizontal, 10).frame(height: 26)
+                            .background(on ? Theme.limeSoft : Theme.band, in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
         }
     }
 

@@ -51,9 +51,17 @@ extension AppStore {
     /// 这家公司要管理的条目：法域模板 − 去掉的 + 单独加的。
     func itemIDs(for c: Company) -> [String] {
         let a = c.archive ?? CompanyArchive()
-        var ids = templateItems(for: c.jurisdiction).filter { !a.removed.contains($0) }
+        // 法域模板里只保留适用于这家公司实体类型的条目；手动加入的不受限制
+        var ids = templateItems(for: c.jurisdiction).filter {
+            !a.removed.contains($0) && (docType($0).map { itemApplies($0, to: c) } ?? true)
+        }
         for id in a.added where !ids.contains(id) && docType(id) != nil { ids.append(id) }
         return ids
+    }
+
+    /// 因实体类型不适用而没有出现在清单里的法域条目。
+    func hiddenByEntityForm(_ c: Company) -> [DocumentType] {
+        templateItems(for: c.jurisdiction).compactMap(docType).filter { !itemApplies($0, to: c) }
     }
 
     /// 档案清单：每个条目一行；已有文件但不在条目里的，附在最后，不会被藏起来。
@@ -101,6 +109,8 @@ extension AppStore {
 
     /// 档案完整度：已归档 / 应有（不适用的不算）。
     func archiveProgress(of c: Company) -> (have: Int, total: Int) {
+        // 设立中的公司成立后才开始统计
+        if c.isForming { return (0, 0) }
         let items = archive(of: c).filter { $0.state != .marked(.notApplicable) }
         return (items.filter { $0.state.hasFile }.count, items.count)
     }

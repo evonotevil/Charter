@@ -125,6 +125,8 @@ struct RootView: View {
             GroupEditor(group: nil)
         case .editGroup(let id):
             GroupEditor(group: store.group(id))
+        case .groupMembers(let id):
+            GroupMembersSheet(groupID: id)
         case .addRelation(let c, let up):
             RelationSheet(companyID: c, upward: up)
         case .companyItems(let c):
@@ -361,6 +363,10 @@ struct GroupSwitcher: View {
                 PopoverRow(title: "编辑当前集团…", systemImage: "pencil") {
                     open = false
                     router.sheet = .editGroup(g.id)
+                }
+                PopoverRow(title: "管理成员…", systemImage: "checklist") {
+                    open = false
+                    router.sheet = .groupMembers(g.id)
                 }
             }
         }

@@ -161,13 +161,13 @@ struct ChangeWizard: View {
 
     private var personChoices: [(String, String)] {
         let none: [(String, String)] = [("", "新建人员…")]
-        return none + store.people.map { p in (p.id, p.name) }
+        return none + store.people.map { p in (p.id, store.personLabel(p)) }
     }
 
     @ViewBuilder private var directorFields: some View {
         FormGroup(title: "现任：勾选离任人员") {
             if currentAppointments.isEmpty {
-                Text("还没有记录现任董事。").font(TypeStyle.body).foregroundStyle(Theme.muted)
+                Text("还没有记录现任\(store.officerNoun(for: companyID))。").font(TypeStyle.body).foregroundStyle(Theme.muted)
             }
             ForEach(currentAppointments) { a in
                 Toggle(isOn: Binding(get: { plan.endingAppointmentIDs.contains(a.id) },
@@ -196,12 +196,25 @@ struct ChangeWizard: View {
                 SelectField(options: personChoices, selection: $newPersonID, minWidth: 220)
             }
             if newPersonID.isEmpty {
+                let dupes = store.possibleDuplicates(of: newPersonName)
                 FieldRow(label: "姓名") {
                     TextField("新人员的姓名", text: $newPersonName).textFieldStyle(KitFieldStyle())
                 }
+                if let d = dupes.first {
+                    HStack(spacing: 8) {
+                        Text("可能是已有的 \(store.personLabel(d))").font(TypeStyle.metadata).foregroundStyle(Theme.amberText)
+                        Button("使用此人") { newPersonID = d.id; newPersonName = "" }
+                            .buttonStyle(PillButtonStyle(.quiet, size: .small))
+                    }
+                }
             }
             FieldRow(label: "职位") {
-                TextField("例如：董事", text: $newTitle).textFieldStyle(KitFieldStyle())
+                HStack(spacing: 6) {
+                    TextField(store.roleSuggestions(for: companyID).first ?? "职位", text: $newTitle).textFieldStyle(KitFieldStyle())
+                    ActionMenu(title: "常用", kind: .quiet, size: .small,
+                               entries: store.roleSuggestions(for: companyID).map { r -> MenuEntry in .item(r, systemImage: nil) { newTitle = r } })
+                        .fixedSize()
+                }
             }
             Button("加入新任名单") { addAppointment() }
                 .buttonStyle(PillButtonStyle(.secondary, size: .small))
@@ -398,7 +411,7 @@ struct ChangeWizard: View {
         plan.newAddress = plan.kind == .addressChange ? company?.registeredAddress : nil
         plan.newName = plan.kind == .nameChange ? company?.name : nil
         plan.newStatus = plan.kind == .statusChange ? company?.status : nil
-        newTitle = "董事"
+        newTitle = store.roleSuggestions(for: companyID).first ?? "董事"
     }
 
     private func addAppointment() {
@@ -408,7 +421,7 @@ struct ChangeWizard: View {
             plan.newPeople.append(p)
             pid = p.id
         }
-        plan.newAppointments.append(Appointment(personID: pid, companyID: companyID, title: newTitle.isEmpty ? "董事" : newTitle, from: plan.effectiveOn))
+        plan.newAppointments.append(Appointment(personID: pid, companyID: companyID, title: newTitle.isEmpty ? (store.roleSuggestions(for: companyID).first ?? "董事") : newTitle, from: plan.effectiveOn))
         newPersonName = ""; newPersonID = ""
     }
 

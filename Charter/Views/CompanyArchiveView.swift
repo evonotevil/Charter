@@ -11,17 +11,21 @@ struct CompanyArchiveView: View {
     @State private var firstImpression = false
     /// 第一印象下方“下一步”里已被关掉的项（按公司记在 UserDefaults）。
     @State private var dismissedSteps: Set<String> = []
+    @State private var showNotApplicable = false
 
     var body: some View {
         let compact = width < 700
         let items = store.archive(of: company)
-        let main = items.filter { !$0.isExtra || store.itemIDs(for: company).contains($0.typeID) }
+        let listed = items.filter { !$0.isExtra || store.itemIDs(for: company).contains($0.typeID) }
+        let main = listed.filter { $0.state != .marked(.notApplicable) }
+        let notApplicable = listed.filter { $0.state == .marked(.notApplicable) }
+        let hidden = store.hiddenByEntityForm(company)
         let others = items.filter { $0.isExtra && !store.itemIDs(for: company).contains($0.typeID) }
         let counted = items.filter { $0.state != .marked(.notApplicable) }
         VStack(alignment: .leading, spacing: Space.m12) {
             HStack(alignment: .firstTextBaseline, spacing: Space.s8) {
                 Text("档案清单").font(TypeStyle.section).tracking(Tracking.section)
-                Text("\(counted.filter { $0.state.hasFile }.count)/\(counted.count) 已归档").font(TypeStyle.meta).monospacedDigit().foregroundStyle(Theme.muted)
+                Text(company.isForming ? "成立后开始统计" : "\(counted.filter { $0.state.hasFile }.count)/\(counted.count) 已归档").font(TypeStyle.meta).monospacedDigit().foregroundStyle(Theme.muted)
                 Spacer()
                 Button("自定义清单") { router.sheet = .companyItems(company.id) }
                     .buttonStyle(PillButtonStyle(.quiet, size: .small))
@@ -33,7 +37,9 @@ struct CompanyArchiveView: View {
             Text("按法域起始清单管理；可按实际需要调整。未持有材料可标记保管方、权限受限或不适用。")
                 .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
                 .fixedSize(horizontal: false, vertical: true)
-            if !hasDocuments || (firstImpression && counted.contains(where: { !$0.state.hasFile })) {
+            if company.isForming {
+                formingBanner
+            } else if !hasDocuments || (firstImpression && counted.contains(where: { !$0.state.hasFile })) {
                 firstImpressionBlock(counted)
             }
             VStack(spacing: 0) {
@@ -42,6 +48,34 @@ struct CompanyArchiveView: View {
                     if pair.offset > 0 { Rectangle().fill(Theme.hairline).frame(height: 1) }
                     ArchiveRow(company: company, item: pair.element, compact: compact)
                 }
+            }
+            if !hidden.isEmpty || !notApplicable.isEmpty {
+                DisclosureGroup(isExpanded: $showNotApplicable) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(notApplicable.enumerated()), id: \.element.id) { pair in
+                            if pair.offset > 0 { Rectangle().fill(Theme.hairline).frame(height: 1) }
+                            ArchiveRow(company: company, item: pair.element, compact: compact)
+                        }
+                        if !hidden.isEmpty {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text("按实体类型（\(company.entityForm)）不需要：" + hidden.map(\.name).joined(separator: "、"))
+                                    .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 8)
+                                Button("改为需要") { router.sheet = .companyItems(company.id) }
+                                    .buttonStyle(PillButtonStyle(.quiet, size: .small))
+                                    .help("在这家公司的清单里单独加回这些条目")
+                            }
+                            .padding(.vertical, 10)
+                        }
+                    }
+                    .padding(.top, 6)
+                } label: {
+                    Text("不适用 \(notApplicable.count + hidden.count) 项")
+                        .font(TypeStyle.meta).foregroundStyle(Theme.muted)
+                }
+                .padding(.top, Space.s8)
+                .help("标为不适用、或按实体类型不需要的条目。不计入缺件和完成度。")
             }
             if !others.isEmpty {
                 Text("其他文件").font(TypeStyle.meta).foregroundStyle(Theme.muted).padding(.top, Space.s8)
@@ -60,6 +94,26 @@ struct CompanyArchiveView: View {
             dismissedSteps = NextStepMemory.dismissed(company.id)
         }
         .onChange(of: company.id) { _, id in dismissedSteps = NextStepMemory.dismissed(id) }
+    }
+
+    /// 设立中的公司：文件、任职和股东都还没有产生，提示与统计都按“成立后补充”处理。
+    private var formingBanner: some View {
+        HStack(alignment: .top, spacing: Space.m12) {
+            Image(systemName: "hammer").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.ink)
+                .frame(width: 32, height: 32).background(Theme.band, in: .circle)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("设立中").font(TypeStyle.rowTitle).foregroundStyle(Theme.ink)
+                Text("注册证书、名册、\(store.officerNoun(for: company.id))和股东会在成立后产生，现在不算缺失，也不计入待处理和完成度。设立期间的申请材料可以照常上传。")
+                    .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button("已成立…") { router.sheet = .changeFrom(companyID: company.id, kind: .statusChange, appointmentID: nil, holdingID: nil) }
+                .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                .help("记录成立：更新状态和成立日期")
+        }
+        .padding(Space.l16)
+        .background(Theme.surface, in: .rect(cornerRadius: Radius.surface, style: .continuous))
     }
 
     private var hasDocuments: Bool {
@@ -97,7 +151,7 @@ struct CompanyArchiveView: View {
     // MARK: 下一步（添加董事、设置负责方）
 
     private var needsDirector: Bool {
-        !dismissedSteps.contains(NextStepMemory.director)
+        !company.isForming && !dismissedSteps.contains(NextStepMemory.director)
             && !store.appointments.contains { $0.companyID == company.id && $0.isActive(on: store.today) }
     }
 
@@ -118,10 +172,10 @@ struct CompanyArchiveView: View {
     }
 
     private var directorStep: some View {
-        NextStepRow(systemImage: "person.badge.plus", title: "添加董事",
-                    detail: "董事名册和在职证明会据此核对。",
+        NextStepRow(systemImage: "person.badge.plus", title: "添加\(store.officerNoun(for: company.id))",
+                    detail: "任职名册和在职证明会据此核对。",
                     onDismiss: { dismissStep(NextStepMemory.director) }) {
-            Button("添加董事…") { router.sheet = .editCompany(company.id) }
+            Button("添加任职人员…") { router.sheet = .editCompany(company.id) }
                 .buttonStyle(PillButtonStyle(.secondary, size: .small))
         }
     }

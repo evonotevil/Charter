@@ -150,6 +150,18 @@ struct DashboardView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                let missingHolders = store.incompleteShareholderCount(in: store.companyIDs(forFilter: router.groupFilter))
+                if missingHolders > 0 {
+                    Button {
+                        let g = router.groupFilter == Router.ungrouped ? nil : router.groupFilter
+                        router.openStructure(group: g, check: true)
+                    } label: {
+                        Text("有 \(missingHolders) 家公司股东不完整").underline()
+                            .font(TypeStyle.meta).foregroundStyle(Theme.onLime)
+                    }
+                    .buttonStyle(.plain)
+                    .help("在股权结构中打开“核对股东”")
+                }
             }
             Spacer(minLength: Space.l16)
             if let first = entries.first {

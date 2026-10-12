@@ -248,7 +248,8 @@ struct CompaniesView: View {
     private func subtitle(_ c: Company, _ r: GroupRow) -> String {
         let items = store.archive(of: c)
         let counted = items.filter { $0.state != .marked(.notApplicable) }
-        var parts = [store.jurisdictionName(c.jurisdiction), "档案 \(counted.filter { $0.state.hasFile }.count)/\(counted.count)"]
+        var parts = [store.jurisdictionName(c.jurisdiction),
+                     c.isForming ? "设立中" : "档案 \(counted.filter { $0.state.hasFile }.count)/\(counted.count)"]
         if let pct = r.percent { parts.append("上级持股 \(Ownership.percentLabel(pct))") }
         return parts.joined(separator: "，")
     }
@@ -430,9 +431,13 @@ struct CompanyDetailView: View {
         let have = items.filter(\.state.hasFile).count
         let archive = VStack(alignment: .leading, spacing: 6) {
             Text("档案").font(TypeStyle.meta).foregroundStyle(Theme.muted)
-            Text("\(have)/\(items.count)").font(.mono(15, .medium)).numericTransition()
-            ProgressCapsule(value: items.isEmpty ? 0 : Double(have) / Double(items.count))
-                .frame(maxWidth: 140)
+            if company.isForming {
+                Text("成立后统计").font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.muted)
+            } else {
+                Text("\(have)/\(items.count)").font(.mono(15, .medium)).numericTransition()
+                ProgressCapsule(value: items.isEmpty ? 0 : Double(have) / Double(items.count))
+                    .frame(maxWidth: 140)
+            }
         }
         .padding(.horizontal, Space.xl24).padding(.vertical, Space.l16)
         .frame(minWidth: 150, alignment: .leading)
@@ -481,8 +486,7 @@ struct CompanyDetailView: View {
                         if !company.entityForm.isEmpty { Pill(text: company.entityForm) }
                         if company.status != .active { Pill(text: company.status.label, kind: .strong) }
                         ForEach(groups) { g in
-                            Button { router.openStructure(group: g.id) } label: { Pill(text: g.name, kind: .lime) }
-                                .buttonStyle(.plain).help("在股权结构中查看\(g.name)")
+                            GroupTag(group: g, companyID: company.id)
                         }
                     }
                     }
@@ -529,10 +533,25 @@ struct CompanyDetailView: View {
         let groups = store.corporateGroups
         if !groups.isEmpty {
             entries.append(.divider)
-            entries.append(.header("归入集团"))
+            entries.append(.header("集团归属"))
             for g in groups {
                 let gid = g.id
-                entries.append(.item(g.name, systemImage: "square.stack.3d.up") { store.add(companyID: id, to: gid) })
+                let m = store.membership(of: id, in: g)
+                if m.isMember {
+                    entries.append(.item("从\(g.name)移出（\(m.sourceLabel)）", systemImage: "minus.circle") {
+                        store.showToast(store.moveOut(companyID: id, from: gid))
+                    })
+                } else if m == .excluded {
+                    entries.append(.item("恢复到\(g.name)（已排除）", systemImage: "arrow.uturn.backward") {
+                        store.restore(companyID: id, in: gid)
+                        store.showToast("已恢复为按股权归入\(g.name)")
+                    })
+                } else {
+                    entries.append(.item("归入\(g.name)", systemImage: "plus.circle") {
+                        store.add(companyID: id, to: gid)
+                        store.showToast("已归入\(g.name)")
+                    })
+                }
             }
         }
         return entries
@@ -560,7 +579,7 @@ struct CompanyDetailView: View {
         let chains = store.chainsFromTops(to: company.id)
         return VStack(alignment: .leading, spacing: Space.xl24) {
             VStack(alignment: .leading, spacing: 10) {
-                sideTitle("董事及高管", officers.count)
+                sideTitle("任职人员", officers.count)
                 if officers.isEmpty { Text("未录入").font(.system(size: 13)).foregroundStyle(Theme.muted) }
                 ForEach(officers) { a in
                     HStack(spacing: 4) {

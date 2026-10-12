@@ -21,6 +21,8 @@ struct CompanyEditor: View {
     @FocusState private var nameFocused: Bool
 
     @State private var groupID: String?
+    /// 编辑已有公司时：勾选它应属于的集团。取消勾选即移出。
+    @State private var memberGroups: Set<String> = []
     @State private var parentRef: NodeRef?
     @State private var parentPercent: Double = 100
     @State private var parentNominee = false
@@ -177,14 +179,28 @@ struct CompanyEditor: View {
 
                 FormGroup(title: "集团") {
                     if let o = original {
-                        let gs = store.groups(containing: o.id)
-                        FieldRow(label: "所属集团") {
-                            Text(gs.isEmpty ? "未归入" : gs.map(\.name).joined(separator: "、"))
-                                .font(TypeStyle.body).foregroundStyle(Theme.ink)
+                        if store.corporateGroups.isEmpty {
+                            Text("还没有集团。").font(TypeStyle.body).foregroundStyle(Theme.muted)
                         }
-                    }
-                    FieldRow(label: original == nil ? "归入集团" : "再归入") {
-                        SelectField(options: groupChoices, selection: $groupID, minWidth: 220)
+                        ForEach(store.corporateGroups) { g in
+                            let m = store.membership(of: o.id, in: g)
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Toggle(g.name, isOn: Binding(
+                                    get: { memberGroups.contains(g.id) },
+                                    set: { if $0 { memberGroups.insert(g.id) } else { memberGroups.remove(g.id) } }))
+                                    .toggleStyle(KitCheckboxStyle())
+                                if m != .none { Pill(text: m.sourceLabel, kind: m == .excluded ? .outline : .neutral) }
+                                Spacer(minLength: 0)
+                            }
+                            .help(store.membershipExplanation(of: o.id, in: g))
+                        }
+                        Text("取消勾选即移出。按股权推导出的公司移出后记为“已排除”，之后股权变化也不会再自动纳入。")
+                            .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        FieldRow(label: "归入集团") {
+                            SelectField(options: groupChoices, selection: $groupID, minWidth: 220)
+                        }
                     }
                     if original == nil, let gid = groupID, let g = store.group(gid) {
                         let parents: [(NodeRef?, String)] = parentChoices(g)
@@ -231,21 +247,25 @@ struct CompanyEditor: View {
                     .buttonStyle(PillButtonStyle(.quiet, size: .small))
                 }
 
-                FormGroup(title: "董事与高管") {
+                FormGroup(title: "任职人员") {
                     ForEach($appointments) { $a in
                         AppointmentRow(appointment: $a) { appointments.removeAll { $0.id == a.id } }
                     }
                     Button {
-                        if let p = store.people.first { appointments.append(Appointment(personID: p.id, companyID: draft.id, title: "董事", from: .today())) }
+                        if let p = store.people.first { appointments.append(Appointment(personID: p.id, companyID: draft.id,
+                                                                                         title: AppStore.roleSuggestions(entityForm: draft.entityForm).first ?? "", from: nil)) }
                     } label: {
-                        Label("添加董事", systemImage: "plus")
+                        Label("添加任职人员", systemImage: "plus")
                     }
                     .buttonStyle(PillButtonStyle(.quiet, size: .small))
                     .disabled(store.people.isEmpty)
-                    FieldRow(label: "新建人员", hint: "新建人员后，可在上方的任职中选择") {
+                    let dupes = store.possibleDuplicates(of: newPersonName)
+                    FieldRow(label: "新建人员",
+                             hint: dupes.isEmpty ? "新建人员后，可在上方的任职中选择"
+                                                 : "已有同名或别名一致的人员：\(dupes.map { store.personLabel($0) }.joined(separator: "；"))。请直接在上方选择，避免重复。") {
                         HStack(spacing: 8) {
                             TextField("姓名", text: $newPersonName).textFieldStyle(KitFieldStyle())
-                            Button("添加") {
+                            Button(dupes.isEmpty ? "添加" : "仍然新建") {
                                 let name = newPersonName.trimmingCharacters(in: .whitespaces)
                                 guard !name.isEmpty else { return }
                                 store.upsert(Person(name: name))
@@ -300,6 +320,7 @@ struct CompanyEditor: View {
             holdings = store.holdings.filter { $0.companyID == draft.id }
             appointments = store.appointments.filter { $0.companyID == draft.id }
             if original == nil, parentRef == nil { parentRef = topCompany(of: groupID) }
+            if let o = original { memberGroups = Set(store.groups(containing: o.id).map(\.id)) }
         }
         .onChange(of: groupID) { _, g in
             if original == nil { parentRef = topCompany(of: g) }
@@ -436,12 +457,19 @@ struct CompanyEditor: View {
         store.appointments.removeAll { $0.companyID == draft.id }
         store.appointments.append(contentsOf: appointments)
         store.saveAppointments()
-        if let g = groupID {
-            store.add(companyID: draft.id, to: g)
+        var groupNote: String?
+        if original == nil {
+            if let g = groupID { store.add(companyID: draft.id, to: g) }
+        } else {
+            let before = Set(store.groups(containing: draft.id).map(\.id))
+            for gid in memberGroups.subtracting(before) { store.add(companyID: draft.id, to: gid) }
+            for gid in before.subtracting(memberGroups) { groupNote = store.moveOut(companyID: draft.id, from: gid) }
+            let added = memberGroups.subtracting(before).compactMap { store.group($0)?.name }
+            if groupNote == nil, !added.isEmpty { groupNote = "已归入" + added.joined(separator: "、") }
         }
         store.tidyGroups()
         store.refreshDerived()
-        store.showToast(original == nil ? "已添加 \(draft.name)" : "已保存 \(draft.name)")
+        store.showToast(groupNote ?? (original == nil ? "已添加 \(draft.name)" : "已保存 \(draft.name)"))
         if original == nil {
             router.companyTab = 0
             router.open(company: draft.id)
@@ -614,13 +642,15 @@ struct HoldingRow: View {
         store.people.map { NodeRef(kind: .person, id: $0.id) } + store.companies.filter { $0.id != companyID }.map { NodeRef(kind: .company, id: $0.id) }
     }
 
+    private func label(_ r: NodeRef) -> String { r.kind == .person ? store.personLabel(r.id) : store.name(of: r) }
+
     private var holderChoices: [(NodeRef, String)] {
-        options.map { r in (r, store.name(of: r)) }
+        options.map { r in (r, label(r)) }
     }
 
     private var beneficialChoices: [(NodeRef?, String)] {
         let none: [(NodeRef?, String)] = [(nil, "未指定")]
-        return none + options.map { r in (Optional(r), store.name(of: r)) }
+        return none + options.map { r in (Optional(r), label(r)) }
     }
 
     var body: some View {
@@ -689,13 +719,21 @@ struct AppointmentRow: View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 10) {
                 FieldRow(label: "人员") {
-                    SelectField(options: store.people.map { p in (p.id, p.name) }, selection: $appointment.personID, minWidth: 220)
+                    SelectField(options: store.people.map { p in (p.id, store.personLabel(p)) }, selection: $appointment.personID, minWidth: 220)
                 }
-                FieldRow(label: "职位") {
-                    TextField("例如：董事", text: $appointment.title).textFieldStyle(KitFieldStyle())
+                FieldRow(label: "职位", hint: "按实体类型给出常用角色，也可以直接输入。") {
+                    HStack(spacing: 6) {
+                        TextField(store.roleSuggestions(for: appointment.companyID).first ?? "职位", text: $appointment.title)
+                            .textFieldStyle(KitFieldStyle())
+                        ActionMenu(title: "常用", kind: .quiet, size: .small,
+                                   entries: store.roleSuggestions(for: appointment.companyID).map { r -> MenuEntry in
+                                       .item(r, systemImage: appointment.title == r ? "checkmark" : nil) { appointment.title = r }
+                                   })
+                            .fixedSize()
+                    }
                 }
-                FieldRow(label: "就任日期") {
-                    DateField(day: $appointment.from)
+                FieldRow(label: "就任日期", hint: "不清楚可留空，会显示为“日期未知”，不会用今天代替。") {
+                    DateField(day: $appointment.from, placeholder: "日期未知")
                 }
                 FieldRow(label: "离任日期") {
                     DateField(day: $appointment.to, placeholder: "在任可留空")
@@ -712,8 +750,9 @@ struct AppointmentRow: View {
         } label: {
             HStack(spacing: 8) {
                 Text(store.person(appointment.personID)?.name ?? "未选择").font(TypeStyle.body).fontWeight(.medium)
-                Text(appointment.title).font(TypeStyle.body).foregroundStyle(Theme.muted)
+                Text(appointment.title.isEmpty ? "未填职位" : appointment.title).font(TypeStyle.body).foregroundStyle(Theme.muted)
                 Spacer()
+                if appointment.from == nil { Text("日期未知").font(TypeStyle.metadata).foregroundStyle(Theme.muted) }
                 if appointment.to != nil { Pill(text: "已离任") }
             }
         }

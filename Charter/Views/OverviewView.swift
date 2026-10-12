@@ -61,7 +61,10 @@ struct OverviewView: View {
     var body: some View {
         let allowedIDs = store.companyIDs(forFilter: router.groupFilter)
         let shownCompanies = store.companies.filter { c in allowedIDs.map { $0.contains(c.id) } ?? true }
-        let archives = Dictionary(uniqueKeysWithValues: shownCompanies.map { ($0.id, store.archive(of: $0)) })
+        // 设立中的公司只显示已上传的材料，其余成立后才产生，不算缺失
+        let archives = Dictionary(uniqueKeysWithValues: shownCompanies.map { c in
+            (c.id, c.isForming ? store.archive(of: c).filter { $0.state.hasFile } : store.archive(of: c))
+        })
         let filtering = !query.isEmpty || onlyAttention
         let shown: [Block] = blocks.compactMap { (b: Block) -> Block? in
             var copy = b
@@ -180,6 +183,7 @@ struct OverviewView: View {
                         .item("上传材料…", systemImage: "square.and.arrow.down") { router.chooseFiles(context: .group(gid)) },
                         .item("在此集团新建公司…", systemImage: "building.2") { router.sheet = .newCompanyInGroup(gid) },
                         .item("编辑集团…", systemImage: "pencil") { router.sheet = .editGroup(gid) },
+                        .item("管理成员…", systemImage: "checklist") { router.sheet = .groupMembers(gid) },
                         .divider,
                         .item("查看股权结构", systemImage: "point.3.connected.trianglepath.dotted") {
                             router.openStructure(group: gid)

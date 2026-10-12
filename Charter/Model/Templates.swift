@@ -29,6 +29,8 @@ struct DocumentType: Codable, Hashable, Identifiable {
     var validityMonths: Int?
     var hints: [String]              // 识别线索
     var builtIn: Bool
+    /// 只适用于这些实体类型（3.1 新增；nil 或空 = 该法域所有类型）。
+    var entityForms: [String]? = nil
 
     func applies(to jurisdiction: String) -> Bool { jurisdictions.isEmpty || jurisdictions.contains(jurisdiction) }
 }

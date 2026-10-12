@@ -105,7 +105,8 @@ struct PeopleView: View {
                        held.contains(where: \.isNominee) ? "名义股东" : nil].compactMap { $0 }.joined(separator: "，")
         // 同名的人靠所在公司区分：优先现任职务的公司，其次直接持股的公司
         let anchor = store.anchorCompanyName(person: p.id)
-        let summary = anchor.map { caption.isEmpty ? $0 : "\(caption)，\($0)" } ?? "未关联"
+        let base = anchor.map { caption.isEmpty ? $0 : "\(caption)，\($0)" } ?? "未关联"
+        let summary = p.aliases.isEmpty ? base : "又名 \(p.aliases.prefix(2).joined(separator: "、"))，" + base
         return Button { router.selectedPersonID = p.id } label: {
             HStack(spacing: 10) {
                 Avatar(name: p.name, size: 34, dashed: held.contains(where: \.isNominee), highlighted: on)
@@ -162,23 +163,30 @@ private struct NewPersonSheet: View {
     private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
-        let duplicate = !trimmed.isEmpty && store.people.contains { $0.name == trimmed }
+        let dupes = store.possibleDuplicates(of: trimmed)
+        let duplicate = !dupes.isEmpty
         SheetScaffold(title: "新建人员", subtitle: "先填姓名，任职和持股在公司档案里添加。", width: 460) {
             FormGroup {
                 FieldRow(label: "姓名",
-                         hint: duplicate ? "已有同名的人员。新建后，列表里会用所在公司区分两人。" : nil,
+                         hint: duplicate ? "已有名字或别名一致的人员：\(dupes.map { store.personLabel($0) }.joined(separator: "；"))。如果是同一人，请直接使用；不同的人再新建。" : nil,
                          error: attempted && trimmed.isEmpty ? "请填写姓名" : nil) {
                     TextField("例如：张三", text: $name).textFieldStyle(KitFieldStyle())
                         .focused($focused)
                 }
             }
         } leading: {
-            EmptyView()
+            if let d = dupes.first {
+                Button("使用 \(d.name)") {
+                    onCreate(d)
+                    dismiss()
+                }
+                .buttonStyle(PillButtonStyle(.secondary))
+            }
         } trailing: {
             Button("取消") { dismiss() }
                 .buttonStyle(PillButtonStyle(.secondary))
                 .keyboardShortcut(.cancelAction)
-            Button("新建") {
+            Button(duplicate ? "仍然新建" : "新建") {
                 attempted = true
                 guard !trimmed.isEmpty else { focused = true; return }
                 let person = store.createPerson(name: trimmed)
@@ -343,6 +351,21 @@ struct PersonDetail: View {
                         .help(blockers.isEmpty ? "删除这个人" : "不能删除：\(blockers.joined(separator: "，"))")
                 }
                 .fixedSize()
+            }
+            let twins = ([person.name] + person.aliases)
+                .flatMap { store.possibleDuplicates(of: $0, excluding: person.id) }
+                .reduce(into: [Person]()) { acc, p in if !acc.contains(where: { $0.id == p.id }) { acc.append(p) } }
+            if !twins.isEmpty {
+                HStack(alignment: .center, spacing: 12) {
+                    Image(systemName: "person.2").foregroundStyle(Theme.amberText)
+                    Text("可能与 \(twins.map { store.personLabel($0) }.joined(separator: "、")) 是同一人（名字或别名一致）。")
+                        .font(TypeStyle.metadata).foregroundStyle(Theme.amberText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Button("合并…") { merging = true }
+                        .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                        .fixedSize()
+                }
             }
             if !blockers.isEmpty {
                 HStack(alignment: .center, spacing: 12) {
@@ -551,6 +574,13 @@ private struct MergePersonSheet: View {
             .buttonStyle(PillButtonStyle(.primary))
             .keyboardShortcut(.defaultAction)
             .disabled(target.isEmpty)
+        }
+        .onAppear {
+            // 预选名字或别名一致的人
+            if target.isEmpty {
+                target = ([person.name] + person.aliases)
+                    .lazy.flatMap { store.possibleDuplicates(of: $0, excluding: person.id) }.first?.id ?? ""
+            }
         }
     }
 }

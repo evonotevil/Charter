@@ -78,20 +78,108 @@ extension AppStore {
         saveGroups()
     }
 
-    /// 把一家公司归入集团（还没连上持股关系时显示为“待连接”）。
+    /// 把一家公司归入集团（还没连上持股关系时显示为“待连接”）。排除过的会先恢复。
     func add(companyID: String, to groupID: String) {
         guard let i = corporateGroups.firstIndex(where: { $0.id == groupID }) else { return }
-        if !companyIDs(in: corporateGroups[i]).contains(companyID) {
+        var g = corporateGroups[i]
+        g.excludedCompanyIDs = g.excludedCompanyIDs?.filter { $0 != companyID }
+        corporateGroups[i] = g
+        if !companyIDs(in: g).contains(companyID) {
             corporateGroups[i].extraCompanyIDs.append(companyID)
-            saveGroups()
         }
+        saveGroups()
+    }
+
+    /// 只移除手动归入的公司；由顶层或持股推导的归属不在这里改动。
+    func canRemove(companyID: String, from groupID: String) -> Bool {
+        group(groupID)?.extraCompanyIDs.contains(companyID) == true
+    }
+
+    @discardableResult
+    func remove(companyID: String, from groupID: String) -> Bool {
+        guard canRemove(companyID: companyID, from: groupID),
+              let i = corporateGroups.firstIndex(where: { $0.id == groupID }) else { return false }
+        corporateGroups[i].extraCompanyIDs.removeAll { $0 == companyID }
+        saveGroups()
+        return true
+    }
+
+    /// 把公司移出集团（任何来源）：手动加入的直接去掉；股权推导出来的记为“已排除”。返回一句结果说明。
+    @discardableResult
+    func moveOut(companyID: String, from groupID: String) -> String {
+        guard let i = corporateGroups.firstIndex(where: { $0.id == groupID }) else { return "" }
+        let m = membership(of: companyID, in: corporateGroups[i])
+        var g = corporateGroups[i]
+        g.extraCompanyIDs.removeAll { $0 == companyID }
+        if case .top = m { g.tops.removeAll { $0 == NodeRef(kind: .company, id: companyID) } }
+        // 仍能经股权推导到时，记为排除，避免下次又被自动纳入
+        let reach = companyIDs(in: CorporateGroup(name: "", tops: g.tops, excludedCompanyIDs: g.excludedCompanyIDs))
+        if reach.contains(companyID) || m == .excluded {
+            g.excludedCompanyIDs = Array(Set((g.excludedCompanyIDs ?? []) + [companyID])).sorted()
+        }
+        corporateGroups[i] = g
+        saveGroups()
+        let rest = groups(containing: companyID).map(\.name)
+        let base = "已从\(g.name)移出"
+        return rest.isEmpty ? base + "，现在不属于任何集团" : base + "，仍属于" + rest.joined(separator: "、")
+    }
+
+    /// 撤销排除，恢复为按股权推导。
+    func restore(companyID: String, in groupID: String) {
+        guard let i = corporateGroups.firstIndex(where: { $0.id == groupID }) else { return }
+        corporateGroups[i].excludedCompanyIDs = corporateGroups[i].excludedCompanyIDs?.filter { $0 != companyID }
+        saveGroups()
+    }
+
+    /// 这家公司在这个集团里的来源。
+    func membership(of companyID: String, in g: CorporateGroup) -> GroupMembership {
+        if g.excluded.contains(companyID) { return .excluded }
+        let all = rows(of: g)
+        guard let row = all.first(where: { $0.companyID == companyID }) else { return .none }
+        if row.unconnected { return .manual }
+        if row.parent == nil, g.tops.contains(NodeRef(kind: .company, id: companyID)) { return .top }
+        var path: [NodeRef] = [NodeRef(kind: .company, id: companyID)]
+        var percents: [Double] = []
+        var cur = row
+        var guardCount = 0
+        while let parent = cur.parent, guardCount < 64 {
+            guardCount += 1
+            percents.insert(cur.percent ?? 0, at: 0)
+            path.insert(parent, at: 0)
+            guard parent.kind == .company, let next = all.first(where: { $0.companyID == parent.id }) else { break }
+            cur = next
+        }
+        return .derived(path: path, percents: percents)
+    }
+
+    /// 一句话说明归属来源，例如“经 远澜控股 60% → 远澜香港 100%”。
+    func membershipExplanation(of companyID: String, in g: CorporateGroup) -> String {
+        switch membership(of: companyID, in: g) {
+        case .top: return "你把它设为\(g.name)的顶层"
+        case .manual: return "你手动加入，还没连上集团里的持股关系"
+        case .excluded: return "股权能推导到，但你把它排除在\(g.name)之外"
+        case .none: return "不在\(g.name)"
+        case .derived(let path, let percents):
+            var parts: [String] = []
+            for (k, node) in path.dropLast().enumerated() {
+                parts.append("\(name(of: node)) 持有 \(AppStore.percentText(percents[k]))")
+            }
+            return parts.joined(separator: " → ") + " → 这家公司"
+        }
+    }
+
+    /// 能经股权推导到、但被排除的公司（用于在结构图上显示为灰色）。
+    func excludedCompanyIDs(in g: CorporateGroup) -> Set<String> { g.excluded }
+
+    static func percentText(_ p: Double) -> String {
+        p == p.rounded() ? "\(Int(p))%" : String(format: "%.2f%%", p)
     }
 
     /// 连上持股关系后，清理已经能自动推导出来的“待连接”。
     func tidyGroups() {
         var changed = false
         for i in corporateGroups.indices {
-            let reach = Set(GroupEngine.rows(for: CorporateGroup(name: "", tops: corporateGroups[i].tops), holdings: holdings, companies: companies, on: today).map(\.companyID))
+            let reach = Set(GroupEngine.rows(for: CorporateGroup(name: "", tops: corporateGroups[i].tops, excludedCompanyIDs: corporateGroups[i].excludedCompanyIDs), holdings: holdings, companies: companies, on: today).map(\.companyID))
             let before = corporateGroups[i].extraCompanyIDs
             corporateGroups[i].extraCompanyIDs = before.filter { !reach.contains($0) && company($0) != nil }
             if before != corporateGroups[i].extraCompanyIDs { changed = true }

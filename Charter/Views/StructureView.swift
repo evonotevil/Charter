@@ -170,6 +170,7 @@ struct StructureView: View {
         .onChange(of: router.groupFilter) {
             guard graphGroup != router.groupFilter else { return }
             graphGroup = router.groupFilter
+            router.structureUpward = nil
         }
         .onChange(of: graphGroup) {
             if router.groupFilter != graphGroup { router.groupFilter = graphGroup }
@@ -177,6 +178,11 @@ struct StructureView: View {
             rebuildTimeline()
         }
         .onChange(of: stopIndex) { rebuildSnapshot() }
+        .onChange(of: router.structureUpward) {
+            stopIndex = nil
+            rebuildTimeline()
+            if let up = router.structureUpward { selected = NodeRef(kind: .company, id: up) }
+        }
         .onChange(of: store.companies) { rebuildTimeline(preservingSelection: true) }
         .onChange(of: store.people) { rebuildSnapshot() }
         .onChange(of: store.holdings) { rebuildTimeline(preservingSelection: true) }
@@ -267,6 +273,7 @@ struct StructureView: View {
                             })
                         .transition(.opacity)
                 }
+                if router.structureCheck && isToday { checkRings(snapshot, zoom: z) }
             }
             .frame(width: snapshot.canvas.width * z, height: snapshot.canvas.height * z, alignment: .topLeading)
             .frame(minWidth: viewport.width, minHeight: viewport.height, alignment: .topLeading)
@@ -292,6 +299,9 @@ struct StructureView: View {
             }
             .onEnded { _ in pinchStart = nil })
         .background(DotGrid())
+        .overlay(alignment: .bottomLeading) {
+            if router.structureCheck { checkList(snapshot).transition(.opacity) }
+        }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
             viewport = size
             // 详情栏打开或窗口变窄后，选中的节点仍要完整可见
@@ -325,14 +335,33 @@ struct StructureView: View {
                 Text("股权结构").font(TypeStyle.pageTitle).tracking(Tracking.title)
                     .lineLimit(1)
             }
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(store.filterName(graphGroup)).lineLimit(1).truncationMode(.tail)
-                Text("·")
-                Text("\(snapshot?.companies.count ?? 0) 家公司").numericTransition()
+            HStack(alignment: .center, spacing: Space.m12) {
+                PillSegmented(options: [(false, "向下展开"), (true, "向上穿透")], selection: directionBinding)
+                    .fixedSize()
+                    .help("向下：从集团顶层沿持股往下展开。向上：从一家公司沿股东一直追到自然人。")
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    if let up = router.structureUpward {
+                        Text("从 \(store.company(up)?.name ?? "") 向上").lineLimit(1).truncationMode(.middle)
+                    } else {
+                        Text(store.filterName(graphGroup)).lineLimit(1).truncationMode(.tail)
+                    }
+                    Text("·")
+                    Text("\(snapshot?.companies.count ?? 0) 家公司").numericTransition()
+                    if router.structureUpward == nil, let g = store.group(graphGroup), !g.excluded.isEmpty {
+                        Text("·")
+                        Button("已排除 \(g.excluded.count) 家") { router.sheet = .groupMembers(g.id) }
+                            .buttonStyle(.plain).underline()
+                            .help("这些公司股权能推导到，但你把它们排除在\(g.name)之外")
+                    }
+                }
+                .font(TypeStyle.meta).foregroundStyle(Theme.muted)
                 Spacer(minLength: 0)
+                Toggle(isOn: Binding(get: { router.structureCheck }, set: { v in animate(.smooth) { router.structureCheck = v } })) {
+                    Text("核对股东").font(TypeStyle.metadata)
+                }
+                .toggleStyle(KitSwitchStyle()).fixedSize()
+                .help("按股东录入情况给公司标色，并列出需要补充的公司")
             }
-            .font(TypeStyle.meta).foregroundStyle(Theme.muted)
-            .help("打开侧栏可切换集团")
             Group {
                 if isToday {
                     Text("双指捏合缩放，双指滑动浏览。点选固定链路，拖动调整位置。").foregroundStyle(Theme.muted)
@@ -345,6 +374,101 @@ struct StructureView: View {
         }
         .padding(.horizontal, Space.pageEdge).padding(.top, embedded ? 0 : Space.xl24).padding(.bottom, Space.s8)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var directionBinding: Binding<Bool> {
+        Binding(get: { router.structureUpward != nil }, set: { up in
+            if up {
+                let start = selected.flatMap { $0.kind == .company ? $0.id : nil }
+                    ?? router.selectedCompanyID.flatMap { id in snapshot?.companies.contains { $0.id == id } == true ? id : nil }
+                    ?? snapshot?.companies.max { store.upwardScope(of: $0.id).count < store.upwardScope(of: $1.id).count }?.id
+                router.structureUpward = start
+            } else {
+                router.structureUpward = nil
+            }
+        })
+    }
+
+    // MARK: 核对股东
+
+    private func checkRings(_ snapshot: StructureSnapshot, zoom z: CGFloat) -> some View {
+        ForEach(snapshot.companies.filter { store.shareholderCheckApplies($0) }) { c in
+            let st = store.shareholderStatus(of: c.id, on: snapshot.asOf)
+            let ref = NodeRef(kind: .company, id: c.id)
+            let p = pt(ref, snapshot.positions)
+            let s = Self.companySize
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 22 * z + 4, style: .continuous)
+                    .strokeBorder(st.color, lineWidth: st == .complete ? 1.5 : 3)
+                Text(st.label)
+                    .font(TypeStyle.micro).fontWeight(.bold)
+                    .foregroundStyle(st == .complete ? Theme.onLime : Theme.onInk)
+                    .padding(.horizontal, 8).frame(height: 20)
+                    .background(st.color, in: .capsule)
+                    .scaleEffect(z, anchor: .topTrailing)
+                    .offset(x: 6, y: -10)
+            }
+            .frame(width: s.width * z + 8, height: s.height * z + 8)
+            .position(CGPoint(x: p.x * z, y: p.y * z))
+            .allowsHitTesting(false)
+            .transition(.opacity)
+        }
+    }
+
+    private func checkItems(_ snapshot: StructureSnapshot) -> [(Company, ShareholderStatus)] {
+        var out: [(Company, ShareholderStatus)] = []
+        for c in snapshot.companies where store.shareholderCheckApplies(c) {
+            let st = store.shareholderStatus(of: c.id, on: snapshot.asOf)
+            if st.needsAttention { out.append((c, st)) }
+        }
+        out.sort { a, b in
+            if a.1.rank != b.1.rank { return a.1.rank < b.1.rank }
+            return a.0.name < b.0.name
+        }
+        return out
+    }
+
+    private func checkList(_ snapshot: StructureSnapshot) -> some View {
+        let items = checkItems(snapshot)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(items.isEmpty ? "股东都已录入完整" : "\(items.count) 家需要补充")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.ink)
+                Spacer()
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            if !items.isEmpty {
+                Rectangle().fill(Theme.hairline).frame(height: 1)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(items, id: \.0.id) { c, st in
+                            Button {
+                                let ref = NodeRef(kind: .company, id: c.id)
+                                select(ref)
+                                reveal(ref)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Circle().fill(st.color).frame(width: 8, height: 8)
+                                    Text(c.name).font(TypeStyle.metadata).foregroundStyle(Theme.ink).lineLimit(1)
+                                    Spacer(minLength: 6)
+                                    Text(st.label).font(TypeStyle.micro).foregroundStyle(Theme.muted)
+                                }
+                                .padding(.horizontal, 14).frame(height: 30)
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .help(st.detail)
+                        }
+                    }
+                }
+                .frame(height: min(CGFloat(items.count) * 30, 240))
+            }
+        }
+        .frame(width: 280)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Theme.surface, in: .rect(cornerRadius: 16, style: .continuous))
+        .floatingShadow()
+        .padding(Space.l16)
     }
 
     private var timeScrubber: some View {
@@ -437,10 +561,16 @@ struct StructureView: View {
         rebuildSnapshot()
     }
 
+    /// 当前图的范围：向上穿透时为起点公司及其所有上层公司，否则为所选集团。
+    private func scope(on day: Day? = nil) -> Set<String>? {
+        if let up = router.structureUpward, store.company(up) != nil { return store.upwardScope(of: up, on: day) }
+        return store.companyIDs(forFilter: graphGroup, on: day)
+    }
+
     private func rebuildTimeline(preservingSelection: Bool = false) {
         stopPlayback()
         let previous = preservingSelection ? snapshot?.asOf : nil
-        let ids = store.companyIDs(forFilter: graphGroup) ?? Set(store.companies.map(\.id))
+        let ids = scope() ?? Set(store.companies.map(\.id))
         stops = StructureSnapshot.stops(holdings: store.holdings, companyIDs: ids, today: store.today)
         if let previous, let index = stops.firstIndex(of: previous) {
             stopIndex = index
@@ -452,7 +582,7 @@ struct StructureView: View {
 
     private func rebuildSnapshot() {
         let day = asOf
-        let scope = store.companyIDs(forFilter: graphGroup, on: day)
+        let range = scope(on: day)
         var names: [NodeRef: String] = [:]
         var saved: [NodeRef: GraphPoint] = [:]
         for company in store.companies {
@@ -468,7 +598,7 @@ struct StructureView: View {
         let next = StructureSnapshot.build(
             companies: store.companies,
             holdings: store.holdings,
-            scope: scope,
+            scope: range,
             asOf: day,
             names: names,
             savedPositions: saved,
@@ -794,7 +924,26 @@ struct InspectorPanel: View {
             fact("注册地址", c?.registeredAddress ?? "", mono: false)
         }
 
-        block("董事及高管") {
+        if router.structureCheck, let c, store.shareholderCheckApplies(c) {
+            let st = store.shareholderStatus(of: c.id, on: asOf)
+            block("股东核对") {
+                HStack(spacing: 8) {
+                    Circle().fill(st.color).frame(width: 9, height: 9)
+                    Text(st.label).fontWeight(.semibold)
+                }
+                Text(st.detail).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Button("添加股东…") { router.sheet = .addRelation(companyID: c.id, upward: true) }
+                        .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                    Button("编辑股东…") { router.sheet = .editCompany(c.id) }
+                        .buttonStyle(PillButtonStyle(.quiet, size: .small))
+                }
+            }
+        }
+
+        membershipBlock(ref.id)
+
+        block("任职人员") {
             if officers.isEmpty { Text("未录入").foregroundStyle(Theme.muted) }
             // 同一人担任多个职务时合并成一行
             let grouped: [(personID: String, titles: String)] = officers.reduce(into: [(String, [String])]()) { acc, a in
@@ -942,6 +1091,52 @@ struct InspectorPanel: View {
     }
 
     /// 分区：顶部细线 + 小节标题 + 内容。
+    /// 集团归属：这家公司在哪些集团里、来源是什么，以及对应的调整入口。
+    @ViewBuilder
+    private func membershipBlock(_ companyID: String) -> some View {
+        let entries = store.corporateGroups.map { ($0, store.membership(of: companyID, in: $0)) }.filter { $0.1 != .none }
+        block("集团归属") {
+            if entries.isEmpty { Text("不属于任何集团").foregroundStyle(Theme.muted) }
+            ForEach(entries, id: \.0.id) { g, m in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(g.name).fontWeight(.semibold).foregroundStyle(m == .excluded ? Theme.muted : Theme.ink)
+                        Pill(text: m.sourceLabel, kind: m == .manual || m == .excluded ? .outline : .neutral)
+                        Spacer(minLength: 4)
+                        if m == .excluded {
+                            Button("恢复") {
+                                store.restore(companyID: companyID, in: g.id)
+                                store.showToast("已恢复为按股权归入\(g.name)")
+                            }
+                            .buttonStyle(PillButtonStyle(.quiet, size: .small))
+                        } else if m != .top {
+                            Button("移出") {
+                                let appStore = store, gid = g.id
+                                var text = ""
+                                let undoID = appStore.undoable("移出集团") { text = appStore.moveOut(companyID: companyID, from: gid) }
+                                appStore.showToast(text) { [weak appStore] in if let undoID { appStore?.undo(undoID) } }
+                            }
+                            .buttonStyle(PillButtonStyle(.quiet, size: .small))
+                        }
+                    }
+                    Text(store.membershipExplanation(of: companyID, in: g))
+                        .font(TypeStyle.metadata).foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if entries.filter({ $0.1.isMember }).count > 1 {
+                Text("同时属于多个集团。如果只应归入其中一个，把其他的移出即可。")
+                    .font(TypeStyle.metadata).foregroundStyle(Theme.amberText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if router.structureUpward != companyID {
+                Button("从这家公司向上穿透") { router.structureUpward = companyID }
+                    .buttonStyle(PillButtonStyle(.secondary, size: .small))
+                    .help("只显示这家公司和它的各层股东，直到自然人")
+            }
+        }
+    }
+
     private func block<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             hairline

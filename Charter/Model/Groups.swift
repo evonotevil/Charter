@@ -9,6 +9,10 @@ struct CorporateGroup: Codable, Hashable, Identifiable {
     var tops: [NodeRef]
     /// 已归入这个集团、但还没和集团里的上下级连上持股关系的公司。
     var extraCompanyIDs: [String] = []
+    /// 股权能推导到、但你按业务口径排除的公司（3.1 新增；旧数据没有这个键）。
+    /// 排除优先于推导：之后股权变化也不会把它加回来，它下面只经由它连上的公司也一并不再推导。
+    var excludedCompanyIDs: [String]? = nil
+    var excluded: Set<String> { Set(excludedCompanyIDs ?? []) }
     var notes: String = ""
     /// 集团图标文件名，位于“数据文件夹/集团图标/”；旧数据里没有这个键时为 nil。
     var iconFileName: String? = nil
@@ -37,12 +41,13 @@ enum GroupEngine {
     static func rows(for g: CorporateGroup, holdings all: [Holding], companies: [Company], on day: Day) -> [GroupRow] {
         let holdings = all.filter { $0.isActive(on: day) }
         let existing = Set(companies.map(\.id))
+        let excluded = g.excluded
 
         // 先用广度优先求出每家公司的最浅深度和最佳上级
         var best: [String: (depth: Int, parent: NodeRef?, percent: Double?, nominee: Bool)] = [:]
         var queue: [(NodeRef, Int)] = []
         for t in g.tops {
-            if t.kind == .company, existing.contains(t.id) {
+            if t.kind == .company, existing.contains(t.id), !excluded.contains(t.id) {
                 best[t.id] = (0, nil, nil, false)
             }
             queue.append((t, 0))
@@ -50,7 +55,7 @@ enum GroupEngine {
         var i = 0
         while i < queue.count {
             let (node, d) = queue[i]; i += 1
-            for h in children(of: node, holdings: holdings) where existing.contains(h.companyID) {
+            for h in children(of: node, holdings: holdings) where existing.contains(h.companyID) && !excluded.contains(h.companyID) {
                 let depth = d + 1
                 let nominee = h.isNominee && h.holder != node
                 if let b = best[h.companyID] {
@@ -83,10 +88,37 @@ enum GroupEngine {
             }
         }
         // 未连上的
-        for id in g.extraCompanyIDs where existing.contains(id) && !placed.contains(id) {
+        for id in g.extraCompanyIDs where existing.contains(id) && !placed.contains(id) && !excluded.contains(id) {
             placed.insert(id)
             out.append(GroupRow(companyID: id, depth: 0, parent: nil, percent: nil, viaNominee: false, unconnected: true))
         }
         return out
+    }
+}
+
+/// 一家公司为什么在（或不在）某个集团里。
+enum GroupMembership: Equatable {
+    /// 你选定的顶层公司。
+    case top
+    /// 按持股关系推导出来；path 为从顶层到这家公司的路径（含两端），percents 为每一跳的比例。
+    case derived(path: [NodeRef], percents: [Double])
+    /// 手动归入，还没连上持股关系。
+    case manual
+    /// 股权能推导到，但你排除了它。
+    case excluded
+    case none
+
+    var isMember: Bool {
+        switch self { case .top, .derived, .manual: true; default: false }
+    }
+
+    var sourceLabel: String {
+        switch self {
+        case .top: "顶层"
+        case .derived: "股权推导"
+        case .manual: "手动加入"
+        case .excluded: "已排除"
+        case .none: "不在集团"
+        }
     }
 }
