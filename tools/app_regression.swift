@@ -239,7 +239,7 @@ struct AppRegression {
         let originalGroups = s.corporateGroups
         let manualA = CorporateGroup(name: "Manual A", tops: [], extraCompanyIDs: [c.id])
         let manualB = CorporateGroup(name: "Manual B", tops: [], extraCompanyIDs: [c.id])
-        let derivedGroup = CorporateGroup(name: "Derived", tops: [owner], extraCompanyIDs: [c.id])
+        let derivedGroup = CorporateGroup(name: "Derived", tops: [owner], extraCompanyIDs: [])
         s.corporateGroups = [manualA, manualB, derivedGroup]
         s.saveGroups()
         let groupCompanies = s.companies
@@ -249,6 +249,7 @@ struct AppRegression {
         precondition(!s.companyIDs(in: s.group(manualA.id)!).contains(c.id))
         precondition(s.companyIDs(in: s.group(manualB.id)!).contains(c.id))
         precondition(!s.remove(companyID: c.id, from: manualA.id))
+        precondition(!s.canRemove(companyID: c.id, from: derivedGroup.id))
         precondition(!s.remove(companyID: c.id, from: derivedGroup.id))
         precondition(s.companyIDs(in: s.group(derivedGroup.id)!).contains(c.id))
         precondition(s.companies == groupCompanies && s.holdings == groupHoldings)
