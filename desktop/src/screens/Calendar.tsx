@@ -10,7 +10,7 @@ import { type CalendarRange, calendarBounds, calendarRangeLabel } from "../state
 import { copyMessage, copyHandoff, writeCalendarFile } from "../services/packets";
 import { writePDF } from "../services/files";
 import { platform } from "../platform/platform";
-import { ActionMenu, Button, Checkbox, DateField, EmptyStateView, JurisdictionBadge, Pill, Segmented, SelectField, divider, item, useContextMenu } from "../ui/kit";
+import { ActionMenu, Button, Checkbox, DateField, EmptyStateView, JurisdictionBadge, Pill, Segmented, SelectField, divider, item, useContextMenu, PageHeader } from "../ui/kit";
 import { TrustBadge, obligationMenu, obligationPill } from "./common";
 
 const trustLabel = (k: string) => (k === "confirmed" ? "已确认" : k === "needsReview" ? "需复核" : "待核对");
@@ -60,7 +60,7 @@ export function CalendarView({ onBack }: { onBack?: () => void }) {
   for (const o of rest) {
     const k = monthKey(o.due);
     const b = blocks.find((x) => x.id === k);
-    if (b) b.rows.push(o); else blocks.push({ id: k, title: `${D.year(o.due)} 年 ${D.month(o.due)} 月`, rows: [o], alert: false });
+    if (b) b.rows.push(o); else blocks.push({ id: k, title: `${D.year(o.due)}年${D.month(o.due)}月`, rows: [o], alert: false });
   }
   const rangeText = eff.kind === "all" ? "未来 12 个月" : eff.kind === "custom" ? `${D.short(eff.from)}–${D.short(eff.to)}` : `${calendarRangeLabel(eff)}（${from ? D.short(from) : "含逾期"}–${D.short(to)}）`;
   const open = list.filter((o) => !obligationDone(o));
@@ -84,7 +84,7 @@ export function CalendarView({ onBack }: { onBack?: () => void }) {
       } else {
         const groups = new Map<string, Obligation[]>();
         for (const o of sorted) groups.set(monthKey(o.due), [...(groups.get(monthKey(o.due)) ?? []), o]);
-        const sections = [...groups.entries()].map(([k, os]) => ({ heading: `${+k.slice(0, 4)} 年 ${+k.slice(5)} 月（${os.length} 件）`, alert: false,
+        const sections = [...groups.entries()].map(([k, os]) => ({ heading: `${+k.slice(0, 4)}年${+k.slice(5)}月（${os.length} 件）`, alert: false,
           lines: os.map((o) => `${D.short(o.due)}　${o.company.name}　${o.rule.name}　${store.responsibleParty(o)?.name ?? "未指定"}　${obligationStatusLabel[obligationStatus(o)]}${!obligationDone(o) && o.due < today ? "　〔已逾期〕" : ""}${store.trust(o).kind === "confirmed" ? "" : "　〔规则待核对〕"}`) }));
         await platform().writeBytes(path, await writePDF("合规事项清单", `${[party?.name, rangeText].filter(Boolean).join("，")}，共 ${sorted.length} 件，${D.long(today)}导出`, sections, "标注“规则待核对”的截止日按草稿规则计算，请以负责方确认为准。"));
       }
@@ -104,9 +104,10 @@ export function CalendarView({ onBack }: { onBack?: () => void }) {
     <div ref={scroller} className="scroll grow">
       <div className="col" style={{ padding: "var(--page-edge)", maxWidth: 1240, margin: "0 auto" }}>
         <div className="col gap16" style={{ paddingBottom: 24 }}>
-          <div className="row start" style={{ paddingBottom: 8 }}>
-            <div className="col gap4 grow"><h1 className="t-page">合规日历</h1><span className="t-body muted">按月排列所有截止日。筛选出的事项可一并交办或导出为清单。</span></div>
-            {onBack && <Button icon="chevron.left" onClick={onBack}>返回</Button>}
+          <div style={{ paddingBottom: 8 }}>
+            <PageHeader title="合规日历" subtitle="按月排列所有截止日。筛选出的事项可一并交办或导出为清单。">
+              {onBack && <Button icon="chevron.left" onClick={onBack}>返回</Button>}
+            </PageHeader>
           </div>
           <div className="col gap10">
             <Segmented options={[["all", "未来 12 个月"], ["thisMonth", "本月"], ["nextMonth", "下月"], ["next3Months", "未来 3 个月"], ["custom", "自定义"]] as [CalendarRange["kind"], string][]}
@@ -132,7 +133,7 @@ export function CalendarView({ onBack }: { onBack?: () => void }) {
           {list.length > 0 && <div className="row gap8">
             {party ? <>
               {pending.length > 0 && <>
-                <Button kind="primary" title={`复制交办文字，发给${party.name}后点“确认已发送”`} onClick={() => { void copyHandoff(party, pending); store.draft(pending, party, "邮件"); }}>交给{latinPad(party.name)}办理（{pending.length} 件）</Button>
+                <Button kind="primary" title={`复制交办文字，发给${latinPad(party.name)}后点“确认已发送”`} onClick={() => { void copyHandoff(party, pending); store.draft(pending, party, "邮件"); }}>交给{latinPad(party.name)}办理（{pending.length} 件）</Button>
                 <ActionMenu icon="chevron.down" ariaLabel="其他交办方式" entries={[
                   item(`复制邮件格式文字（${pending.length} 件）`, "envelope", () => { void copyHandoff(party, pending); store.draft(pending, party, "邮件"); }),
                   item("复制简短清单（企业微信、飞书等）", "doc.on.doc", () => { void copyMessage(pending); store.draft(pending, party, "消息"); }),
@@ -152,7 +153,7 @@ export function CalendarView({ onBack }: { onBack?: () => void }) {
         {range.kind === "all" && list.length > 0 && (
           <div className="row surface" aria-label="未来 12 个月事项分布" style={{ alignItems: "flex-end", gap: 6, height: 102, padding: "16px 24px", marginBottom: 40 }}>
             {strip.map((s) => (
-              <button key={s.k} className="col grow" disabled={!s.n} title={s.n ? `${s.y} 年 ${s.m} 月：${s.n} 件` : ""} onClick={() => jump(s.k)} style={{ gap: 5, alignItems: "stretch", justifyContent: "flex-end", height: "100%" }}>
+              <button key={s.k} className="col grow" disabled={!s.n} title={s.n ? `${s.y}年${s.m}月：${s.n} 件` : ""} onClick={() => jump(s.k)} style={{ gap: 5, alignItems: "stretch", justifyContent: "flex-end", height: "100%" }}>
                 <span className="num" style={{ fontSize: 11, fontWeight: 700, textAlign: "center", minHeight: 14 }}>{s.n || ""}</span>
                 <span style={{ height: 6 + 30 * s.n / maxN, borderRadius: 3, background: s.n ? "color-mix(in srgb, var(--ink) 80%, transparent)" : "var(--band)" }} />
                 <span className="muted" style={{ fontSize: 11, textAlign: "center" }}>{s.m}月</span>

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as D from "../domain/day";
-import { type Company, type Document, type DocumentType, type NodeRef, emptyArchive, ref, sameRef, typeAppliesTo, uuid } from "../domain/models";
+import { type Company, type Document, type DocumentType, type NodeRef, emptyArchive, ref, sameRef, typeAppliesTo, uuid, latinPad, latinPadEnd } from "../domain/models";
 import { matchCompany } from "../domain/recognize";
 import { snapshotTitle } from "../domain/folder";
 import { useApp } from "../state/hooks";
@@ -285,7 +285,7 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
 
   const title = committing ? `正在归档 ${readyCount} 份文件` : working ? `正在识别 ${progress} / ${items.length} 份文件` : pending > 0 ? `识别完成，请确认 ${pending} 处` : "都确认好了，可以归档";
   const base = committing ? "正在复制文件并一次写入档案，请保持窗口打开。" : working ? "逐份读取首页，找出公司名称、注册编号、文件类型和签发日期。全部在这台电脑上完成，不会上传。" : "把握高的已自动归位。琥珀色的需要你看一眼，改好或点“确认”后一起归档。";
-  const subtitle = (contextCompany ? `归档到 ${contextCompany.name}。` : contextGroup ? `优先在${contextGroup.name}的公司中匹配，新公司会归入这个集团。` : "") + base;
+  const subtitle = (contextCompany ? `归档到 ${contextCompany.name}。` : contextGroup ? `优先在${latinPad(contextGroup.name)}的公司中匹配，新公司会归入这个集团。` : "") + base;
   const shown = working ? items.filter((i) => i.recognized) : items;
   const hasRecognized = items.some((i) => i.recognized);
   const companies = new Set(items.filter((i) => i.include).map((i) => (i.owner?.kind === "company" ? i.owner.id : i.newCompanyKey ? "new:" + i.newCompanyKey : null)).filter(Boolean)).size;
@@ -378,7 +378,7 @@ export function ImportDoneView({ result, focusCompanyID, onClose }: { result: Re
     .sort((a, b) => (a[0].complete !== b[0].complete ? (a[0].complete ? 1 : -1) : a[0].missing.length - b[0].missing.length || a[1] - b[1])).map(([r]) => r);
   const n = result.companyIDs.length;
   let s: string;
-  if (focus) { const p = store.archiveProgress(focus); s = `${focus.name}的档案清单已归档 ${p.have}/${p.total} 项。`; }
+  if (focus) { const p = store.archiveProgress(focus); s = `${latinPadEnd(focus.name)}的档案清单已归档 ${p.have}/${p.total} 项。`; }
   else if (!n) s = "文件已归入人员档案。";
   else if (result.newCompanyCount) s = `建立了 ${result.newCompanyCount} 家公司的档案` + (n > result.newCompanyCount ? `，并更新了 ${n - result.newCompanyCount} 家公司。` : "。");
   else s = `更新了 ${n} 家公司的档案。`;

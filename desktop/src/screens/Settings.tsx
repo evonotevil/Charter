@@ -36,7 +36,7 @@ export function SettingsView() {
             {g.title && <span className="t-micro muted" style={{ padding: "0 0 4px 12px" }}>{g.title}</span>}
             {g.panes.map((p) => (
               <button key={p} className="row gap10" onClick={() => router.set("settings", p)} aria-current={p === pane || undefined}
-                style={{ height: 32, padding: "0 12px", borderRadius: 8, fontSize: 13, fontWeight: p === pane ? 600 : 400,
+                style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-row)", fontSize: 13, fontWeight: p === pane ? 600 : 400,
                   background: p === pane ? "var(--selection)" : undefined, color: p === pane ? "var(--on-selection)" : "color-mix(in srgb, var(--ink) 75%, transparent)" }}>
                 <span style={{ width: 18, display: "grid", placeItems: "center" }}><Icon name={settingsPaneSymbol[p]} size={13} /></span>{settingsPaneTitle[p]}
               </button>
@@ -46,6 +46,7 @@ export function SettingsView() {
         <span className="spacer" />
         <SyncFooter onClick={() => router.set("settings", "sync")} />
         <Button kind="quiet" size="small" icon="chevron.left" onClick={() => router.set("settings", null)}>返回 Charter</Button>
+        <span className="t-micro muted num" style={{ textAlign: "center" }}>Charter {typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : ""}</span>
       </nav>
       <div className="col grow" style={{ minWidth: 0, background: "var(--canvas)" }} key={pane}>
         {pane === "archiveItems" ? <ArchiveItemsSettings /> : pane === "purposes" ? <PacketSettings /> : pane === "rules" ? <RulesSettings /> : <GeneralSettings pane={pane} />}
@@ -257,13 +258,13 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
         </Section>
         <Section title="危险操作">
           <Row icon="shippingbox" title="载入示例数据" detail="一套虚构的远澜集团数据，会覆盖当前文件夹里的公司、人员和负责方。建议先更换为空文件夹。"><Button size="small" onClick={() => setConfirmSample(true)}>载入…</Button></Row>
-          <Row icon="trash" title="清空所有数据" detail="删除公司、集团、人员、关系、文件（含数据文件夹里的归档文件）、负责方和事项记录。设置和模板库保留。适合试用结束后重新开始。">
+          <Row icon="trash" title="清空所有数据" detail="移除公司、集团、人员、关系、文件（含归档的 PDF）、负责方和事项记录，设置和模板库保留。清空前会自动保存快照，可以恢复。适合试用结束后重新开始。">
             <Button kind="danger" size="small" disabled={store.isLoading || store.isImporting || store.loadFailed} onClick={() => setConfirmClear(true)}>清空…</Button>
           </Row>
         </Section>
       </>}
       {confirmSample && <ConfirmSheet title="载入示例数据？" message="示例数据会覆盖当前数据文件夹里的公司、人员和负责方。建议先更换为空文件夹。" confirmTitle="载入" destructive onClose={() => setConfirmSample(false)} onConfirm={() => { setConfirmSample(false); void installSampleData(store); }} />}
-      {confirmClear && <ConfirmSheet title="清空所有数据？" message="以下内容会被永久删除，数据文件夹里的归档文件也会一起删除，无法撤销。设置和模板库（法域、档案条目、规则、用途）会保留。" details={store.clearSummaryLines}
+      {confirmClear && <ConfirmSheet title="清空所有数据？" message="以下内容会从数据文件夹里移除。清空前会自动保存一份快照，归档文件也一起收进快照，需要时可在这里恢复。设置和模板库（法域、档案条目、规则、用途）会保留。" details={store.clearSummaryLines}
         confirmTitle="清空" destructive onClose={() => setConfirmClear(false)} onConfirm={() => { setConfirmClear(false); void store.clearAllData(); }} />}
       {restoring && <ConfirmSheet title={`恢复到 ${snapshotTitle(restoring.date)} 的状态？`} message={"当前状态会先自动保存一份快照，之后也可以再恢复回来。" + (restoring.reason === "清空所有数据前" ? "这份快照连同当时的归档文件一起保存，恢复时会一起放回。" : "快照只包含档案记录，不包含 PDF 文件本身。")}
         details={[`快照原因：${restoring.reason}`, ...counts(restoring).map((c) => `快照里有 ${c}`), `当前：${store.data.companies.length} 家公司、${store.data.documents.length} 份文件`]}
@@ -534,7 +535,7 @@ function PacketSettings() {
   const [editing, setEditing] = useState<{ id?: string } | null>(null);
   const packets = store.data.library.packets;
   const chip = (text: string, muted: boolean, icon?: string, title?: string) => (
-    <span key={text} title={title} className="row gap4" style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, background: muted ? "var(--band)" : "var(--lime-soft)", color: muted ? "var(--muted)" : "var(--lime-text)" }}>
+    <span key={text} title={title} className="row gap4" style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, background: "var(--band)", color: muted ? "var(--muted)" : "var(--ink)" }}>
       {icon && <Icon name={icon} size={9.5} />}{text}
     </span>
   );
@@ -592,9 +593,12 @@ function RulesSettings() {
     setSelection(r.id);
   };
   return (
-    <div className="row grow start" style={{ gap: 20, padding: 24, minHeight: 0 }}>
+    <div className="col grow" style={{ gap: 20, padding: 28, minHeight: 0 }}>
+      <PaneHeader title="合规规则" detail="各法域申报截止日的计算方式。只有核对过的规则才按确定日期提醒。">
+        <Button size="small" icon="plus" onClick={add}>新建规则</Button>
+      </PaneHeader>
+      <div className="row grow start" style={{ gap: 20, minHeight: 0 }}>
       <div className="col" style={{ width: 340, flex: "none", gap: 14, height: "100%" }}>
-        <PaneHeader title="合规规则" detail="各法域申报截止日的计算方式。只有核对过的规则才按确定日期提醒。" />
         <div className="row gap8">
           <SelectField options={[["全部", "全部法域"] as [string, string], ...store.data.library.jurisdictions.map((j) => [j.code, j.name] as [string, string])]} value={jurisdiction} onChange={setJurisdiction} minWidth={150} />
           <span className="spacer" />
@@ -607,7 +611,7 @@ function RulesSettings() {
             const detail = `${r.jurisdictions.join("、")}，${store.scheduleText(r.schedule)}`;
             return (
               <button key={r.id} className={`row gap10 ${on ? "" : "hover-band"}`} onClick={() => setSelection(r.id)}
-                style={{ minHeight: 48, padding: "0 10px", borderRadius: 12, textAlign: "left", background: on ? "var(--selection)" : undefined, flex: "none" }}>
+                style={{ minHeight: 48, padding: "0 10px", borderRadius: "var(--r-row)", textAlign: "left", background: on ? "var(--selection)" : undefined, flex: "none" }}>
                 <span className="col grow" style={{ gap: 2, minWidth: 0 }}>
                   <span className="t-row ellipsis" style={{ color: on ? "var(--on-selection)" : r.enabled ? "var(--ink)" : "var(--muted)" }}>{r.name || "未命名规则"}</span>
                   <span className="t-meta ellipsis" style={{ color: on ? "color-mix(in srgb, var(--on-selection) 70%, transparent)" : "var(--muted)" }}>{r.enabled ? detail : `已停用，${detail}`}</span>
@@ -617,11 +621,11 @@ function RulesSettings() {
             );
           })}
         </div>
-        <span><Button kind="primary" icon="plus" onClick={add}>新建规则</Button></span>
       </div>
       <div className="scroll grow" style={{ height: "100%", minWidth: 0 }}>
         {rule ? <RuleForm key={rule.id} rule={rule} onConfirm={() => setConfirming(rule.id)} onDelete={() => setDeleting(true)} />
           : <div className="col" style={{ height: "100%", justifyContent: "center" }}><EmptyStateView symbol="calendar.badge.clock" title="选择要编辑的规则" message="可在这里核对规则、调整截止日算法和提醒。" /></div>}
+      </div>
       </div>
       {confirming && <RuleConfirmSheet ruleID={confirming} onClose={() => setConfirming(null)} />}
       {deleting && rule && <ConfirmSheet title="删除这条规则？" message="删除后不再按这条规则生成待办事项。已完成事项的记录会保留。" confirmTitle="删除" destructive onClose={() => setDeleting(false)}
@@ -655,14 +659,14 @@ function RuleForm({ rule, onConfirm, onDelete }: { rule: RuleTemplate; onConfirm
         <Switch checked={r.enabled} onChange={(enabled) => set({ enabled })}>启用这条规则</Switch>
       </FormGroup>
       <FormGroup title="核对" canvas>
-        <FieldRow label="状态"><TrustBadge trust={v?.status === "confirmed" ? { kind: "confirmed", scope: "该法域通用", on: v.confirmedOn } as any : { kind: "draft" } as any} showConfirmed /></FieldRow>
+        <FieldRow label="状态"><span className="row"><TrustBadge trust={v?.status === "confirmed" ? { kind: "confirmed", scope: "该法域通用", on: v.confirmedOn } as any : { kind: "draft" } as any} showConfirmed /></span></FieldRow>
         {v?.status === "confirmed" && <>
           <FieldRow label="依据"><span className="selectable">{v.source ? `${v.sourceKind}：${v.source}` : v.sourceKind}</span></FieldRow>
           <FieldRow label="核对人"><span className="selectable">{v.confirmedBy}</span></FieldRow>
           <FieldRow label="核对日期"><span>{v.confirmedOn ? D.long(v.confirmedOn) : "—"}</span></FieldRow>
         </>}
         {overrides.length > 0 && <FieldRow label="单独确认"><span>{overrides.map((c) => c.name).join("、")}</span></FieldRow>}
-        <div className="row gap12"><Button kind="primary" size="small" onClick={onConfirm}>{v?.status === "confirmed" ? "修改核对信息…" : "确认这条规则…"}</Button><span className="t-meta muted">修改下面的算法后，这条规则会退回“待核对”。</span></div>
+        <div className="row gap12"><Button size="small" onClick={onConfirm}>{v?.status === "confirmed" ? "修改核对信息…" : "确认这条规则…"}</Button><span className="t-meta muted">修改下面的算法后，这条规则会退回“待核对”。</span></div>
       </FormGroup>
       <FormGroup title="截止日计算" canvas>
         <ScheduleEditor schedule={r.schedule} onChange={(schedule) => set({ schedule })} />

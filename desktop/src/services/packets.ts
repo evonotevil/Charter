@@ -1,7 +1,7 @@
 // 文件包、全部材料导出、交办邮件与提醒。移植自 Packager / ArchiveExporter / Mailer / Notifier / CalendarSync。
 
 import * as D from "../domain/day";
-import { type ArchiveItem, type Company, type Document, type PacketTemplate, type Party, archiveStateLabel, isNotApplicable, ref, stateNeedsAttention } from "../domain/models";
+import { type ArchiveItem, type Company, type Document, type PacketTemplate, type Party, archiveStateLabel, isNotApplicable, ref, stateNeedsAttention, latinPad, latinPadEnd, latinPadStart } from "../domain/models";
 import { type Obligation, expiryLabel, expiryOf, obligationStatus, reminderDays } from "../domain/engine";
 import { safeName } from "../domain/folder";
 import { extname, platform } from "../platform/platform";
@@ -95,7 +95,7 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
   const sections: PDFSection[] = [{ heading: `已包含（${incLines.length} 份）`, lines: incLines, alert: false }];
   if (misLines.length) sections.push({ heading: `尚缺（${misLines.length} 项）`, lines: misLines, alert: true });
   const toc = await writePDF(c.name,
-    complete ? `${t.name}文件包　${D.long(s.today)}` : `${t.name}文件包（部分材料，缺 ${misLines.length} 项）　${D.long(s.today)}`,
+    complete ? `${latinPadEnd(t.name)}文件包　${D.long(s.today)}` : `${latinPadEnd(t.name)}文件包（部分材料，缺 ${misLines.length} 项）　${D.long(s.today)}`,
     sections, complete ? undefined : "这是部分材料包。缺少的文件补齐后会另行发送。");
   entries.unshift({ path: `${base}/00 目录.pdf`, data: toc });
   const zip = await writeZip(entries, onProgress);
@@ -219,7 +219,7 @@ export function upcomingReminders(s: Store, now = Date.now()): Reminder[] {
       const p = s.responsibleParty(o);
       if (p) {
         const st = obligationStatus(o);
-        body += st === "pending" ? `。尚未交给${p.name}。` : st === "drafted" ? `。给${p.name}的消息尚未确认发出。` : `。${p.name}正在办理。`;
+        body += st === "pending" ? `。尚未交给${latinPadStart(p.name)}。` : st === "drafted" ? `。给${latinPad(p.name)}的消息尚未确认发出。` : `。${latinPadEnd(p.name)}正在办理。`;
       }
       out.push({ id: `charter.${o.key}|${d}`, at: fire, title: (left === 0 ? `今天截止：${o.rule.name}` : `${left} 天后截止：${o.rule.name}`) + draft, body });
     }

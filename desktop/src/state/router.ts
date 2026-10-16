@@ -48,7 +48,7 @@ export const settingsPanes: SettingsPane[] = ["sync", "reminders", "archiveItems
 export const settingsPaneTitle: Record<SettingsPane, string> = { sync: "数据与同步", reminders: "提醒", archiveItems: "档案清单", purposes: "文件包用途", rules: "合规规则", backup: "备份与配置", modules: "功能模块" };
 export const settingsPaneSymbol: Record<SettingsPane, string> = { sync: "icloud", reminders: "bell", archiveItems: "list.bullet.rectangle", purposes: "shippingbox", rules: "calendar.badge.clock", backup: "clock.arrow.circlepath", modules: "square.grid.2x2" };
 export const settingsGroups = (complianceOn: boolean): { title?: string; panes: SettingsPane[] }[] => [
-  { panes: ["sync", "reminders"] },
+  { title: "常规", panes: ["sync", "reminders"] },
   { title: "模板库", panes: complianceOn ? ["archiveItems", "purposes", "rules"] : ["archiveItems", "purposes"] },
   { title: "高级", panes: ["backup", "modules"] },
 ];

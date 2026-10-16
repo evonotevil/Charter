@@ -111,7 +111,8 @@ function SidebarFooter() {
 
 function Sidebar() {
   const { store, router } = useApp();
-  const badge = (s: Section) => (s === "files" ? store.attentionCount(router.groupFilter) : 0);
+  // 设计规范：“公司”带需处理数角标（有文件需处理的公司数）。
+  const badge = (s: Section) => (s === "companies" ? store.attentionCompanyCount(router.groupFilter) : 0);
   const groupExists = (id: string) => !!store.group(id);
   return (
     <aside className="col" style={{ width: 250, flex: "none", padding: "8px 12px 12px", background: "var(--canvas)", borderRight: "1px solid var(--hairline)" }}>

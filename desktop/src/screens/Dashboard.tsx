@@ -3,7 +3,7 @@
 import { useState } from "react";
 import * as D from "../domain/day";
 import type { Day } from "../domain/day";
-import { type ArchiveState, type Document, type NodeRef, isHandedOff, ref } from "../domain/models";
+import { type ArchiveState, type Document, type NodeRef, isHandedOff, ref, latinPad } from "../domain/models";
 import { type Obligation, daysLeft, expiryOf } from "../domain/engine";
 import { useApp } from "../state/hooks";
 import { ungrouped } from "../state/store";
@@ -123,7 +123,7 @@ function Header() {
   const h = new Date().getHours();
   const mod = navigator.platform.toLowerCase().includes("mac") ? "⌘K" : "Ctrl K";
   return (
-    <div className="row gap16">
+    <div className="row gap16" style={{ minHeight: 40 }}>
       <h1 className="t-page ellipsis">{h < 12 ? "早上好" : h < 18 ? "下午好" : "晚上好"}</h1>
       <span className="spacer" />
       <button className="row gap8" onClick={() => router.open({ kind: "quickSearch" })} aria-label="查找公司或人员"
@@ -237,7 +237,7 @@ function AttentionRow({ r, onOpen, onReissue }: { r: Row; onOpen: (r: Row) => vo
   const c = r.owner.kind === "company" ? store.company(r.owner.id) : undefined;
   const waiting = store.openRequest(r.owner, r.document.typeID);
   const menu: MenuEntry[] = [
-    waiting ? item(`已在等${store.party(waiting.partyID)?.name ?? "负责方"}补发`, "hourglass", () => {}, { disabled: true })
+    waiting ? item(`已在等${latinPad(store.party(waiting.partyID)?.name ?? "负责方")}补发`, "hourglass", () => {}, { disabled: true })
       : item("请负责方补发…", "paperplane", () => onReissue(r.owner, [r.document.typeID])),
     item("查看文件详情", "doc.text.magnifyingglass", () => router.open({ kind: "document", id: r.document.id })),
   ];
@@ -257,7 +257,7 @@ function AttentionRow({ r, onOpen, onReissue }: { r: Row; onOpen: (r: Row) => vo
         <span className="mono" style={{ width: 96, flex: "none", fontSize: 12.5, color: stateColor(r.state) }}>{expiry ?? "—"}</span>
       </button>
       <span className="row" style={{ width: ACTIONS, flex: "none", justifyContent: "flex-end", padding: "0 4px" }}>
-        {waiting ? <span className="t-meta muted ellipsis" title="已复制请补发文字，跟进日到了会提醒">在等{store.party(waiting.partyID)?.name ?? "负责方"}补发</span>
+        {waiting ? <span className="t-meta muted ellipsis" title="已复制请补发文字，跟进日到了会提醒">在等{latinPad(store.party(waiting.partyID)?.name ?? "负责方")}补发</span>
           : <Button size="small" onClick={() => onReissue(r.owner, [r.document.typeID])}>请补发</Button>}
       </span>
       <span style={{ width: 32, marginRight: 8 }}><ActionMenu icon="ellipsis" kind="quiet" size="small" entries={menu} align="end" ariaLabel="更多操作" /></span>

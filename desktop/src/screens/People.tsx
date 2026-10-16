@@ -6,7 +6,7 @@ import { percentLabel, portfolio } from "../domain/engine";
 import { useApp } from "../state/hooks";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { Avatar, Button, CountBadge, EmptyStateView, FieldRow, FormGroup, JurisdictionBadge, ListField, Modal, Pill, SelectField, SheetScaffold, TextField } from "../ui/kit";
+import { Avatar, Button, CountBadge, EmptyStateView, FieldRow, FormGroup, JurisdictionBadge, ListField, Modal, Pill, SelectField, SheetScaffold, TextField, PageHeader } from "../ui/kit";
 import { ChangeRowMenu } from "./Companies";
 
 export function PeopleView() {
@@ -35,9 +35,10 @@ export function PeopleView() {
   const selected = store.person(router.selectedPersonID);
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
-      <div className="row" style={{ padding: "24px var(--page-edge)" }}>
-        <h1 className="t-page">人员</h1><span className="spacer" />
-        <Button kind="primary" icon="plus" onClick={() => setCreating(true)}>新建人员</Button>
+      <div style={{ padding: "var(--page-edge) var(--page-edge) 24px" }}>
+        <PageHeader title="人员" subtitle="董事、股东和其他相关人员，以及他们在各公司的任职和持股。">
+          <Button kind="primary" icon="plus" onClick={() => setCreating(true)}>新建人员</Button>
+        </PageHeader>
       </div>
       <div className="row grow" style={{ alignItems: "stretch", minHeight: 0 }}>
         <div className="col surface" style={{ width: 300, flex: "none", padding: 12, gap: 8, margin: "0 0 var(--page-edge) var(--page-edge)", minHeight: 0 }}>
@@ -138,7 +139,7 @@ function PersonDetail({ person }: { person: Person }) {
   const twins = [person.name, ...person.aliases].flatMap((n) => store.possibleDuplicates(n, person.id)).filter((p, i, a) => a.findIndex((x) => x.id === p.id) === i);
   const fact = (label: string, n: number) => (
     <div className="col" style={{ gap: 6, padding: "16px 24px", minWidth: 140 }}>
-      <span className="t-meta muted">{label}</span><span className="mono" style={{ fontSize: 15, fontWeight: 500, color: n ? "var(--ink)" : "var(--muted)" }}>{n ? `${n} 家` : "无"}</span>
+      <span className="t-meta muted">{label}</span><span className="num" style={{ fontSize: 15, fontWeight: 500, color: n ? "var(--ink)" : "var(--muted)" }}>{n ? `${n} 家` : "无"}</span>
     </div>
   );
   const section = (title: string, count: number, children: ReactNode) => (

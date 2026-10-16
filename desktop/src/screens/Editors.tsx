@@ -368,7 +368,7 @@ export function ObligationSheet({ obligationKey, onClose }: { obligationKey: str
   const r = o.record;
   if (r?.log?.length) for (const e of r.log) {
     const dt = D.fromStamp(e.at);
-    let line = `${dt.getMonth() + 1} 月 ${dt.getDate()} 日 ${fmt.format(dt).split(" ").pop()}　${handoffActionLabel[e.action]}`;
+    let line = `${dt.getMonth() + 1}月${dt.getDate()}日 ${fmt.format(dt).split(" ").pop()}　${handoffActionLabel[e.action]}`;
     const p = store.party(e.partyID);
     if (p && ["drafted", "copied", "sent"].includes(e.action)) line += `（${p.name}）`;
     if (e.channel && e.action !== "drafted") line += `，通过${e.channel}`;

@@ -19,7 +19,7 @@ npm install
 npm run tauri build -- --bundles dmg
 ```
 
-装好的安装包在 `src-tauri/target/release/bundle/dmg/Charter_3.0.0_*.dmg`。
+装好的安装包在 `src-tauri/target/release/bundle/dmg/Charter_<版本号>_aarch64.dmg`。
 
 应用没有签名。第一次打开时 macOS 会提示“无法验证开发者”：在“访达”里右键 Charter →“打开”，确认一次即可。
 

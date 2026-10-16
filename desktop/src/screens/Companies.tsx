@@ -4,8 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
 import {
   type ArchiveItem, type ArchiveState, type Company, type Document, type DocumentType, type GroupRow, type NodeRef,
-  archiveItemName, changeKindLabel, companyStatusLabel, hasFile, isActiveOn, isNotApplicable, itemMarkLabel, itemMarks, ref, stateNeedsAttention,
-} from "../domain/models";
+  archiveItemName, changeKindLabel, companyStatusLabel, hasFile, isActiveOn, isNotApplicable, itemMarkLabel, itemMarks, ref, stateNeedsAttention, latinPad, latinPadStart } from "../domain/models";
 import { daysLeft, expiryLabel, obligationDone, percentLabel } from "../domain/engine";
 import { isMember, sourceLabel } from "../domain/groups";
 import { useApp } from "../state/hooks";
@@ -13,7 +12,7 @@ import { nonArchiveTypeIDs, ungrouped } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import {
-  ActionMenu, Avatar, Button, Checkbox, CountBadge, EmptyStateView, FieldRow, FormGroup, JurisdictionBadge, type MenuEntry, Modal, Pill,
+  ActionMenu, Avatar, Button, Checkbox, CountBadge, EmptyStateView, PageHeader, FieldRow, FormGroup, JurisdictionBadge, type MenuEntry, Modal, Pill,
   Popover, ProgressCapsule, RadioGroup, Segmented, SelectField, SheetScaffold, Switch, TextField, divider, header, item, useContextMenu,
 } from "../ui/kit";
 import { DropTarget, DropZone, useDropTarget } from "../ui/drop";
@@ -31,12 +30,12 @@ export function CompaniesView() {
   const { router } = useApp();
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
-      <div className="row" style={{ padding: `24px var(--page-edge) ${router.companiesMode === "structure" ? 0 : 24}px` }}>
-        <h1 className="t-page">公司</h1>
-        <span className="spacer" />
-        <span title="列表：逐家查看；矩阵：公司 × 档案类别一览；结构：股权结构图">
-          <Segmented options={[["list", "列表"], ["matrix", "矩阵"], ["structure", "结构"]]} value={router.companiesMode} onChange={(m) => router.set("companiesMode", m)} />
-        </span>
+      <div style={{ padding: `var(--page-edge) var(--page-edge) ${router.companiesMode === "structure" ? 0 : 24}px` }}>
+        <PageHeader title="公司">
+          <span title="列表：逐家查看；矩阵：公司 × 档案类别一览；结构：股权结构图">
+            <Segmented options={[["list", "列表"], ["matrix", "矩阵"], ["structure", "结构"]]} value={router.companiesMode} onChange={(m) => router.set("companiesMode", m)} />
+          </span>
+        </PageHeader>
       </div>
       <div className="col grow" style={{ minHeight: 0 }}>
         {router.companiesMode === "list" ? <CompanyList /> : router.companiesMode === "matrix" ? <MatrixView /> : <StructureView />}
@@ -131,7 +130,7 @@ function CompanyList() {
         {!sections.length && (
           <div className="col gap10" style={{ alignItems: "center", padding: 16 }}>
             <span className="muted" style={{ fontSize: 13 }}>{q ? `没有找到“${query}”` : `${store.filterName(filter)}还没有公司`}</span>
-            {!q && filter && filter !== ungrouped && <Button kind="primary" size="small" onClick={() => router.open({ kind: "newCompanyInGroup", group: filter })}>在此集团新建公司</Button>}
+            {!q && filter && filter !== ungrouped && <Button size="small" onClick={() => router.open({ kind: "newCompanyInGroup", group: filter })}>在此集团新建公司</Button>}
             {filter && <Button size="small" onClick={() => router.set("groupFilter", null)}>显示全部公司</Button>}
           </div>
         )}
@@ -141,7 +140,7 @@ function CompanyList() {
   return (
     <div className="row grow" style={{ alignItems: "stretch", minHeight: 0 }}>
       <div style={{ width: "clamp(240px, calc(100% - 560px), 300px)", flex: "none", margin: "0 0 var(--page-edge) var(--page-edge)", minHeight: 0 }}>
-        {group ? <DropTarget message={`松开即可归档到${group.name}`} onDrop={(paths) => router.startImport(paths, { kind: "group", id: group.id })} style={{ height: "100%" }}>{list}</DropTarget> : list}
+        {group ? <DropTarget message={`松开即可归档到${latinPadStart(group.name)}`} onDrop={(paths) => router.startImport(paths, { kind: "group", id: group.id })} style={{ height: "100%" }}>{list}</DropTarget> : list}
       </div>
       <div className="col grow" style={{ minWidth: 520, minHeight: 0 }}>
         {selected ? <CompanyDetail key={selected.id} company={selected} /> : (
@@ -266,13 +265,13 @@ function Hero({ company }: { company: Company }) {
     edit.push(divider, header("集团归属"));
     for (const g of store.data.groups) {
       const m = store.membership(id, g);
-      if (isMember(m)) edit.push(item(`从${g.name}移出（${sourceLabel(m)}）`, "minus.circle", () => {
+      if (isMember(m)) edit.push(item(`从${latinPad(g.name)}移出（${sourceLabel(m)}）`, "minus.circle", () => {
         let text = "";
         const u = store.undoable("移出集团", () => { text = store.moveOut(id, g.id); });
         store.showToast(text, u ? () => store.undoID(u) : undefined);
       }));
-      else if (m.kind === "excluded") edit.push(item(`恢复到${g.name}（已排除）`, "arrow.uturn.backward", () => { store.restoreToGroup(id, g.id); store.showToast(`已恢复为按股权归入${g.name}`); }));
-      else edit.push(item(`归入「${g.name}」`, "plus.circle", () => { store.addToGroup(id, g.id); store.showToast(`已归入${g.name}`); }));
+      else if (m.kind === "excluded") edit.push(item(`恢复到${latinPadStart(g.name)}（已排除）`, "arrow.uturn.backward", () => { store.restoreToGroup(id, g.id); store.showToast(`已恢复为按股权归入${latinPadStart(g.name)}`); }));
+      else edit.push(item(`归入「${g.name}」`, "plus.circle", () => { store.addToGroup(id, g.id); store.showToast(`已归入${latinPadStart(g.name)}`); }));
     }
   }
   return (
@@ -615,7 +614,7 @@ function ArchiveRow({ company, item: it, compact }: { company: Company; item: Ar
   const dateProblem = it.state.kind === "expired" || it.state.kind === "expiring";
   const menu: MenuEntry[] = [];
   if (canRequest) {
-    menu.push(waiting ? item(`已在等${store.party(waiting.partyID)?.name ?? "负责方"}补发`, "hourglass", () => {}, { disabled: true }) : item("请负责方补发…", "paperplane", () => setReissue(true)), divider);
+    menu.push(waiting ? item(`已在等${latinPad(store.party(waiting.partyID)?.name ?? "负责方")}补发`, "hourglass", () => {}, { disabled: true }) : item("请负责方补发…", "paperplane", () => setReissue(true)), divider);
   }
   if (d) {
     menu.push(item("查看与编辑（到期日、备注）…", "doc.text.magnifyingglass", () => router.open({ kind: "document", id: d.id })),
@@ -684,11 +683,7 @@ function VersionsTab({ company }: { company: Company }) {
   return (
     <div className="col gap20">
       {!groups.length ? (
-        <div className="col gap6" style={{ alignItems: "center", padding: "28px 0", textAlign: "center" }}>
-          <Icon name="clock.arrow.circlepath" size={24} className="muted" />
-          <span style={{ fontSize: 15, fontWeight: 600 }}>还没有旧版本</span>
-          <span className="muted" style={{ fontSize: 13 }}>归档新版后，被取代的文件会保留在这里，可单独打开或一并导出。</span>
-        </div>
+        <EmptyStateView symbol="clock.arrow.circlepath" title="还没有旧版本" message="归档新版后，被取代的文件会保留在这里，可单独打开或一并导出。" style={{ padding: "28px 0" }} />
       ) : groups.map((g) => (
         <div key={g.typeID} className="col gap10">
           <div className="row baseline gap8"><span style={{ fontSize: 15, fontWeight: 600 }}>{store.docType(g.typeID)?.name ?? "文件"}</span><span className="muted" style={{ fontSize: 12.5 }}>旧版 {g.versions.length - 1} 份</span></div>

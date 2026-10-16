@@ -241,7 +241,7 @@ export function CalendarPanel({ value, onPick, relativeTo, relativeLabel = "签�
     else if (mode === "months") setShown(D.makeDay(D.year(shown) + step, D.month(shown), 1));
     else setYearPage(yearPage + step * 12);
   };
-  const title = mode === "days" ? `${D.year(shown)} 年 ${D.month(shown)} 月` : mode === "months" ? `${D.year(shown)} 年` : `${yearPage} – ${yearPage + 11}`;
+  const title = mode === "days" ? `${D.year(shown)}年${D.month(shown)}月` : mode === "months" ? `${D.year(shown)}年` : `${yearPage} – ${yearPage + 11}`;
   const first = D.makeDay(D.year(shown), D.month(shown), 1);
   const lead = (D.weekday(first) + 5) % 7;
   const start = D.addDays(first, -lead);
@@ -540,3 +540,17 @@ export function useOutsideKey(key: string, mods: { meta?: boolean; shift?: boole
 }
 
 export function useMemoOnce<T>(f: () => T) { return useMemo(f, []); }
+
+/** 页头：标题与右侧操作在同一行垂直居中，说明文字放在下一行。所有页面共用，保证位置一致。 */
+export function PageHeader({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="col gap4">
+      <div className="row gap16" style={{ minHeight: 40 }}>
+        <h1 className="t-page ellipsis">{title}</h1>
+        <span className="spacer" />
+        {children}
+      </div>
+      {subtitle && <span className="t-body muted">{subtitle}</span>}
+    </div>
+  );
+}

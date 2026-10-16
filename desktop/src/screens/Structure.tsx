@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Day } from "../domain/day";
 import * as D from "../domain/day";
-import { type Company, type Holding, type NodeRef, companyStatusLabel, isActiveOn, ref, refKey } from "../domain/models";
+import { type Company, type Holding, type NodeRef, companyStatusLabel, isActiveOn, ref, refKey, latinPad, latinPadStart } from "../domain/models";
 import { activeHoldings, percentLabel, portfolio } from "../domain/engine";
 import { type Pt, type Route, type StructureSnapshot, buildSnapshot, clampZoom, companySize, focusChain, personSize, routeEdges, routePath, sizeOf, timelineStops } from "../domain/graph";
 import { isMember, sourceLabel } from "../domain/groups";
@@ -192,7 +192,7 @@ export function StructureView() {
               <span className="ellipsis">{upward ? `从 ${store.company(upward)?.name ?? ""} 向上` : store.filterName(group)}</span>
               <span>·</span><span className="num">{snapshot.companies.length} 家公司</span>
               {!upward && g && excluded > 0 && <><span>·</span>
-                <button className="link" title={`这些公司股权能推导到，但你把它们排除在${g.name}之外`} onClick={() => router.open({ kind: "groupMembers", group: g.id })}>已排除 {excluded} 家</button></>}
+                <button className="link" title={`这些公司股权能推导到，但你把它们排除在${latinPad(g.name)}之外`} onClick={() => router.open({ kind: "groupMembers", group: g.id })}>已排除 {excluded} 家</button></>}
             </span>
             <span className="spacer" />
             <span className="row gap8" title="按股东录入情况给公司标色，并列出需要补充的公司">
@@ -476,7 +476,7 @@ function CompanyInspector({ id, asOf }: { id: string; asOf: Day }) {
               <span style={{ fontWeight: 600, color: m.kind === "excluded" ? "var(--muted)" : "var(--ink)" }}>{g.name}</span>
               <Pill text={sourceLabel(m)} kind={m.kind === "manual" || m.kind === "excluded" ? "outline" : "neutral"} />
               <span className="spacer" />
-              {m.kind === "excluded" ? <Button kind="quiet" size="small" onClick={() => { store.restoreToGroup(id, g.id); store.showToast(`已恢复为按股权归入${g.name}`); }}>恢复</Button>
+              {m.kind === "excluded" ? <Button kind="quiet" size="small" onClick={() => { store.restoreToGroup(id, g.id); store.showToast(`已恢复为按股权归入${latinPadStart(g.name)}`); }}>恢复</Button>
                 : m.kind !== "top" && <Button kind="quiet" size="small" onClick={() => {
                   let text = "";
                   const u = store.undoable("移出集团", () => { text = store.moveOut(id, g.id); });

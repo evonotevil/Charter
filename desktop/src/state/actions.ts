@@ -4,8 +4,7 @@ import * as D from "../domain/day";
 import type { Day } from "../domain/day";
 import {
   type Appointment, type ChangeKind, type ChangeRecord, type Company, type CompanyStatus, type Document, type Holding, type Jurisdiction,
-  type DocumentType, type NodeRef, type Person, type TemplateLibrary, changeKindLabel, companyStatusLabel, isActiveOn, ref, uuid,
-} from "../domain/models";
+  type DocumentType, type NodeRef, type Person, type TemplateLibrary, changeKindLabel, companyStatusLabel, isActiveOn, ref, uuid, latinPadStart } from "../domain/models";
 import { percentLabel, validateHoldings } from "../domain/engine";
 import { normLibrary } from "../domain/normalize";
 import type { Recognition, RecognitionContext } from "../domain/recognize";
@@ -79,7 +78,7 @@ export function changeEffects(s: Store, p: ChangePlan): ChangeEffect[] {
     const note = s.trustOf(r.id, c).kind === "confirmed" ? "" : "（规则待核对）";
     out.push({ kind: "obligation", text: `新增事项：${r.name}，${D.long(due)}前办妥${note}` });
   }
-  if (p.evidencePath) out.push({ kind: "evidence", text: `${basename(p.evidencePath)} 归档为${s.docType(p.evidenceTypeID)?.name ?? "文件"}` });
+  if (p.evidencePath) out.push({ kind: "evidence", text: `${basename(p.evidencePath)} 归档为${latinPadStart(s.docType(p.evidenceTypeID)?.name ?? "文件")}` });
   return out;
 }
 
@@ -329,7 +328,7 @@ export async function commitStaged(s: Store, id: string, a: { typeID: string; ow
   let received = "";
   s.commit((d) => { received = s.closeRequests(d, [doc]); });
   const undoID = s.replace({}, { label: "归档文件", before, createdFiles: [doc.filePath] });
-  s.showToast(`已归档${s.docType(doc.typeID)?.name ?? "文件"}${received}。`, undoID ? () => s.undoID(undoID) : undefined);
+  s.showToast(`已归档${latinPadStart(s.docType(doc.typeID)?.name ?? "文件")}${received}。`, undoID ? () => s.undoID(undoID) : undefined);
   f.onArchived?.(doc);
   return doc;
 }

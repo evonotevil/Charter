@@ -10,7 +10,7 @@ import { pendingRemaining } from "../state/store";
 import { writeZip } from "../services/files";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { Avatar, Button, EmptyStateView, JurisdictionBadge, type MenuEntry, Pill, Segmented, SelectField, divider, header, item, useContextMenu } from "../ui/kit";
+import { Avatar, Button, EmptyStateView, JurisdictionBadge, type MenuEntry, Pill, Segmented, SelectField, divider, header, item, useContextMenu, PageHeader } from "../ui/kit";
 import { DropTarget } from "../ui/drop";
 import { DocumentRow, FileHeaderRow, FileThumb, ReissueRequestSheet, freshnessPill, useStageFile } from "./common";
 
@@ -167,13 +167,9 @@ export function FilesView() {
       <div className="scroll grow">
         <div className="col appear" style={{ gap: 40, padding: "var(--page-edge)", paddingBottom: selectedDocs.length ? 96 : undefined }}>
           <div className="col gap24">
-            <div className="row start gap16">
-              <div className="col gap4 grow">
-                <h1 className="t-page">文件</h1>
-                <span className="t-body muted">{(docs.length === scoped.length ? `${scoped.length} 份现行文件` : `显示 ${docs.length} / ${scoped.length} 份`) + (attention ? `，${attention} 份需处理` : "，都在有效期内") + "。把 PDF、照片或文件夹拖进窗口即可导入。"}</span>
-              </div>
-              <Button kind="primary" size="large" icon="square.and.arrow.down" title="选择 PDF、照片或文件夹；也可以直接拖进窗口" onClick={() => void router.chooseFiles(null)}>导入文件</Button>
-            </div>
+            <PageHeader title="文件" subtitle={(docs.length === scoped.length ? `${scoped.length} 份现行文件` : `显示 ${docs.length} / ${scoped.length} 份`) + (attention ? `，${attention} 份需处理` : "，都在有效期内") + "。把 PDF、照片或文件夹拖进窗口即可导入。"}>
+              <Button kind="primary" icon="square.and.arrow.down" title="选择 PDF、照片或文件夹；也可以直接拖进窗口" onClick={() => void router.chooseFiles(null)}>导入文件</Button>
+            </PageHeader>
             <div className="row gap10 wrap">
               <span className="row gap6" title="按归属筛选：公司材料或个人材料"><span className="t-meta muted">范围</span>
                 <SelectField options={[[0, "公司与人员"], [1, "公司材料"], [2, "个人材料（全部人员）"]]} value={ownerKind === "company" ? 1 : ownerKind === "person" ? 2 : 0}
@@ -197,7 +193,7 @@ export function FilesView() {
                   <span className="t-meta muted ellipsis">识别结果和你的修改都已保存（{snapshotTitle(pending.savedAt)}），继续时不需要重新识别。</span>
                 </div>
                 <Button kind="quiet" size="small" onClick={() => store.discardPendingImport()}>放弃</Button>
-                <Button kind="primary" size="small" onClick={() => router.open({ kind: "resumeImport" })}>继续</Button>
+                <Button size="small" onClick={() => router.open({ kind: "resumeImport" })}>继续</Button>
               </div>
             )}
           </div>
@@ -247,7 +243,7 @@ function FileCard({ d, showOwner, selected, extraMenu, onClick }: { d: Document;
         <span className="t-row ellipsis">{store.docType(d.typeID)?.name ?? "文件"}</span>
         <span className="t-micro muted ellipsis">{showOwner ? store.nameOf(d.owner) : d.issueDate ? `${D.long(d.issueDate)}签发` : "缺少签发日期"}</span>
       </span>
-      <Pill text={freshnessLabel(f)} kind={freshnessPill(f)} />
+      <span className="row"><Pill text={freshnessLabel(f)} kind={freshnessPill(f)} /></span>
       {selected && <span style={{ position: "absolute", top: 16, right: 16 }}><Icon name="checkmark.circle.fill" size={18} /></span>}
       {ctx.node}{stageNode}
       {reissue && <ReissueRequestSheet owner={d.owner} typeIDs={[d.typeID]} onClose={() => setReissue(false)} />}

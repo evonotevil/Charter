@@ -95,8 +95,8 @@ export const isWeekend = (d: Day) => {
   return w === 1 || w === 7;
 };
 
-export const short = (d: Day) => `${month(d)} 月 ${dayOf(d)} 日`;
-export const long = (d: Day) => `${year(d)} 年 ${month(d)} 月 ${dayOf(d)} 日`;
+export const short = (d: Day) => `${month(d)}月${dayOf(d)}日`;
+export const long = (d: Day) => `${year(d)}年${month(d)}月${dayOf(d)}日`;
 export const weekdayName = (d: Day) => ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"][weekday(d) - 1];
 
 export function display(d: Day, relativeTo: Day): string {
@@ -125,7 +125,7 @@ export function mdParts(m: MonthDay): [number, number] {
 }
 export const mdLabel = (m: MonthDay) => {
   const [a, b] = mdParts(m);
-  return `${a} 月 ${b} 日`;
+  return `${a}月${b}日`;
 };
 export function inYear(m: MonthDay, y: number): Day {
   const [a, b] = mdParts(m);

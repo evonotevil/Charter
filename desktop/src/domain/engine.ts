@@ -147,7 +147,7 @@ export function explainObligation(o: Obligation, docTypeName: (id: string) => st
       lines.push(`规则：每年 ${s.date ? D.mdLabel(s.date) : "?"} 前`);
       break;
     case "afterAnniversary": {
-      const inc = c.incorporationDate ? `${D.month(c.incorporationDate)} 月 ${D.dayOf(c.incorporationDate)} 日` : "未填写";
+      const inc = c.incorporationDate ? `${D.month(c.incorporationDate)}月${D.dayOf(c.incorporationDate)}日` : "未填写";
       lines.push(`成立日 ${c.incorporationDate ? D.long(c.incorporationDate) : "未填写"}，每年周年日（${inc}）后 ${s.days ?? 0} 天内`);
       break;
     }

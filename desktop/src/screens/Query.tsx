@@ -1,7 +1,7 @@
 // 命令面板（Ctrl/⌘ K）与持股链条查询。移植自 QueryViews.swift。
 
 import { useEffect, useRef, useState } from "react";
-import { type Company, type NodeRef, type PacketTemplate, isActiveOn, ref, sameRef } from "../domain/models";
+import { type Company, type NodeRef, type PacketTemplate, isActiveOn, ref, sameRef, latinPad } from "../domain/models";
 import { breakdown, chainHasNominee, chainPaths, percentLabel } from "../domain/engine";
 import { matchesSearch, searchForms } from "../domain/search";
 import { useApp } from "../state/hooks";
@@ -54,7 +54,7 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
       for (const v of p.verbs.length ? p.verbs : (["packet", "upload", "reissue", "change", "structure"] as Verb[])) {
         if (v === "packet") {
           if (!p.purposes.length) out.push({ act: { kind: "packet", companyID: c.id }, title: `为 ${c.name} 准备文件包`, symbol: "shippingbox" });
-          else for (const t of p.purposes) out.push({ act: { kind: "packet", companyID: c.id, purposeID: t.id }, title: `为 ${c.name} 准备${t.name}文件包`, symbol: "shippingbox" });
+          else for (const t of p.purposes) out.push({ act: { kind: "packet", companyID: c.id, purposeID: t.id }, title: `为 ${c.name} 准备${latinPad(t.name)}文件包`, symbol: "shippingbox" });
         } else if (v === "upload") out.push({ act: { kind: "upload", companyID: c.id }, title: `上传材料到 ${c.name}`, symbol: "tray.and.arrow.down" });
         else if (v === "reissue") { const gaps = gapTypeIDs(c); if (gaps.length) out.push({ act: { kind: "reissue", companyID: c.id, typeIDs: gaps }, title: `请 ${store.party(c.defaultPartyID)?.name ?? "负责方"} 补发 ${c.name} 缺少的文件`, symbol: "envelope" }); }
         else if (v === "change") out.push({ act: { kind: "change", companyID: c.id }, title: `记录 ${c.name} 的变更`, symbol: "arrow.triangle.2.circlepath" });

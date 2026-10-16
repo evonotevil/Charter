@@ -480,3 +480,7 @@ export function latinPad(s: string): string {
   const isLatin = (ch: string) => /[A-Za-z0-9.]/.test(ch);
   return (isLatin(s[0]) ? " " : "") + s + (isLatin(s[s.length - 1]) ? " " : "");
 }
+
+/** 只在一侧补空格：名称前面紧挨着中文、后面是标点或句末时用 latinPadStart，反之用 latinPadEnd。 */
+export function latinPadStart(s: string): string { return s && /[A-Za-z0-9.]/.test(s[0]) ? " " + s : s; }
+export function latinPadEnd(s: string): string { return s && /[A-Za-z0-9.]/.test(s[s.length - 1]) ? s + " " : s; }

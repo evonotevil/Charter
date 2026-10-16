@@ -275,7 +275,7 @@ export function NextStepControls({ o, large = true, emphasized = true }: { o: Ob
     if (party) {
       const others = store.data.parties.filter((q) => q.id !== party.id);
       body = <>
-        <Button kind={kind} size={size} onClick={() => sendDraft(party)} title={`复制交办文字，发给${party.name}后点“确认已发送”`}>{large ? <>交给{latinPad(party.name)}办理</> : "复制交办文字"}</Button>
+        <Button kind={kind} size={size} onClick={() => sendDraft(party)} title={`复制交办文字，发给${latinPad(party.name)}后点“确认已发送”`}>{large ? <>交给{latinPad(party.name)}办理</> : "复制交办文字"}</Button>
         {more([
           item("复制邮件格式文字", "envelope", () => sendDraft(party)),
           item("复制简短消息（企业微信、飞书等）", "doc.on.doc", () => copy(party)),
@@ -437,7 +437,7 @@ export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect
         {busy ? <Spinner /> : f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补充日期</Button>
           : freshnessNeedsAttention(f) ? <>
             <Button size="small" onClick={() => setReissue(true)} title="生成请负责方补发新版的文字，可先修改再复制">请补发</Button>
-            <Button size="small" kind="primary" onClick={upload} title="类型和归属沿用这份，旧版保留">归档新版</Button>
+            <Button size="small" onClick={upload} title="类型和归属沿用这份，旧版保留">归档新版</Button>
           </> : <Button size="small" kind="quiet" onClick={() => void store.openDocument(d)}>打开</Button>}
       </span>
       {stageNode}
@@ -465,7 +465,7 @@ export function ReissueRequestSheet({ owner, typeIDs, onClose }: { owner: NodeRe
     : p.email.trim() ? p.email : "这个负责方没有填邮箱。";
   const stateText = (id: string) => {
     const r = store.openRequest(owner, id);
-    if (r) return `已在等${store.party(r.partyID)?.name ?? "负责方"}补发`;
+    if (r) return `已在等${latinPad(store.party(r.partyID)?.name ?? "负责方")}补发`;
     const g = store.gapDescription(owner, id);
     return g.hasFile ? g.state : "未归档";
   };
@@ -662,7 +662,7 @@ export function RuleConfirmSheet({ ruleID, companyID, onClose }: { ruleID: strin
     if (!rule || !company || !p) return;
     const next = store.openObligations.find((o) => o.rule.id === rule.id && o.company.id === company.id);
     const body = `${p.contactName ? `${p.contactName}，您好：` : "您好："}\n\n想请您确认 ${company.name} 的「${rule.name}」${rule.localName ? `（${rule.localName}）` : ""}截止日规则。\n我们目前的理解是：${store.scheduleText(rule.schedule)}${next ? `，下一次截止日为 ${D.long(next.due)}` : ""}。\n如有不同，或有例外情况，烦请告知，谢谢。`;
-    void platform().copyText(body).then(() => store.showToast(`确认请求已复制，粘贴发给${p.name}即可`));
+    void platform().copyText(body).then(() => store.showToast(`确认请求已复制，粘贴发给${latinPad(p.name)}即可`));
   };
   return (
     <Modal onClose={onClose}>

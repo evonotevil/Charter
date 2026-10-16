@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Day } from "../domain/day";
-import { type CorporateGroup, type NodeKind, type NodeRef, ref, sameRef, uuid } from "../domain/models";
+import { type CorporateGroup, type NodeKind, type NodeRef, ref, sameRef, uuid, latinPadStart } from "../domain/models";
 import { isMember, sourceLabel } from "../domain/groups";
 import { safeName } from "../domain/folder";
 import { useApp } from "../state/hooks";
@@ -271,7 +271,7 @@ export function GroupMembersSheet({ groupID: initial, onClose }: { groupID: stri
   return (
     <Modal onClose={onClose}>
       <SheetScaffold title={reviewing ? "确认集团成员变更" : "管理集团成员"} width={760} height={680} onSubmit={() => (reviewing ? apply() : plan.size && setReviewing(true))}
-        subtitle={reviewing ? `以下变化会应用到${g?.name ?? "集团"}，之后可以撤销。` : "勾选公司后批量加入、移出或恢复。手动设置优先于股权推导。"}
+        subtitle={reviewing ? `以下变化会应用到${latinPadStart(g?.name ?? "集团")}，之后可以撤销。` : "勾选公司后批量加入、移出或恢复。手动设置优先于股权推导。"}
         leading={!reviewing ? <span className="t-meta muted">{plan.size ? `${plan.size} 项待应用` : "还没有变更"}</span> : null}
         trailing={reviewing ? <><Button onClick={() => setReviewing(false)}>返回修改</Button><Button kind="primary" onClick={apply}>应用</Button></>
           : <><Button onClick={onClose}>取消</Button><Button kind="primary" disabled={!plan.size} onClick={() => setReviewing(true)}>检查变更</Button></>}>

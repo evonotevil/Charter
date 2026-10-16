@@ -10,7 +10,7 @@ import { ActionMenu, Button, EmptyStateView, JurisdictionBadge, type MenuEntry, 
 import { DropTarget } from "../ui/drop";
 import { GroupIcon } from "./Shell";
 
-const nameWidth = 300, progressWidth = 84, cellWidth = 76, maxColumns = 9;
+const nameWidth = 260, progressWidth = 84, cellWidth = 72, maxColumns = 9;
 interface Block { id: string; title: string; subtitle: string; groupID?: string; rows: GroupRow[]; categories: string[] }
 
 export function ProgressTrack({ value, width = 48 }: { value: number; width?: number }) {

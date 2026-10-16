@@ -10,8 +10,7 @@ import {
   type Jurisdiction, type NodeRef, type ObligationRecord, type Party, type Person, type RuleTemplate, type RuleTrust,
   type RuleVerification, type Schedule, type SharedSettings, type TemplateLibrary,
   changeKindLabel, companyStatusLabel, emptyArchive, hasFile, isActiveOn, isHandedOff, isNotApplicable, itemMarkLabel,
-  latinPad, newPerson, normalizedStatus, pendingTypeIDs, ref, refKey, sameRef, typeAppliesTo, uuid,
-} from "../domain/models";
+  latinPad, newPerson, normalizedStatus, pendingTypeIDs, ref, refKey, sameRef, typeAppliesTo, uuid, latinPadStart } from "../domain/models";
 import {
   type Chain, type Freshness, type Obligation, type OwnershipBreakdown, adjustDay, breakdown, chainPaths, computeObligations,
   explainObligation, freshnessNeedsAttention, freshnessOf, freshnessRank, obligationStatus, openObligations as openOf,
@@ -609,7 +608,7 @@ export class Store {
       });
     });
     const what = "交办文字已复制";
-    this.showToast(`${what}，粘贴发给${party.name}后点“确认已发送”${os.length > 1 ? ` ${os.length} 件` : ""}。`, () => { for (const [o, r] of befores) this.restoreRecord(o, r); });
+    this.showToast(`${what}，粘贴发给${latinPad(party.name)}后点“确认已发送”${os.length > 1 ? ` ${os.length} 件` : ""}。`, () => { for (const [o, r] of befores) this.restoreRecord(o, r); });
   }
 
   confirmSent(os: Obligation[], party?: Party, channel?: string) {
@@ -883,6 +882,8 @@ export class Store {
     return this.documentsNeedingAttention.filter((d) => d.owner.kind === "company" && (!scope || scope.has(d.owner.id)));
   }
   attentionCount = (filter: string | null) => this.attentionCompanyDocuments(filter).length;
+  /** 有文件需要处理的公司数（侧栏“公司”的角标）。 */
+  attentionCompanyCount = (filter: string | null) => new Set(this.attentionCompanyDocuments(filter).map((d) => d.owner.id)).size;
   get attentionPersonalCount() { return this.documentsNeedingAttention.filter((d) => d.owner.kind === "person").length; }
   filterName(filter: string | null) {
     if (!filter) return "全部公司";
@@ -926,7 +927,7 @@ export class Store {
       if (reach.includes(companyID) || m.kind === "excluded") g.excludedCompanyIDs = [...new Set([...(g.excludedCompanyIDs ?? []), companyID])].sort();
     });
     const rest = this.groupsContaining(companyID).map((x) => x.name);
-    const base = `已从${g0.name}移出`;
+    const base = `已从${latinPad(g0.name)}移出`;
     return rest.length ? base + "，仍属于" + rest.join("、") : base + "，现在不属于任何集团";
   }
 
@@ -940,10 +941,10 @@ export class Store {
   membershipExplanation(companyID: string, g: CorporateGroup): string {
     const m = this.membership(companyID, g);
     switch (m.kind) {
-      case "top": return `你把它设为${g.name}的顶层`;
+      case "top": return `你把它设为${latinPad(g.name)}的顶层`;
       case "manual": return "你手动加入，还没连上集团里的持股关系";
-      case "excluded": return `股权能推导到，但你把它排除在${g.name}之外`;
-      case "none": return `不在${g.name}`;
+      case "excluded": return `股权能推导到，但你把它排除在${latinPad(g.name)}之外`;
+      case "none": return `不在${latinPadStart(g.name)}`;
       case "derived":
         return m.path.slice(0, -1).map((n, k) => `${this.nameOf(n)} 持有 ${percentLabel(m.percents[k])}`).join(" → ") + " → 这家公司";
     }
@@ -1390,7 +1391,7 @@ export class Store {
     this.performUndoable("取消等回件", "已不再等这份补发", (d) => { const x = d.requests.find((y) => y.id === id); if (x) x.status = "cancelled"; });
   }
   reassignRequest(id: string, partyID?: string) {
-    this.performUndoable("改负责方", `已改由${this.party(partyID)?.name ?? "未指定负责方"}补发`, (d) => { const x = d.requests.find((y) => y.id === id); if (x) x.partyID = partyID; });
+    this.performUndoable("改负责方", `已改由${latinPad(this.party(partyID)?.name ?? "未指定负责方")}补发`, (d) => { const x = d.requests.find((y) => y.id === id); if (x) x.partyID = partyID; });
   }
   /** 归档之后：把正在等这些文件的请求标为已收到。在同一个修改里调用。 */
   closeRequests(d: Draft<Data>, archived: Document[]): string {
@@ -1403,7 +1404,7 @@ export class Store {
       r.receivedTypeIDs = [...(r.receivedTypeIDs ?? []), doc.typeID];
       r.receivedDocumentIDs.push(doc.id);
       if (!pendingTypeIDs(r as DocumentRequest).length) r.status = "received";
-      phrases.push(`${this.party(r.partyID)?.name ?? "负责方"} 补发的${this.docType(doc.typeID)?.name ?? "文件"}`);
+      phrases.push(`${this.party(r.partyID)?.name ?? "负责方"} 补发的${latinPadStart(this.docType(doc.typeID)?.name ?? "文件")}`);
     }
     if (!phrases.length) return "";
     if (phrases.length > 2) return `，已收到 ${phrases.length} 份补发的文件`;

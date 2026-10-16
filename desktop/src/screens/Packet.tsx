@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { pdfjs } from "../services/extract";
 import * as D from "../domain/day";
-import { type Document, type NodeRef, type PacketTemplate, archiveStateLabel, ref, sameRef, stateNeedsAttention, typeAppliesTo } from "../domain/models";
+import { type Document, type NodeRef, type PacketTemplate, archiveStateLabel, ref, sameRef, stateNeedsAttention, typeAppliesTo, latinPadEnd } from "../domain/models";
 import { expiryOf, freshnessLabel } from "../domain/engine";
 import { useApp } from "../state/hooks";
 import { type PacketItem, buildPacket, exportAll, exportPlan, packetIncluded, packetItemID, packetItemTitle, packetItems, packetMissing, packetReason, recencyText } from "../services/packets";
@@ -81,7 +81,7 @@ export function PacketView({ companyID: initialCompany, purposeID, onClose }: { 
     } catch (e) { setPhase({ kind: "failed", message: (e as Error).message }); }
   };
   const sendNote = () => {
-    const lines = [`${company?.name ?? ""} ${template?.name ?? ""}文件包（${D.long(store.today)}）`, "", `已包含（${included.length} 份）：`,
+    const lines = [`${company?.name ?? ""} ${latinPadEnd(template?.name ?? "")}文件包（${D.long(store.today)}）`, "", `已包含（${included.length} 份）：`,
       ...included.map((it, i) => `${String(i + 1).padStart(2, "0")} ${packetItemTitle(it, typeName(it))}${it.document?.issueDate ? `，${D.long(it.document.issueDate)}签发` : ""}`)];
     if (missing.length) {
       lines.push("", `尚缺（${missing.length} 项）：`, ...missing.map((it) => `— ${packetItemTitle(it)}：${packetReason(it)}`));

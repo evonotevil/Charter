@@ -1,11 +1,11 @@
 // 负责方：外部代理、内部部门或个人；等回件、负责的事项与公司。移植自 PartiesView.swift。
 
 import { useEffect, useRef, useState } from "react";
-import { type Party, type PartyKind, newParty, obligationStatusLabel, partyKindLabel } from "../domain/models";
+import { type Party, type PartyKind, newParty, obligationStatusLabel, partyKindLabel, latinPad } from "../domain/models";
 import { obligationStatus } from "../domain/engine";
 import { useApp } from "../state/hooks";
 import { Icon } from "../ui/Icon";
-import { Avatar, Button, EmptyStateView, FieldRow, FormGroup, JurisdictionBadge, Modal, Pill, SelectField, SheetScaffold, TextField, divider, item, useContextMenu } from "../ui/kit";
+import { Avatar, Button, EmptyStateView, FieldRow, FormGroup, JurisdictionBadge, Modal, Pill, SelectField, SheetScaffold, TextField, divider, item, useContextMenu, PageHeader } from "../ui/kit";
 import { KitStepper, ObligationRow, WaitingRequestRow } from "./common";
 
 const kinds: PartyKind[] = ["agent", "department", "person"];
@@ -26,9 +26,10 @@ export function PartiesView() {
   const selected = store.party(selection);
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
-      <div className="row start" style={{ padding: "24px var(--page-edge)" }}>
-        <div className="col gap4 grow"><h1 className="t-page">负责方</h1><span className="t-body muted">管理合规事项和文件补发的办理方。</span></div>
-        <Button kind="primary" icon="plus" onClick={() => setEditing(newParty(""))}>新建负责方</Button>
+      <div style={{ padding: "var(--page-edge) var(--page-edge) 24px" }}>
+        <PageHeader title="负责方" subtitle="管理合规事项和文件补发的办理方。">
+          <Button kind="primary" icon="plus" onClick={() => setEditing(newParty(""))}>新建负责方</Button>
+        </PageHeader>
       </div>
       <div className="row grow" style={{ alignItems: "stretch", minHeight: 0 }}>
         <div className="col surface scroll" style={{ width: 300, flex: "none", padding: 12, gap: 2, margin: "0 0 var(--page-edge) var(--page-edge)" }}>
@@ -95,7 +96,7 @@ function PartyDetail({ party, onEdit, onDelete }: { party: Party; onEdit: () => 
           <div className="row gap8">
             <Button title="删除这个负责方，并清除指向它的引用" onClick={onDelete}>删除</Button>
             <Button onClick={onEdit}>编辑</Button>
-            {store.complianceOn && <Button kind="primary" title={`在合规日历中查看${party.name}下个月的全部事项，可一并交办或导出`} onClick={() => router.openCalendar({ partyID: party.id, range: { kind: "nextMonth" } })}>下月事项</Button>}
+            {store.complianceOn && <Button title={`在合规日历中查看${latinPad(party.name)}下个月的全部事项，可一并交办或导出`} onClick={() => router.openCalendar({ partyID: party.id, range: { kind: "nextMonth" } })}>下月事项</Button>}
           </div>
         </div>
         <div className="hairline" />
