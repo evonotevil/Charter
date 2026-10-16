@@ -7,7 +7,7 @@ import { snapshotKeep, snapshotTitle, type DataSnapshot } from "../domain/folder
 import { useApp } from "../state/hooks";
 import { type SettingsPane, settingsGroups, settingsPaneSymbol, settingsPaneTitle } from "../state/router";
 import { syncDetail, syncNeedsAttention, syncSymbol, syncTitle } from "../state/sync";
-import { type ConfigBundle, applyConfig, configImportSummary, exportConfig, readConfig } from "../state/actions";
+import { type ConfigBundle, applyConfig, configImportDiff, exportConfig, readConfig } from "../state/actions";
 import { installSampleData } from "../state/sample";
 import { nonArchiveTypeIDs } from "../state/store";
 import { platform } from "../platform/platform";
@@ -255,13 +255,14 @@ function ConfigImportSheet({ bundle, fileName, onClose }: { bundle: ConfigBundle
   const { store } = useApp();
   const [mode, setMode] = useState<"merge" | "replace">("merge");
   const when = new Date(bundle.exportedAt);
+  const diff = configImportDiff(store, bundle, mode);
   return (
     <Modal onClose={onClose}>
       <SheetScaffold title="导入配置" width={520} subtitle={`来自“${fileName}”，导出于 ${isNaN(+when) ? bundle.exportedAt : when.toLocaleString("zh-CN")}。公司、文件等档案数据不受影响。`}
-        trailing={<><Button onClick={onClose}>取消</Button><Button kind={mode === "replace" ? "danger" : "primary"} onClick={() => { void applyConfig(store, bundle, mode); onClose(); }}>{mode === "merge" ? "合并导入" : "全部替换"}</Button></>}>
+        trailing={<><Button onClick={onClose}>取消</Button><Button kind={mode === "replace" ? "danger" : "primary"} disabled={!diff.changes} onClick={() => { void applyConfig(store, bundle, mode); onClose(); }}>{mode === "merge" ? "合并导入" : "全部替换"}</Button></>}>
         <div className="col" style={{ gap: 18 }}>
           <FormGroup title="导入方式"><RadioGroup options={[["merge", "合并（同名覆盖）"], ["replace", "全部替换"]]} value={mode} onChange={setMode} /></FormGroup>
-          <FormGroup title="将会改变">{configImportSummary(store, bundle, mode).map((l, i) => <span key={i}>{l}</span>)}</FormGroup>
+          <FormGroup title="将会改变">{diff.changes ? diff.lines.map((l, i) => <span key={i}>{l}</span>) : <span className="muted">这份配置和当前的完全一样，导入后不会有任何变化。</span>}</FormGroup>
           {mode === "replace" && <span className="t-meta amber-text">全部替换会移除这里有、配置里没有的规则、用途和未使用的文件类型。</span>}
         </div>
       </SheetScaffold>

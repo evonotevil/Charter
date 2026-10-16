@@ -202,26 +202,43 @@ function keptOnReplace(s: Store, b: ConfigBundle) {
   return { js, ts };
 }
 
-export function configImportSummary(s: Store, b: ConfigBundle, mode: "merge" | "replace"): string[] {
-  const describe = <T,>(name: string, incoming: T[], current: T[], key: (x: T) => string) => {
-    const have = new Set(current.map(key));
-    const overlap = incoming.filter((x) => have.has(key(x))).length;
-    return mode === "merge" ? `${name}：新增 ${incoming.length - overlap} 个，覆盖同名 ${overlap} 个` : `${name}：替换为 ${incoming.length} 个（现有 ${current.length} 个）`;
+const same = (x: unknown, y: unknown) => JSON.stringify(x) === JSON.stringify(y);
+
+export interface ConfigDiff { lines: string[]; changes: number }
+
+/** 按内容比较：只把真正不同的条目算作变化，内容相同的同名条目不算。 */
+export function configImportDiff(s: Store, b: ConfigBundle, mode: "merge" | "replace"): ConfigDiff {
+  const lines: string[] = [];
+  let changes = 0;
+  const part = <T,>(name: string, incoming: T[], current: T[], key: (x: T) => string) => {
+    const cur = new Map(current.map((x) => [key(x), x]));
+    const inKeys = new Set(incoming.map(key));
+    const added = incoming.filter((x) => !cur.has(key(x))).length;
+    const changed = incoming.filter((x) => cur.has(key(x)) && !same(cur.get(key(x)), x)).length;
+    const removed = mode === "replace" ? current.filter((x) => !inKeys.has(key(x))).length : 0;
+    const bits = [added && `新增 ${added} 个`, changed && `更新 ${changed} 个`, removed && `移除 ${removed} 个`].filter(Boolean);
+    if (bits.length) { lines.push(`${name}：${bits.join("，")}`); changes += added + changed + removed; }
   };
   const L = s.data.library;
-  const lines = [
-    describe("法域", b.library.jurisdictions, L.jurisdictions, (x: Jurisdiction) => x.code),
-    describe("文件类型", b.library.documentTypes, L.documentTypes, (x: DocumentType) => x.id),
-    describe("规则", b.library.rules, L.rules, (x) => x.id),
-    describe("用途", b.library.packets, L.packets, (x) => x.id),
-    `档案条目：${Object.keys(b.library.archiveItems ?? {}).length} 个法域的条目清单`,
-    `设置：到期前 ${[...b.settings.reminderDays].sort((a, c) => c - a).join("、")} 天提醒，每天 ${b.settings.notificationHour}:00`,
-  ];
+  part("法域", b.library.jurisdictions, L.jurisdictions, (x: Jurisdiction) => x.code);
+  part("文件类型", b.library.documentTypes, L.documentTypes, (x: DocumentType) => x.id);
+  part("规则", b.library.rules, L.rules, (x) => x.id);
+  part("用途", b.library.packets, L.packets, (x) => x.id);
+  const ai = b.library.archiveItems ?? {}, cai = L.archiveItems ?? {};
+  const aiChanged = Object.keys(ai).filter((k) => !same(ai[k], cai[k])).length
+    + (mode === "replace" ? Object.keys(cai).filter((k) => !(k in ai)).length : 0);
+  if (aiChanged) { lines.push(`档案清单：${aiChanged} 个法域的条目有变化`); changes += aiChanged; }
+  const st = s.data.settings, bs = b.settings;
+  const days = (x: number[]) => [...x].sort((m, n) => n - m).join("、");
+  if (bs.reminderDays.length && days(bs.reminderDays) !== days(st.reminderDays)) { lines.push(`到期提醒：${days(st.reminderDays)} 天 → ${days(bs.reminderDays)} 天`); changes++; }
+  if (bs.notificationHour !== st.notificationHour) { lines.push(`提醒时间：${st.notificationHour}:00 → ${bs.notificationHour}:00`); changes++; }
+  if (!!bs.complianceEnabled !== !!st.complianceEnabled) { lines.push(`合规模块：${bs.complianceEnabled ? "打开" : "关闭"}`); changes++; }
+  if (bs.calendarName !== st.calendarName || bs.calendarEnabled !== st.calendarEnabled) { lines.push("日历设置有变化"); changes++; }
   if (mode === "replace") {
     const k = keptOnReplace(s, b);
     if (k.js.length + k.ts.length) lines.push(`仍被公司或文件使用的 ${k.js.length} 个法域、${k.ts.length} 个文件类型会保留`);
   }
-  return lines;
+  return { lines, changes };
 }
 
 function merged<T>(cur: T[], inc: T[], key: (x: T) => string): T[] {
@@ -233,6 +250,8 @@ function merged<T>(cur: T[], inc: T[], key: (x: T) => string): T[] {
 
 export async function applyConfig(s: Store, b: ConfigBundle, mode: "merge" | "replace") {
   if (s.loadFailed || s.isLoading) { s.setError("数据还没有正常载入，暂不能导入配置。请检查数据文件夹后重新载入。"); return; }
+  const { changes } = configImportDiff(s, b, mode);
+  if (!changes) { s.showToast("这份配置和当前的完全一样，没有需要导入的内容。"); return; }
   s.errorMessage = null;
   await s.snapshotBeforeChange("导入配置前");
   s.undoStack = []; s.redoStack = [];
@@ -257,7 +276,7 @@ export async function applyConfig(s: Store, b: ConfigBundle, mode: "merge" | "re
     d.settings.calendarName = b.settings.calendarName;
     d.settings.complianceEnabled = b.settings.complianceEnabled;
   });
-  if (!s.errorMessage) s.showToast(mode === "merge" ? "配置已合并导入。" : "配置已全部替换。");
+  if (!s.errorMessage) s.showToast(`配置已导入，${changes} 项有变化。`);
 }
 
 // MARK: - 待确认文件
