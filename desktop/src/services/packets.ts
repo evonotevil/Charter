@@ -74,6 +74,10 @@ const two = (n: number) => String(n).padStart(2, "0");
 
 export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Company, s: Store, onProgress?: (a: number, b: number) => void): Promise<string> {
   const p = platform();
+  // 记录在、但文件不在数据文件夹里（比如另一台电脑还没同步过来）：不让整包失败，算作缺件并注明原因。
+  const lost = new Set<string>();
+  for (const i of packetIncluded(items)) if (!(await p.stat(s.fileURL(i.document!))).exists) lost.add(packetItemID(i));
+  items = items.map((i) => (lost.has(packetItemID(i)) ? { ...i, included: false, problem: "文件不在数据文件夹里，可能还没同步过来" } : i));
   const included = packetIncluded(items), missing = packetMissing(items);
   const complete = missing.length === 0;
   const base = safeName(`${c.name}_${t.name}${complete ? "" : "_部分"}_${stampOf(s)}`);
@@ -114,7 +118,13 @@ export async function exportAll(c: Company, s: Store, includeOld: boolean, onPro
   const rows: string[][] = [["序号", "条目", "状态", "签发日期", "到期日期", "文件名", "备注"]];
   const incLines: string[] = [];
   const nameOf = (i: ArchiveItem) => i.type?.name ?? "未知条目";
-  for (const [i, item] of plan.included.entries()) {
+  const lostLines: string[] = [];
+  const present: ArchiveItem[] = [];
+  for (const item of plan.included) {
+    if ((await p.stat(s.fileURL(item.document!))).exists) present.push(item);
+    else lostLines.push(`${nameOf(item)}：文件不在数据文件夹里，可能还没同步过来`);
+  }
+  for (const [i, item] of present.entries()) {
     const d = item.document!;
     const num = two(i + 1);
     const src = s.fileURL(d);
@@ -147,6 +157,7 @@ export async function exportAll(c: Company, s: Store, includeOld: boolean, onPro
   }
   const summary = s.companySummary(c);
   const sections: PDFSection[] = [{ heading: `已包含（${incLines.length} 份）`, lines: incLines, alert: false }];
+  exLines.push(...lostLines);
   if (exLines.length) sections.push({ heading: `未包含（${exLines.length} 项）`, lines: exLines, alert: true });
   if (naLines.length) sections.push({ heading: `不适用（${naLines.length} 项）`, lines: naLines, alert: false });
   sections.push({ heading: "公司资料摘要", lines: summary.split("\n"), alert: false });

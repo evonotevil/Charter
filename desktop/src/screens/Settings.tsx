@@ -213,7 +213,7 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
           </Row>
         </Section>
         <Section title="备份与恢复">
-          <Row icon="clock.arrow.circlepath" title="本地快照" detail={`每天第一次打开，以及导入、批量移除、清空数据、导入配置之前，自动保存一份档案记录的快照（不含 PDF），保留最近 ${snapshotKeep} 份。`}>
+          <Row icon="clock.arrow.circlepath" title="本地快照" detail={`每天第一次打开，以及导入、批量移除、清空数据、导入配置之前，自动保存一份档案记录的快照（不含 PDF；清空数据前的快照连同归档文件一起保存），保留最近 ${snapshotKeep} 份。`}>
             <span className="row gap8">
               <Button kind="quiet" size="small" onClick={() => void store.revealSnapshots()}>{p.os === "windows" ? "在资源管理器中显示" : "在访达中显示"}</Button>
               <Button size="small" disabled={store.isLoading || store.loadFailed} onClick={() => void store.backUpNow()}>立即备份</Button>
@@ -243,7 +243,7 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
       {confirmSample && <ConfirmSheet title="载入示例数据？" message="示例数据会覆盖当前数据文件夹里的公司、人员和负责方。建议先更换为空文件夹。" confirmTitle="载入" destructive onClose={() => setConfirmSample(false)} onConfirm={() => { setConfirmSample(false); void installSampleData(store); }} />}
       {confirmClear && <ConfirmSheet title="清空所有数据？" message="以下内容会被永久删除，数据文件夹里的归档文件也会一起删除，无法撤销。设置和模板库（法域、档案条目、规则、用途）会保留。" details={store.clearSummaryLines}
         confirmTitle="清空" destructive onClose={() => setConfirmClear(false)} onConfirm={() => { setConfirmClear(false); void store.clearAllData(); }} />}
-      {restoring && <ConfirmSheet title={`恢复到 ${snapshotTitle(restoring.date)} 的状态？`} message="当前状态会先自动保存一份快照，之后也可以再恢复回来。快照只包含档案记录，不包含 PDF 文件本身。"
+      {restoring && <ConfirmSheet title={`恢复到 ${snapshotTitle(restoring.date)} 的状态？`} message={"当前状态会先自动保存一份快照，之后也可以再恢复回来。" + (restoring.reason === "清空所有数据前" ? "这份快照连同当时的归档文件一起保存，恢复时会一起放回。" : "快照只包含档案记录，不包含 PDF 文件本身。")}
         details={[`快照原因：${restoring.reason}`, ...counts(restoring).map((c) => `快照里有 ${c}`), `当前：${store.data.companies.length} 家公司、${store.data.documents.length} 份文件`]}
         confirmTitle="恢复" onClose={() => setRestoring(null)} onConfirm={() => { const x = restoring; setRestoring(null); void store.restoreFromSnapshot(x); }} />}
       {pendingConfig && <ConfigImportSheet bundle={pendingConfig.bundle} fileName={pendingConfig.fileName} onClose={() => setPendingConfig(null)} />}

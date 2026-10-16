@@ -1538,15 +1538,15 @@ export class Store {
 
   // MARK: 备份
 
-  async snapshotBeforeChange(reason: string) {
-    if (this.loadFailed || this.isLoading) return false;
+  async snapshotBeforeChange(reason: string): Promise<DataSnapshot | null> {
+    if (this.loadFailed || this.isLoading) return null;
     try {
-      await makeSnapshot(this.folder, reason);
+      const snap = await makeSnapshot(this.folder, reason);
       this.snapshots = await listSnapshots(this.folder);
-      return true;
+      return snap;
     } catch (e) {
       this.setError(`自动备份没有写成：${(e as Error).message}。操作仍会继续；可以在设置的“备份与配置”里手动备份。`);
-      return false;
+      return null;
     }
   }
 
@@ -1598,9 +1598,13 @@ export class Store {
   async clearAllData() {
     if (this.isImporting) { this.setError("文件正在归档，请完成后再清空数据。"); return; }
     if (this.loadFailed || this.isLoading) { this.setError("数据还没有正常载入，暂不能清空。请检查数据文件夹后重新载入。"); return; }
-    await this.snapshotBeforeChange("清空所有数据前");
+    // 清空前的快照连同归档文件一起保存，恢复这份快照就能完整找回。快照写不成就不清空。
+    let snap: DataSnapshot;
+    try { snap = await makeSnapshot(this.folder, "清空所有数据前"); }
+    catch (e) { this.setError(`清空前的备份没有写成，数据没有改动：${(e as Error).message}。请确认数据文件夹可写入后重试。`); return; }
     this.undoStack = []; this.redoStack = [];
     const files = this.data.documents.map((d) => this.fileURL(d));
+    const rels = this.data.documents.map((d) => d.filePath);
     const empty = { companies: [], people: [], holdings: [], appointments: [], parties: [], documents: [], records: [], changes: [], groups: [], requests: [] };
     try { await this.persistCollections(empty); }
     catch (e) { this.setError(`清空失败，数据没有改动：${(e as Error).message}。请确认数据文件夹可写入后重试。`); return; }
@@ -1609,10 +1613,16 @@ export class Store {
     const p = platform();
     let failed = 0;
     const folders = new Set<string>();
-    for (const f of files) {
+    for (const [i, f] of files.entries()) {
       folders.add(f.slice(0, Math.max(f.lastIndexOf("/"), f.lastIndexOf("\\"))));
-      try { if ((await p.stat(f)).exists) await p.removeFile(f); } catch { failed++; }
+      try {
+        if (!(await p.stat(f)).exists) continue;
+        const kept = p.join(snap.folder, ...rels[i].split("/"));
+        await p.mkdirs(kept.slice(0, Math.max(kept.lastIndexOf("/"), kept.lastIndexOf("\\"))));
+        await p.moveFile(f, kept);
+      } catch { failed++; }
     }
+    this.snapshots = await listSnapshots(this.folder);
     const filesRoot = this.folder.filesDir;
     for (const folder of [...folders].sort((a, b) => b.length - a.length)) {
       let dir = folder;
@@ -1627,7 +1637,7 @@ export class Store {
     }
     this.onDataCleared?.();
     if (failed) this.setError(`数据已清空，但有 ${failed} 个归档文件没能删除。可以打开数据文件夹的“文件”目录手动删除。`);
-    else this.showToast("已清空所有数据。设置和模板库已保留。");
+    else this.showToast("已清空所有数据。设置和模板库已保留；需要时可在“备份与配置”里恢复清空前的快照，归档文件也会一起找回。");
   }
 
   saveSettings(change: (s: Draft<SharedSettings>) => void) { this.commit((d) => change(d.settings)); }

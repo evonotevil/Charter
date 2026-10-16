@@ -245,6 +245,19 @@ export async function restoreSnapshot(s: DataSnapshot, f: FolderStore) {
   }
   const tpl = p.join(s.folder, "templates.json");
   if ((await p.stat(tpl)).exists) await p.writeText(f.templatesFile, await p.readText(tpl));
+  // 清空数据前的快照里带着归档文件（files/…）：放回原位，已存在的不覆盖。
+  const walk = async (dir: string, rel: string[]) => {
+    for (const e of await p.listDir(dir)) {
+      const full = p.join(dir, e.name);
+      if (e.isDir) await walk(full, [...rel, e.name]);
+      else {
+        const dest = p.join(f.root, ...rel, e.name);
+        if (!(await p.stat(dest)).exists) { await p.mkdirs(p.join(f.root, ...rel)); await p.copyFile(full, dest); }
+      }
+    }
+  };
+  const kept = p.join(s.folder, "files");
+  if ((await p.stat(kept)).exists) await walk(kept, ["files"]);
 }
 
 export function snapshotTitle(ms: number): string {
