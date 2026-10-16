@@ -1,0 +1,482 @@
+// 数据模型。字段名与 Swift 版的 Codable 输出完全一致，两个版本可以读写同一个数据文件夹。
+// 规则：Swift 里的非可选字段必须始终写出（Swift 解码时缺键会失败）；可选字段为 undefined 时省略。
+
+import type { Day, MonthDay, Timestamp } from "./day";
+
+export const uuid = () => crypto.randomUUID().toUpperCase();
+
+// MARK: 法域
+
+export interface Jurisdiction {
+  code: string;
+  name: string;
+  timeZone: string;
+  entityForms: string[];
+}
+
+// MARK: 公司
+
+export type CompanyStatus = "forming" | "active" | "dormant" | "dissolving" | "dissolved" | "redomiciled";
+export const companyStatuses: CompanyStatus[] = ["forming", "active", "dormant", "dissolving", "dissolved", "redomiciled"];
+export const companyStatusLabel: Record<CompanyStatus, string> = {
+  forming: "设立中",
+  active: "正常",
+  dormant: "休眠",
+  dissolving: "注销中",
+  dissolved: "已注销",
+  redomiciled: "已迁册",
+};
+export const generatesObligations = (s: CompanyStatus) => s === "active" || s === "dormant" || s === "dissolving";
+
+export interface GraphPoint { x: number; y: number }
+
+export interface Company {
+  id: string;
+  name: string;
+  formerNames: string[];
+  aliases: string[];
+  jurisdiction: string;
+  entityForm: string;
+  registrationNumber: string;
+  incorporationDate?: Day;
+  fiscalYearEnd: MonthDay;
+  status: CompanyStatus;
+  group: string;
+  registeredAddress: string;
+  defaultPartyID?: string;
+  rulePartyIDs: Record<string, string>;
+  disabledRuleIDs: string[];
+  trackingSince: Day;
+  notes: string;
+  position?: GraphPoint;
+  ruleOverrides?: Record<string, CompanyRuleOverride>;
+  archive?: CompanyArchive;
+}
+
+export function newCompany(name: string, jurisdiction: string, trackingSince: Day): Company {
+  return {
+    id: uuid(), name, formerNames: [], aliases: [], jurisdiction, entityForm: "", registrationNumber: "",
+    fiscalYearEnd: "12-31", status: "active", group: "", registeredAddress: "", rulePartyIDs: {},
+    disabledRuleIDs: [], trackingSince, notes: "",
+  };
+}
+
+export const companySearchText = (c: Company) =>
+  [c.name, ...c.formerNames, ...c.aliases, c.registrationNumber].join(" ").toLowerCase();
+
+// MARK: 人
+
+export interface Person {
+  id: string;
+  name: string;
+  aliases: string[];
+  email: string;
+  notes: string;
+  position?: GraphPoint;
+}
+export const newPerson = (name: string): Person => ({ id: uuid(), name, aliases: [], email: "", notes: "" });
+
+// MARK: 持股与任职
+
+export type NodeKind = "company" | "person";
+export interface NodeRef { kind: NodeKind; id: string }
+export const ref = (kind: NodeKind, id: string): NodeRef => ({ kind, id });
+export const sameRef = (a?: NodeRef | null, b?: NodeRef | null) => !!a && !!b && a.kind === b.kind && a.id === b.id;
+export const refKey = (r: NodeRef) => `${r.kind}:${r.id}`;
+export const parseRefKey = (k: string): NodeRef => {
+  const i = k.indexOf(":");
+  return { kind: k.slice(0, i) as NodeKind, id: k.slice(i + 1) };
+};
+
+export interface Holding {
+  id: string;
+  holder: NodeRef;
+  companyID: string;
+  percent: number;
+  shares: string;
+  shareClass: string;
+  isNominee: boolean;
+  beneficialOwner?: NodeRef;
+  from?: Day;
+  to?: Day;
+}
+
+export const isActiveOn = (x: { from?: Day; to?: Day }, day: Day) =>
+  !(x.from && x.from > day) && !(x.to && x.to <= day);
+
+export interface Appointment {
+  id: string;
+  personID: string;
+  companyID: string;
+  title: string;
+  from?: Day;
+  to?: Day;
+}
+
+// MARK: 负责方
+
+export type PartyKind = "agent" | "department" | "person";
+export const partyKindLabel: Record<PartyKind, string> = { agent: "外部代理", department: "内部部门", person: "个人" };
+
+export interface Party {
+  id: string;
+  name: string;
+  kind: PartyKind;
+  contactName: string;
+  email: string;
+  phone: string;
+  followUpDays: number;
+  notes: string;
+}
+export const newParty = (name: string): Party => ({
+  id: uuid(), name, kind: "agent", contactName: "", email: "", phone: "", followUpDays: 14, notes: "",
+});
+
+// MARK: 文件
+
+export interface Document {
+  id: string;
+  typeID: string;
+  owner: NodeRef;
+  issueDate?: Day;
+  expiryDate?: Day;
+  form: string;
+  filePath: string;
+  originalFileName: string;
+  supersededBy?: string;
+  needsUpdate: boolean;
+  addedOn: Day;
+  notes: string;
+}
+
+export const documentForms = ["扫描件", "原件", "核证副本", "公证件", "海牙认证", "翻译件"];
+
+// MARK: 合规事项记录
+
+export type ObligationStatus = "pending" | "drafted" | "handedOff" | "waiting" | "done";
+export const obligationStatusLabel: Record<ObligationStatus, string> = {
+  pending: "待交办", drafted: "待发送", handedOff: "已交办", waiting: "已交办", done: "已完成",
+};
+export const visibleStatuses: ObligationStatus[] = ["pending", "drafted", "handedOff", "done"];
+export const isHandedOff = (s: ObligationStatus) => s === "handedOff" || s === "waiting";
+export const normalizedStatus = (s: ObligationStatus): ObligationStatus => (s === "waiting" ? "handedOff" : s);
+
+export type HandoffAction = "drafted" | "copied" | "sent" | "nudged" | "completed" | "reverted" | "rescheduled";
+export const handoffActionLabel: Record<HandoffAction, string> = {
+  drafted: "起草了邮件", copied: "复制了消息", sent: "确认已发送", nudged: "催办",
+  completed: "标记完成", reverted: "退回待交办", rescheduled: "改期",
+};
+
+export interface HandoffEntry {
+  action: HandoffAction;
+  at: Timestamp;
+  partyID?: string;
+  channel?: string;
+  message?: string;
+}
+
+export interface ObligationRecord {
+  key: string;
+  ruleID: string;
+  companyID: string;
+  dueDate: Day;
+  overrideDue?: Day;
+  status: ObligationStatus;
+  partyID?: string;
+  handedOffOn?: Day;
+  completedOn?: Day;
+  receiptDocumentID?: string;
+  note: string;
+  changeID?: string;
+  draftedOn?: Day;
+  log?: HandoffEntry[];
+}
+export const obligationKey = (ruleID: string, companyID: string, due: Day) => `${ruleID}|${companyID}|${due}`;
+
+// MARK: 变更记录
+
+export type ChangeKind = "directorChange" | "shareholderChange" | "addressChange" | "nameChange" | "statusChange" | "other";
+export const changeKinds: ChangeKind[] = ["directorChange", "shareholderChange", "addressChange", "nameChange", "statusChange", "other"];
+export const changeKindLabel: Record<ChangeKind, string> = {
+  directorChange: "董事或高管变更",
+  shareholderChange: "股东或持股变更",
+  addressChange: "注册地址变更",
+  nameChange: "公司更名",
+  statusChange: "公司状态变更",
+  other: "其他",
+};
+
+export interface ChangeRecord {
+  id: string;
+  companyID?: string;
+  kind: ChangeKind;
+  effectiveOn: Day;
+  recordedOn: Day;
+  summary: string;
+  details?: string[];
+  evidenceDocumentID?: string;
+}
+
+// MARK: 共享设置
+
+export interface SharedSettings {
+  reminderDays: number[];
+  primaryDeviceID?: string;
+  primaryDeviceName?: string;
+  calendarEnabled: boolean;
+  calendarName: string;
+  notificationHour: number;
+  complianceEnabled?: boolean;
+}
+export const defaultSettings = (): SharedSettings => ({
+  reminderDays: [60, 30, 7], calendarEnabled: true, calendarName: "Charter", notificationHour: 9,
+});
+
+// MARK: 模板
+
+export type ValidityKind = "permanent" | "monthsAfterIssue" | "expiryOnDocument" | "untilChanged";
+export const validityKinds: ValidityKind[] = ["permanent", "monthsAfterIssue", "expiryOnDocument", "untilChanged"];
+export const validityLabel: Record<ValidityKind, string> = {
+  permanent: "长期有效",
+  monthsAfterIssue: "签发后若干个月",
+  expiryOnDocument: "以文件上的到期日为准",
+  untilChanged: "信息变更后需重开",
+};
+
+export interface DocumentType {
+  id: string;
+  name: string;
+  category: string;
+  localNames: string[];
+  jurisdictions: string[];
+  owner: NodeKind;
+  validity: ValidityKind;
+  validityMonths?: number;
+  hints: string[];
+  builtIn: boolean;
+  entityForms?: string[];
+}
+export const typeAppliesTo = (t: DocumentType, jurisdiction: string) =>
+  t.jurisdictions.length === 0 || t.jurisdictions.includes(jurisdiction);
+
+export type ScheduleKind = "annualFixed" | "afterAnniversary" | "afterFiscalYearEnd" | "incorporationHalf" | "documentExpiry" | "event";
+export const scheduleKinds: ScheduleKind[] = ["annualFixed", "afterAnniversary", "afterFiscalYearEnd", "incorporationHalf", "documentExpiry", "event"];
+export const scheduleKindLabel: Record<ScheduleKind, string> = {
+  annualFixed: "每年固定日期",
+  afterAnniversary: "成立周年日之后",
+  afterFiscalYearEnd: "财年结束之后",
+  incorporationHalf: "按成立月份分上下半年",
+  documentExpiry: "某类文件到期时",
+  event: "发生变更之后",
+};
+
+export type DateAdjust = "none" | "previousBusinessDay" | "nextBusinessDay";
+export const dateAdjustLabel: Record<DateAdjust, string> = {
+  none: "不调整",
+  previousBusinessDay: "遇周末提前到周五",
+  nextBusinessDay: "遇周末顺延到周一",
+};
+
+export interface Schedule {
+  kind: ScheduleKind;
+  date?: MonthDay;
+  months?: number;
+  days?: number;
+  firstHalf?: MonthDay;
+  secondHalf?: MonthDay;
+  documentTypeID?: string;
+  event?: ChangeKind;
+}
+
+export type VerificationStatus = "draft" | "confirmed";
+export interface RuleVerification {
+  status: VerificationStatus;
+  sourceKind: string;
+  source: string;
+  evidenceDocumentID?: string;
+  conditions: string;
+  confirmedBy: string;
+  confirmedOn?: Day;
+}
+export const newVerification = (): RuleVerification => ({
+  status: "draft", sourceKind: "代理书面确认", source: "", conditions: "", confirmedBy: "",
+});
+export const sourceKinds = ["法规原文", "注册处或税局页面", "代理书面确认", "其他"];
+
+export interface RuleRevision { on: Day; summary: string }
+export interface CompanyRuleOverride { schedule?: Schedule; verification?: RuleVerification }
+
+export type RuleTrust =
+  | { kind: "draft" }
+  | { kind: "confirmed"; scope: string; on?: Day }
+  | { kind: "needsReview"; on?: Day };
+export const trustLabel = (t: RuleTrust) => (t.kind === "draft" ? "待核对" : t.kind === "confirmed" ? "已确认" : "需复核");
+
+export interface RuleTemplate {
+  id: string;
+  name: string;
+  localName: string;
+  jurisdictions: string[];
+  entityForms: string[];
+  schedule: Schedule;
+  adjust: DateAdjust;
+  reminders?: number[];
+  requiredDocTypeIDs: string[];
+  responsibleHint: string;
+  penalty: string;
+  notes: string;
+  needsReview: boolean;
+  enabled: boolean;
+  builtIn: boolean;
+  verification?: RuleVerification;
+  revisions?: RuleRevision[];
+}
+
+export function effectiveRule(r: RuleTemplate, c: Company): RuleTemplate {
+  const s = c.ruleOverrides?.[r.id]?.schedule;
+  return s ? { ...r, schedule: s } : r;
+}
+
+export function ruleApplies(r: RuleTemplate, c: Company): boolean {
+  return r.enabled && r.jurisdictions.includes(c.jurisdiction)
+    && (r.entityForms.length === 0 || r.entityForms.includes(c.entityForm))
+    && !c.disabledRuleIDs.includes(r.id);
+}
+
+export interface PacketTemplate {
+  id: string;
+  name: string;
+  categories: string[];
+  includeDirectorsPassports: boolean;
+  maxAgeMonths?: number;
+}
+
+export interface TemplateLibrary {
+  version: number;
+  jurisdictions: Jurisdiction[];
+  documentTypes: DocumentType[];
+  rules: RuleTemplate[];
+  packets: PacketTemplate[];
+  archiveItems?: Record<string, string[]>;
+}
+
+// MARK: 档案
+
+export type ItemMark = "notObtained" | "external" | "restricted" | "unverified" | "notApplicable";
+export const itemMarks: ItemMark[] = ["notObtained", "external", "restricted", "unverified", "notApplicable"];
+export const itemMarkLabel: Record<ItemMark, string> = {
+  notObtained: "未取得", external: "外部保管", restricted: "权限受限", unverified: "待核对", notApplicable: "不适用",
+};
+export const itemMarkExplanation: Record<ItemMark, string> = {
+  notObtained: "尚未取得材料，可在备注中记录跟进情况。",
+  external: "材料由代理、同事或其他机构保管，本地没有副本。",
+  restricted: "材料可能存在，但目前没有权限取得或查看。",
+  unverified: "尚未确认材料是否存在或是否需要管理。",
+  notApplicable: "此公司不适用该条目；不纳入本公司的归档比例。",
+};
+
+export interface CompanyArchive {
+  added: string[];
+  removed: string[];
+  marks: Record<string, ItemMark>;
+  notes: Record<string, string>;
+}
+export const emptyArchive = (): CompanyArchive => ({ added: [], removed: [], marks: {}, notes: {} });
+
+export type ArchiveState =
+  | { kind: "valid" }
+  | { kind: "expiring"; days: number }
+  | { kind: "expired"; days: number }
+  | { kind: "needsUpdate" }
+  | { kind: "noDate" }
+  | { kind: "marked"; mark: ItemMark }
+  | { kind: "missing" };
+
+export function archiveStateLabel(s: ArchiveState): string {
+  switch (s.kind) {
+    case "valid": return "有效";
+    case "expiring": return `${s.days} 天后到期`;
+    case "expired": return `已过期 ${s.days} 天`;
+    case "needsUpdate": return "需要更新";
+    case "noDate": return "日期待核对";
+    case "marked": return itemMarkLabel[s.mark];
+    case "missing": return "未归档";
+  }
+}
+export const hasFile = (s: ArchiveState) =>
+  s.kind === "valid" || s.kind === "expiring" || s.kind === "expired" || s.kind === "needsUpdate" || s.kind === "noDate";
+export const stateNeedsAttention = (s: ArchiveState) =>
+  s.kind === "expiring" || s.kind === "expired" || s.kind === "needsUpdate" || s.kind === "noDate";
+export const isNotApplicable = (s: ArchiveState) => s.kind === "marked" && s.mark === "notApplicable";
+export function stateRank(s: ArchiveState): number {
+  switch (s.kind) {
+    case "expired": return 0;
+    case "needsUpdate": return 1;
+    case "expiring": return 2;
+    case "missing": return 3;
+    case "marked":
+      return s.mark === "notObtained" ? 4 : s.mark === "notApplicable" ? 8 : 5;
+    case "noDate": return 6;
+    case "valid": return 7;
+  }
+}
+
+export interface ArchiveItem {
+  typeID: string;
+  type?: DocumentType;
+  document?: Document;
+  olderVersions: number;
+  state: ArchiveState;
+  note: string;
+  isExtra: boolean;
+}
+export const archiveItemName = (i: ArchiveItem) => i.type?.name ?? "未知条目";
+
+// MARK: 补发请求
+
+export type DocumentRequestStatus = "open" | "received" | "cancelled";
+export interface DocumentRequest {
+  id: string;
+  owner: NodeRef;
+  typeIDs: string[];
+  partyID?: string;
+  createdAt: Timestamp;
+  followUpOn: Day;
+  status: DocumentRequestStatus;
+  receivedDocumentIDs: string[];
+  receivedTypeIDs?: string[];
+  note: string;
+  nudgedCount?: number;
+}
+export const pendingTypeIDs = (r: DocumentRequest) => {
+  const got = new Set(r.receivedTypeIDs ?? []);
+  return r.typeIDs.filter((t) => !got.has(t));
+};
+
+// MARK: 集团
+
+export interface CorporateGroup {
+  id: string;
+  name: string;
+  tops: NodeRef[];
+  extraCompanyIDs: string[];
+  excludedCompanyIDs?: string[];
+  notes: string;
+  iconFileName?: string;
+}
+
+export interface GroupRow {
+  companyID: string;
+  depth: number;
+  parent?: NodeRef;
+  percent?: number;
+  viaNominee: boolean;
+  unconnected: boolean;
+}
+
+/** 中文句子里夹英文名称时，在两侧补空格。 */
+export function latinPad(s: string): string {
+  if (!s) return s;
+  const isLatin = (ch: string) => /[A-Za-z0-9.]/.test(ch);
+  return (isLatin(s[0]) ? " " : "") + s + (isLatin(s[s.length - 1]) ? " " : "");
+}

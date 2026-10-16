@@ -1,0 +1,388 @@
+<title>Charter 视觉规范</title>
+<style>
+/* 布局：左侧固定目录 + 右侧规范正文；所有示例都用 Charter 自己的 token 渲染 */
+:root {
+  --canvas: #EEEEF0; --surface: #FFFFFF; --band: #F4F4F6; --hairline: #E4E4E8; --ink: #121212; --on-ink: #FFFFFF;
+  --muted: #6B6B73; --edge: #9A9AA3; --lime: #D9F46B; --lime-soft: #F1FBCB; --lime-text: #4D5B12; --on-lime: #121212;
+  --danger: #E2553D; --danger-soft: #FBE3DE; --amber: #F2B441; --amber-soft: #FCEFD3; --amber-text: #8A5A00;
+  --selection: #121212; --on-selection: #FFFFFF; --control-on: #121212;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, Menlo, monospace;
+  --ease: cubic-bezier(.2,.8,.2,1);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --canvas: #0F0F11; --surface: #1C1C1F; --band: #27272B; --hairline: #303035; --ink: #F2F2F3; --on-ink: #121212;
+  --muted: #9C9CA3; --edge: #6C6C74; --lime-soft: #3A4318; --lime-text: #D9F46B; --danger-soft: #4A1F18;
+  --amber-soft: #4A3A16; --amber-text: #F2C66B; --selection: #4A4A52; --control-on: #D9F46B; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --canvas: #0F0F11; --surface: #1C1C1F; --band: #27272B; --hairline: #303035; --ink: #F2F2F3; --on-ink: #121212;
+  --muted: #9C9CA3; --edge: #6C6C74; --lime-soft: #3A4318; --lime-text: #D9F46B; --danger-soft: #4A1F18;
+  --amber-soft: #4A3A16; --amber-text: #F2C66B; --selection: #4A4A52; --control-on: #D9F46B; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--canvas); color: var(--ink); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+.wrap { display: grid; grid-template-columns: 220px minmax(0, 1fr); max-width: 1240px; margin: 0 auto; padding: 32px 16px 64px; gap: 40px; }
+nav { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; display: flex; flex-direction: column; gap: 2px; }
+nav a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 10px; font-size: 13px; }
+nav a:hover { background: var(--band); color: var(--ink); }
+nav .brand { display: flex; align-items: center; gap: 10px; padding: 0 12px 20px; color: var(--ink); font-weight: 800; font-size: 17px; letter-spacing: -.2px; }
+main { display: flex; flex-direction: column; gap: 56px; min-width: 0; }
+section { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 24px; }
+h1 { font-size: 44px; font-weight: 800; letter-spacing: -1.3px; line-height: 1.05; margin: 0; text-wrap: balance; }
+h2 { font-size: 28px; font-weight: 800; letter-spacing: -.56px; margin: 0; }
+h3 { font-size: 17px; font-weight: 600; letter-spacing: -.2px; margin: 0; }
+p { margin: 0; max-width: 68ch; }
+.muted { color: var(--muted); }
+.meta { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.micro { font-size: 11px; font-weight: 500; color: var(--muted); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.surface { background: var(--surface); border-radius: 20px; padding: 24px; }
+.row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.grid { display: grid; gap: 16px; }
+.hairline { height: 1px; background: var(--hairline); }
+
+/* hero */
+.hero { background: var(--lime); color: var(--on-lime); border-radius: 26px; padding: 32px; display: flex; gap: 28px; align-items: center; flex-wrap: wrap; }
+.hero p { opacity: .75; font-size: 15px; }
+.seal { width: 96px; height: 96px; flex: none; }
+
+/* color */
+.swatches { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.sw { background: var(--surface); border-radius: 14px; overflow: hidden; }
+.sw .chip { height: 64px; border-bottom: 1px solid var(--hairline); }
+.sw .info { padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.sw b { font-size: 13px; }
+.rule-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.rule { background: var(--surface); border-radius: 14px; padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; margin-top: 5px; }
+
+/* type */
+.type-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) 150px; gap: 16px; align-items: baseline; padding: 14px 0; border-top: 1px solid var(--hairline); }
+.type-row:first-child { border-top: 0; }
+
+/* spacing */
+.bars { display: flex; flex-direction: column; gap: 8px; }
+.bar { display: flex; align-items: center; gap: 12px; }
+.bar span:first-child { width: 72px; }
+.bar i { display: block; height: 14px; background: var(--lime); border-radius: 3px; }
+.radii { display: flex; gap: 16px; flex-wrap: wrap; }
+.radii div { width: 96px; height: 64px; background: var(--band); border: 1px solid var(--hairline); display: grid; place-items: center; font-size: 12px; color: var(--muted); }
+
+/* components */
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 18px; border-radius: 999px; font: 600 13.5px var(--font); border: 0; cursor: pointer; transition: background .12s var(--ease); }
+.btn.sm { height: 30px; padding: 0 14px; font-size: 12.5px; }
+.btn.lg { height: 44px; padding: 0 22px; font-size: 14.5px; }
+.btn.primary { background: var(--ink); color: var(--on-ink); }
+.btn.secondary { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--hairline); }
+.btn.secondary:hover, .btn.quiet:hover { background: var(--band); }
+.btn.accent { background: var(--lime); color: var(--on-lime); }
+.btn.quiet { background: transparent; color: var(--ink); }
+.btn.danger { background: var(--danger); color: #fff; }
+.btn:focus-visible { outline: 3px solid var(--lime); outline-offset: 2px; }
+.pill { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill.valid { background: var(--lime-soft); color: var(--lime-text); }
+.pill.warn { background: var(--amber-soft); color: var(--amber-text); }
+.pill.bad { background: var(--danger-soft); color: var(--danger); }
+.pill.strong { background: var(--ink); color: var(--on-ink); }
+.pill.outline { color: var(--muted); box-shadow: inset 0 0 0 1px var(--hairline); border: 1px dashed var(--hairline); }
+.pill.neutral { background: var(--band); color: var(--ink); }
+.jb { width: 36px; height: 36px; border-radius: 11px; background: var(--band); display: grid; place-items: center; font-size: 11.5px; font-weight: 700; flex: none; }
+.jb.hl { background: var(--lime); color: var(--on-lime); }
+.av { width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; font-size: 13px; font-weight: 700; flex: none; }
+.av.dashed { background: transparent; color: var(--ink); border: 1.5px dashed var(--muted); }
+.field { height: 38px; border-radius: 12px; background: var(--band); border: 1px solid transparent; padding: 0 12px; display: flex; align-items: center; color: var(--ink); font: 14px var(--font); min-width: 0; }
+.field.invalid { border-color: var(--danger); }
+.seg { display: inline-flex; background: var(--surface); border-radius: 999px; padding: 4px; gap: 2px; box-shadow: inset 0 0 0 1px var(--hairline); }
+.seg span { height: 30px; padding: 0 14px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 600; color: var(--ink); }
+.seg span.on { background: var(--selection); color: var(--on-selection); }
+.switch { width: 40px; height: 24px; border-radius: 999px; background: var(--hairline); position: relative; flex: none; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.switch.on { background: var(--control-on); }
+.switch.on::after { left: 19px; }
+.check { width: 18px; height: 18px; border-radius: 6px; border: 1.5px solid var(--edge); flex: none; display: grid; place-items: center; }
+.check.on { background: var(--ink); border-color: var(--ink); color: var(--on-ink); font-size: 11px; font-weight: 800; }
+.progress { height: 6px; border-radius: 3px; background: var(--hairline); overflow: hidden; width: 160px; }
+.progress i { display: block; height: 100%; background: var(--lime); }
+.toast { display: inline-flex; align-items: center; gap: 14px; background: var(--ink); color: var(--on-ink); border-radius: 999px; height: 44px; padding: 0 8px 0 18px; font-size: 13.5px; font-weight: 600; }
+.toast button { background: color-mix(in srgb, var(--on-ink) 16%, transparent); color: inherit; border: 0; height: 30px; padding: 0 14px; border-radius: 999px; font: 600 12.5px var(--font); }
+.comp-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.comp { display: flex; flex-direction: column; gap: 14px; }
+
+/* states table */
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 13px; }
+th { text-align: left; font-size: 11px; font-weight: 500; color: var(--muted); padding: 0 12px 10px; }
+td { padding: 10px 12px; border-top: 1px solid var(--hairline); vertical-align: middle; }
+.tile { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+
+/* mock */
+.mock { background: var(--canvas); border-radius: 20px; border: 1px solid var(--hairline); overflow: hidden; display: grid; grid-template-columns: 190px minmax(0, 1fr); min-height: 420px; }
+.mock .side { background: var(--band); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.mock .side .it { height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-radius: 10px; }
+.mock .side .it.on { background: var(--selection); color: var(--on-selection); font-weight: 600; }
+.badge { min-width: 20px; height: 20px; border-radius: 10px; background: var(--surface); font-size: 11px; font-weight: 700; display: grid; place-items: center; padding: 0 6px; }
+.mock .main { padding: 22px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.mock .heroK { background: var(--lime); color: var(--on-lime); border-radius: 20px; padding: 20px; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.trow { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--hairline); flex-wrap: wrap; }
+.trow:first-child { border-top: 0; }
+.motion-demo { display: flex; gap: 16px; flex-wrap: wrap; }
+.motion-demo div { flex: 1 1 200px; background: var(--surface); border-radius: 14px; padding: 16px; }
+.track { height: 6px; background: var(--band); border-radius: 3px; margin-top: 12px; position: relative; overflow: hidden; }
+.track i { position: absolute; left: 0; top: 0; bottom: 0; width: 30%; background: var(--ink); border-radius: 3px; animation: slide 1.6s var(--ease) infinite alternate; }
+.track.f i { animation-duration: .12s; animation-iteration-count: 1; }
+@keyframes slide { to { transform: translateX(233%); } }
+@media (prefers-reduced-motion: reduce) { .track i { animation: none; } }
+.dodont { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.dodont > div { background: var(--surface); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 8px; border-top: 4px solid var(--lime); }
+.dodont > div.no { border-top-color: var(--danger); }
+.theme-toggle { margin-top: 20px; }
+
+@media (max-width: 820px) {
+  .wrap { grid-template-columns: 1fr; padding-top: 20px; }
+  nav { position: static; flex-direction: row; flex-wrap: wrap; }
+  nav .brand { width: 100%; }
+  .type-row { grid-template-columns: 1fr; gap: 4px; }
+  .mock { grid-template-columns: 1fr; }
+  .mock .side { flex-direction: row; overflow-x: auto; }
+  h1 { font-size: 34px; }
+}
+</style>
+
+<div class="wrap">
+<nav aria-label="目录">
+  <div class="brand"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.4" fill="var(--ink)"/><circle cx="12" cy="12" r="7" fill="none" stroke="var(--lime)" stroke-width="2.3" stroke-dasharray="35.6 44" transform="rotate(28 12 12)" stroke-linecap="round"/><circle cx="12" cy="12" r="1.3" fill="var(--lime)"/></svg>Charter</div>
+  <a href="#principles">原则</a><a href="#color">颜色</a><a href="#type">字体</a><a href="#space">间距与圆角</a>
+  <a href="#components">组件</a><a href="#states">档案状态</a><a href="#layout">布局</a><a href="#motion">动效</a><a href="#copy">文案</a><a href="#platform">双平台</a>
+  <button class="btn sm secondary theme-toggle" id="themeBtn" type="button">切换浅色 / 深色</button>
+</nav>
+
+<main>
+  <section>
+    <div class="hero">
+      <svg class="seal" viewBox="0 0 1024 1024" aria-hidden="true"><rect width="1024" height="1024" rx="230" fill="#121212"/><circle cx="512" cy="512" r="300" fill="none" stroke="#D9F46B" stroke-width="96" stroke-linecap="round" stroke-dasharray="1520 1885" transform="rotate(28 512 512)"/><circle cx="512" cy="512" r="150" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="18"/><circle cx="512" cy="512" r="52" fill="#D9F46B"/></svg>
+      <div style="display:flex;flex-direction:column;gap:8px;min-width:0;flex:1 1 300px">
+        <span class="micro" style="color:inherit;opacity:.7">设计规范 · Mac + Windows 桌面版</span>
+        <h1>Charter 视觉规范</h1>
+        <p>集团公司档案管家的界面语言。数值与 Swift 版 DesignSystem / Kit 一致，桌面版（Tauri + React）照此实现。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="principles">
+    <h2>原则</h2>
+    <div class="rule-list">
+      <div class="rule"><span class="dot" style="background:var(--ink)"></span><div><h3>黑白骨架</h3><p class="meta">灰底画布、白色承载面、墨色文字。结构靠留白和细线，不靠边框和阴影。</p></div></div>
+      <div class="rule"><span class="dot" style="background:var(--lime)"></span><div><h3>一个柠檬绿</h3><p class="meta">只用在首页主指标、拖放区、"已归档 / 完整"和股权图的控制链高亮。</p></div></div>
+      <div class="rule"><span class="dot" style="background:var(--amber)"></span><div><h3>颜色有语义</h3><p class="meta">琥珀 = 需要处理；红 = 已过期 / 逾期。状态同时用图形和文字表达。</p></div></div>
+      <div class="rule"><span class="dot" style="background:var(--edge)"></span><div><h3>确认才写入</h3><p class="meta">导入、变更、配置导入在最后确认前不改档案；批量操作都能撤销。</p></div></div>
+    </div>
+  </section>
+
+  <section id="color">
+    <h2>颜色</h2>
+    <p class="muted">所有色值都是 token。切换右上角的主题可以看到深色值；柠檬绿在两种主题里不变。</p>
+    <h3>中性</h3>
+    <div class="grid swatches" id="neutral"></div>
+    <h3>强调与语义</h3>
+    <div class="grid swatches" id="semantic"></div>
+  </section>
+
+  <section id="type">
+    <h2>字体</h2>
+    <p class="muted">系统字体，不加载网络字体。Mac：SF / 苹方；Windows：Segoe UI Variable / 微软雅黑 UI。注册编号、日期、比例用等宽数字。</p>
+    <div class="surface" style="padding-block:8px">
+      <div class="type-row"><span class="micro">display 44/800</span><span style="font-size:44px;font-weight:800;letter-spacing:-1.3px;line-height:1.05">4 项需处理</span><span class="meta">首页主指标</span></div>
+      <div class="type-row"><span class="micro">pageTitle 28/800</span><span style="font-size:28px;font-weight:800;letter-spacing:-.56px">公司</span><span class="meta">页面标题</span></div>
+      <div class="type-row"><span class="micro">title 28/700</span><span style="font-size:28px;font-weight:700;letter-spacing:-.56px">Yuanlan Group Ltd.</span><span class="meta">详情页名称</span></div>
+      <div class="type-row"><span class="micro">sheet 22/800</span><span style="font-size:22px;font-weight:800;letter-spacing:-.44px">准备文件包</span><span class="meta">弹窗、设置标题</span></div>
+      <div class="type-row"><span class="micro">section 17/600</span><span style="font-size:17px;font-weight:600;letter-spacing:-.2px">接下来 30 天</span><span class="meta">区块标题</span></div>
+      <div class="type-row"><span class="micro">rowTitle 14/600</span><span style="font-weight:600">存续证明</span><span class="meta">列表行主文字</span></div>
+      <div class="type-row"><span class="micro">body 14/400</span><span>拖入注册证书、章程、董事名册，Charter 会识别并逐项归位。</span><span class="meta">正文</span></div>
+      <div class="type-row"><span class="micro">meta 12.5/500</span><span class="meta">开曼群岛，档案 7/8，上级持股 100%</span><span class="meta">次要信息</span></div>
+      <div class="type-row"><span class="micro">micro 11/500</span><span class="micro">已逾期 · 条目 · 状态</span><span class="meta">表头、分组（不全大写）</span></div>
+      <div class="type-row"><span class="micro">mono 12.5</span><span class="mono" style="font-size:12.5px">CT-361204　2026-10-01　70%</span><span class="meta">编号、日期、比例</span></div>
+    </div>
+  </section>
+
+  <section id="space">
+    <h2>间距与圆角</h2>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+      <div class="surface bars">
+        <h3>间距档位</h3>
+        <div class="bar"><span class="mono">4</span><i style="width:4px"></i></div>
+        <div class="bar"><span class="mono">8</span><i style="width:8px"></i></div>
+        <div class="bar"><span class="mono">12</span><i style="width:12px"></i><span class="meta">区块内</span></div>
+        <div class="bar"><span class="mono">16</span><i style="width:16px"></i><span class="meta">行内边距</span></div>
+        <div class="bar"><span class="mono">24</span><i style="width:24px"></i><span class="meta">卡片内边距</span></div>
+        <div class="bar"><span class="mono">32</span><i style="width:32px"></i><span class="meta">页面边距</span></div>
+        <div class="bar"><span class="mono">40</span><i style="width:40px"></i><span class="meta">区块之间</span></div>
+        <div class="bar"><span class="mono">48</span><i style="width:48px"></i></div>
+      </div>
+      <div class="surface" style="display:flex;flex-direction:column;gap:16px">
+        <h3>圆角</h3>
+        <div class="radii">
+          <div style="border-radius:999px">控件 999</div><div style="border-radius:12px">输入框 12</div><div style="border-radius:10px">行 10</div>
+          <div style="border-radius:20px">卡片 20</div><div style="border-radius:26px">弹窗 26</div>
+        </div>
+        <h3>尺寸</h3>
+        <p class="meta">按钮高 30 / 38 / 44 · 侧栏 250 · 公司列表栏 240–300 · 详情区 ≥ 520，≤ 1200 · 结构图节点：公司 280×70 圆角 22，人员 170×56 胶囊</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="components">
+    <h2>组件</h2>
+    <div class="grid comp-grid">
+      <div class="surface comp">
+        <h3>按钮</h3>
+        <div class="row"><button class="btn primary" type="button">准备文件包…</button><button class="btn secondary" type="button">上传材料…</button></div>
+        <div class="row"><button class="btn accent" type="button">复制公司资料摘要</button><button class="btn quiet" type="button">查看矩阵</button><button class="btn danger sm" type="button">清空…</button></div>
+        <div class="row"><button class="btn primary sm" type="button">小 30</button><button class="btn primary" type="button">常规 38</button><button class="btn primary lg" type="button">大 44</button></div>
+        <p class="meta">primary 每屏最多一个。danger 只用于不可撤销的操作。</p>
+      </div>
+      <div class="surface comp">
+        <h3>胶囊</h3>
+        <div class="row"><span class="pill valid">有效</span><span class="pill warn">25 天后到期</span><span class="pill bad">已过期 12 天</span></div>
+        <div class="row"><span class="pill strong">设立中</span><span class="pill outline">未归档</span><span class="pill neutral">外部保管</span><span class="pill" style="background:var(--lime-soft);color:var(--lime-text)">远澜集团</span></div>
+        <p class="meta">集团标签用浅柠檬绿；公司状态（非“正常”）用墨底。</p>
+      </div>
+      <div class="surface comp">
+        <h3>标识</h3>
+        <div class="row"><span class="jb">KY</span><span class="jb">HK</span><span class="jb hl">SG</span><span class="av">张</span><span class="av dashed">王</span></div>
+        <p class="meta">法域方块圆角为边长 30%；选中时柠檬绿。名义股东头像用虚线圈。</p>
+      </div>
+      <div class="surface comp">
+        <h3>表单</h3>
+        <div class="field">注册名（原文）</div>
+        <div class="field invalid">请填写注册名</div>
+        <div class="row"><span class="seg"><span class="on">列表</span><span>矩阵</span><span>结构</span></span></div>
+        <div class="row"><span class="switch on"></span><span>核对股东</span><span class="check on">✓</span><span>建档</span><span class="check"></span><span>另存为一份</span></div>
+      </div>
+      <div class="surface comp">
+        <h3>进度与提示</h3>
+        <div class="row"><span class="progress"><i style="width:62%"></i></span><span class="meta mono">7/8</span></div>
+        <div><span class="toast">已从远澜集团移出<button type="button">撤销</button></span></div>
+        <p class="meta">所有批量或破坏性操作都给“撤销”，同时支持 ⌘/Ctrl+Z。</p>
+      </div>
+      <div class="surface comp">
+        <h3>弹窗结构</h3>
+        <div style="border:1px solid var(--hairline);border-radius:20px;overflow:hidden">
+          <div style="padding:16px 18px"><div style="font-size:18px;font-weight:800">记录变更</div><div class="meta">Yuanlan Korea LLC</div></div>
+          <div class="hairline"></div>
+          <div style="padding:14px 18px" class="meta">内容区（可滚动）</div>
+          <div class="hairline"></div>
+          <div class="row" style="padding:12px 18px;justify-content:space-between"><button class="btn secondary sm" type="button">上一步</button><span class="row"><button class="btn secondary sm" type="button">取消</button><button class="btn primary sm" type="button">确认变更</button></span></div>
+        </div>
+        <p class="meta">左下放次要操作，右下放取消和主按钮。Esc 关闭，Enter 触发主按钮。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="states">
+    <h2>档案状态</h2>
+    <p class="muted">同一状态在胶囊、行首图标、矩阵格子里保持一致。颜色加图形双重编码，灰度下也能区分。</p>
+    <div class="surface tbl-wrap">
+      <table>
+        <thead><tr><th>状态</th><th>胶囊</th><th>矩阵格子</th><th>格子说明文字</th><th>能请补发</th></tr></thead>
+        <tbody id="statesBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="layout">
+    <h2>布局</h2>
+    <p class="muted">侧栏 + 主区。总览从上到下回答：现在要处理几件事 → 随时能出哪些材料 → 接下来 30 天 → 在等回件。</p>
+    <div class="mock" aria-label="总览页布局示意">
+      <div class="side">
+        <div class="it" style="background:var(--surface);height:44px;margin-bottom:8px"><b>全部公司</b><span class="micro">12 家</span></div>
+        <div class="it on">总览</div><div class="it">公司</div><div class="it">文件<span class="badge">4</span></div><div class="it">人员</div><div class="it">负责方</div>
+      </div>
+      <div class="main">
+        <div class="row" style="justify-content:space-between"><span style="font-size:24px;font-weight:800">早上好</span><span class="field" style="width:220px;border-radius:999px;background:var(--surface);font-size:13px;color:var(--muted)">查找公司或人员</span></div>
+        <div class="heroK"><div><div style="font-size:38px;font-weight:800;letter-spacing:-1px;line-height:1">4 <span style="font-size:16px">份文件需处理</span></div><div style="opacity:.7;margin-top:6px;font-size:13px">3 份已过期，1 份即将到期</div></div><button class="btn primary sm" type="button">先处理第一项 →</button></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <h3>接下来 30 天</h3>
+          <div style="background:var(--surface);border-radius:20px;overflow:hidden">
+            <div class="trow" style="background:color-mix(in srgb,var(--band) 50%,transparent)"><span class="micro" style="color:var(--danger)">已逾期</span><span class="micro mono">3</span></div>
+            <div class="trow"><span class="jb" style="width:28px;height:28px">KR</span><b style="flex:1;min-width:120px">Yuanlan Korea LLC</b><span>法人登记簿誊本</span><span class="pill bad">已过期 30 天</span><span class="mono" style="color:var(--danger);font-size:12.5px">2026-09-13</span></div>
+            <div class="trow"><span class="jb" style="width:28px;height:28px">KY</span><b style="flex:1;min-width:120px">Yuanlan Group Ltd.</b><span>存续证明</span><span class="pill bad">已过期 12 天</span><span class="mono" style="color:var(--danger);font-size:12.5px">2026-10-01</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+      <div class="surface"><h3>公司</h3><p class="meta">分段切换 列表 / 矩阵 / 结构。列表：左栏按集团和持股层级缩进，右侧详情 = 身份 → 关键信息条 → 档案 / 变更 / 历史 / 合规。</p></div>
+      <div class="surface"><h3>文件</h3><p class="meta">范围 + 状态筛选，列表或缩略图。⌘/Ctrl、⇧ 多选后底部浮出操作条。</p></div>
+      <div class="surface"><h3>人员 · 负责方</h3><p class="meta">左栏列表，右侧单一承载面，模块之间用细线分隔，没有内容的模块不出现。</p></div>
+      <div class="surface"><h3>设置</h3><p class="meta">整窗覆盖层，左侧分组导航：常规 / 模板库 / 高级。</p></div>
+    </div>
+  </section>
+
+  <section id="motion">
+    <h2>动效</h2>
+    <p class="muted">统一曲线 cubic-bezier(.2,.8,.2,1)。只在回应用户动作时使用；减少动态效果时只保留淡入淡出。</p>
+    <div class="motion-demo">
+      <div><b>fast 120ms</b><p class="meta">悬停、勾选</p></div>
+      <div><b>standard 200ms</b><p class="meta">展开、切换、选中底色滑动</p><div class="track"><i></i></div></div>
+      <div><b>panel 280ms</b><p class="meta">面板、底部操作条</p></div>
+      <div><b>印章</b><p class="meta">归档完成：圆环 0.9s 画出，圆点 0.3s 弹出</p></div>
+    </div>
+  </section>
+
+  <section id="copy">
+    <h2>文案</h2>
+    <div class="dodont">
+      <div><b>按钮写动作，提示用同一个词</b><p class="meta">“归档新版” → “已归档 3 份文件”</p></div>
+      <div><b>错误说清后果和办法</b><p class="meta">“归档失败，档案没有改动：文件被占用，请关闭后重试。”</p></div>
+      <div><b>空状态给下一步</b><p class="meta">“选择公司” + 按钮“新建公司”</p></div>
+      <div class="no"><b>避免</b><p class="meta">道歉、营销腔、全大写标签、“这台 Mac”（改为“这台电脑”）。</p></div>
+    </div>
+    <p class="meta">中文句子里夹英文名两侧各补一个空格：交给 Lime Tree 办理。日期显示“2026年10月13日”，表格里用等宽 yyyy-MM-dd。</p>
+  </section>
+
+  <section id="platform">
+    <h2>双平台</h2>
+    <div class="surface tbl-wrap">
+      <table>
+        <thead><tr><th>项目</th><th>Mac</th><th>Windows</th></tr></thead>
+        <tbody>
+          <tr><td>快捷键修饰键</td><td>⌘</td><td>Ctrl（重做额外支持 Ctrl+Y）</td></tr>
+          <tr><td>标题栏</td><td>透明，顶部留 28 拖拽区</td><td>原生标题栏，顶部留 6</td></tr>
+          <tr><td>显示文件</td><td>在访达中显示</td><td>在资源管理器中显示</td></tr>
+          <tr><td>同步盘</td><td colspan="2">用户自选文件夹（iCloud 云盘、OneDrive 等），界面统称“同步盘”</td></tr>
+          <tr><td>日历</td><td colspan="2">在数据文件夹生成 .ics，供日历订阅</td></tr>
+          <tr><td>字体栈</td><td>SF / 苹方</td><td>Segoe UI Variable / 微软雅黑 UI</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+</div>
+
+<script>
+const neutral = [["canvas","画布","#EEEEF0","#0F0F11"],["surface","承载面","#FFFFFF","#1C1C1F"],["band","浅灰带","#F4F4F6","#27272B"],["hairline","细线","#E4E4E8","#303035"],["ink","墨色文字","#121212","#F2F2F3"],["muted","次要文字","#6B6B73","#9C9CA3"],["edge","连线","#9A9AA3","#6C6C74"],["selection","选中","#121212","#4A4A52"]];
+const semantic = [["lime","柠檬绿","#D9F46B","#D9F46B"],["lime-soft","有效底","#F1FBCB","#3A4318"],["lime-text","有效字","#4D5B12","#D9F46B"],["amber","需处理","#F2B441","#F2B441"],["amber-soft","琥珀底","#FCEFD3","#4A3A16"],["amber-text","琥珀字","#8A5A00","#F2C66B"],["danger","过期","#E2553D","#E2553D"],["danger-soft","过期底","#FBE3DE","#4A1F18"]];
+function isDark(){ const t=document.documentElement.dataset.theme; return t ? t==="dark" : matchMedia("(prefers-color-scheme: dark)").matches; }
+function swatches(id, list){ document.getElementById(id).innerHTML = list.map(([k,n,l,d]) =>
+  `<div class="sw"><div class="chip" style="background:var(--${k})"></div><div class="info"><b>${n}</b><span class="micro mono">--${k}</span><span class="micro mono">${isDark()?d:l}</span></div></div>`).join(""); }
+function render(){ swatches("neutral", neutral); swatches("semantic", semantic); }
+const states = [
+  ["有效","valid","有效","var(--lime-soft)","var(--lime-text)","✓","2026.01","否"],
+  ["日期待核对","warn","日期待核对","var(--lime-soft)","var(--lime-text)","✓","无日期","否"],
+  ["即将到期","warn","25 天后到期","var(--amber-soft)","var(--amber-text)","◷","25 天后","是"],
+  ["需要更新","warn","需要更新","var(--amber-soft)","var(--amber-text)","↻","需更新","是"],
+  ["已过期","bad","已过期 12 天","var(--danger-soft)","var(--danger)","!","已过期","是"],
+  ["未归档","outline","未归档","var(--band)","var(--muted)","","","是"],
+  ["未取得 / 受限","outline","未取得","var(--band)","var(--muted)","?","未取得","否"],
+  ["待核实","warn","待核实","var(--amber-soft)","var(--amber-text)","?","待核实","否"],
+  ["外部保管","neutral","外部保管","var(--band)","var(--muted)","⌂","外部保管","否"],
+  ["不适用","neutral","不适用","transparent","var(--muted)","—","","否"],
+];
+document.getElementById("statesBody").innerHTML = states.map(([s,k,t,bg,fg,g,cap,r]) =>
+  `<tr><td><b>${s}</b></td><td><span class="pill ${k}">${t}</span></td><td><span class="tile" style="background:${bg};color:${fg}">${g}</span></td><td class="meta">${cap||"—"}</td><td class="meta">${r}</td></tr>`).join("");
+render();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+document.getElementById("themeBtn").addEventListener("click", () => {
+  document.documentElement.dataset.theme = isDark() ? "light" : "dark"; render();
+});
+</script>

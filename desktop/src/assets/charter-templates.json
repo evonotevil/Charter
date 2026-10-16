@@ -1,0 +1,1853 @@
+{
+  "version": 3,
+  "jurisdictions": [
+    {
+      "code": "HK",
+      "name": "香港",
+      "timeZone": "Asia/Hong_Kong",
+      "entityForms": [
+        "私人股份有限公司"
+      ]
+    },
+    {
+      "code": "SG",
+      "name": "新加坡",
+      "timeZone": "Asia/Singapore",
+      "entityForms": [
+        "Private Limited (Pte. Ltd.)"
+      ]
+    },
+    {
+      "code": "VG",
+      "name": "英属维尔京群岛",
+      "timeZone": "America/Tortola",
+      "entityForms": [
+        "BVI Business Company"
+      ]
+    },
+    {
+      "code": "KY",
+      "name": "开曼群岛",
+      "timeZone": "America/Cayman",
+      "entityForms": [
+        "豁免公司 (Exempted Company)"
+      ]
+    },
+    {
+      "code": "VI",
+      "name": "美属维尔京群岛",
+      "timeZone": "America/St_Thomas",
+      "entityForms": [
+        "LLC",
+        "Corporation"
+      ]
+    },
+    {
+      "code": "JP",
+      "name": "日本",
+      "timeZone": "Asia/Tokyo",
+      "entityForms": [
+        "株式会社",
+        "合同会社"
+      ]
+    },
+    {
+      "code": "KR",
+      "name": "韩国",
+      "timeZone": "Asia/Seoul",
+      "entityForms": [
+        "주식회사",
+        "유한회사"
+      ]
+    },
+    {
+      "code": "TW",
+      "name": "台湾",
+      "timeZone": "Asia/Taipei",
+      "entityForms": [
+        "股份有限公司",
+        "有限公司"
+      ]
+    }
+  ],
+  "documentTypes": [
+    {
+      "id": "common.passport",
+      "name": "护照",
+      "category": "护照",
+      "localNames": [
+        "Passport",
+        "护照",
+        "護照",
+        "旅券",
+        "여권"
+      ],
+      "jurisdictions": [],
+      "owner": "person",
+      "validity": "expiryOnDocument",
+      "hints": [
+        "passport no",
+        "date of expiry",
+        "nationality"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "common.address",
+      "name": "地址证明",
+      "category": "地址证明",
+      "localNames": [
+        "Proof of Address",
+        "Utility Bill",
+        "住址证明"
+      ],
+      "jurisdictions": [],
+      "owner": "person",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "bank statement",
+        "utility",
+        "electricity"
+      ],
+      "builtIn": true,
+      "validityMonths": 3
+    },
+    {
+      "id": "common.resolution",
+      "name": "董事会决议",
+      "category": "董事会决议",
+      "localNames": [
+        "Board Resolution",
+        "Written Resolutions of the Directors",
+        "董事会决议",
+        "取締役会議事録"
+      ],
+      "jurisdictions": [],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "resolved that",
+        "resolution"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "common.audit",
+      "name": "审计报告",
+      "category": "审计报告",
+      "localNames": [
+        "Audited Financial Statements",
+        "Auditor's Report",
+        "审计报告",
+        "核數師報告"
+      ],
+      "jurisdictions": [],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "independent auditor",
+        "true and fair view"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "common.receipt",
+      "name": "回执",
+      "category": "回执",
+      "localNames": [
+        "Receipt",
+        "Acknowledgement",
+        "回执",
+        "收据"
+      ],
+      "jurisdictions": [],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "receipt",
+        "acknowledg"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "common.confirmation",
+      "name": "代理确认函",
+      "category": "规则确认",
+      "localNames": [
+        "Confirmation",
+        "确认函",
+        "代理回复"
+      ],
+      "jurisdictions": [],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "we confirm",
+        "please note that the deadline"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "hk.coi",
+      "name": "公司注册证明书",
+      "category": "注册证书",
+      "localNames": [
+        "Certificate of Incorporation",
+        "公司註冊證明書"
+      ],
+      "jurisdictions": [
+        "HK"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "companies registry",
+        "公司註冊處",
+        "hong kong"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "hk.br",
+      "name": "商业登记证",
+      "category": "商业登记",
+      "localNames": [
+        "Business Registration Certificate",
+        "商業登記證"
+      ],
+      "jurisdictions": [
+        "HK"
+      ],
+      "owner": "company",
+      "validity": "expiryOnDocument",
+      "hints": [
+        "business registration office",
+        "商業登記署",
+        "date of expiry"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "hk.cr-search",
+      "name": "公司查册结果",
+      "category": "存续证明",
+      "localNames": [
+        "Company Search Report",
+        "Company Particulars Search",
+        "公司查冊"
+      ],
+      "jurisdictions": [
+        "HK"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "cyber search centre",
+        "company particulars"
+      ],
+      "builtIn": true,
+      "validityMonths": 3
+    },
+    {
+      "id": "hk.incumbency",
+      "name": "董事在职证明",
+      "category": "在职证明",
+      "localNames": [
+        "Certificate of Incumbency",
+        "在職證明書"
+      ],
+      "jurisdictions": [
+        "HK"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "incumbency"
+      ],
+      "builtIn": true,
+      "validityMonths": 3
+    },
+    {
+      "id": "hk.nar1",
+      "name": "周年申报表",
+      "category": "年报回执",
+      "localNames": [
+        "Annual Return",
+        "NAR1",
+        "周年申報表"
+      ],
+      "jurisdictions": [
+        "HK"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "nar1",
+        "annual return"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "hk.articles",
+      "name": "组织章程细则",
+      "category": "章程",
+      "localNames": [
+        "Articles of Association",
+        "組織章程細則"
+      ],
+      "jurisdictions": [
+        "HK"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "articles of association"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "hk.directors",
+      "name": "董事名册",
+      "category": "董事名册",
+      "localNames": [
+        "Register of Directors",
+        "董事登記冊"
+      ],
+      "jurisdictions": [
+        "HK"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "register of directors"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "hk.members",
+      "name": "成员登记册",
+      "category": "股东名册",
+      "localNames": [
+        "Register of Members",
+        "成員登記冊"
+      ],
+      "jurisdictions": [
+        "HK"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "register of members"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "hk.scr",
+      "name": "重要控制人登记册",
+      "category": "受益所有人登记",
+      "localNames": [
+        "Significant Controllers Register",
+        "重要控制人登記冊"
+      ],
+      "jurisdictions": [
+        "HK"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "significant controller"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "sg.coi",
+      "name": "注册证书",
+      "category": "注册证书",
+      "localNames": [
+        "Certificate of Incorporation",
+        "Certificate Confirming Incorporation"
+      ],
+      "jurisdictions": [
+        "SG"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "accounting and corporate regulatory authority",
+        "acra",
+        "singapore"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "sg.bizprofile",
+      "name": "Business Profile",
+      "category": "存续证明",
+      "localNames": [
+        "Business Profile",
+        "BizFile",
+        "Company Profile"
+      ],
+      "jurisdictions": [
+        "SG"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "bizfile",
+        "business profile",
+        "acra"
+      ],
+      "builtIn": true,
+      "validityMonths": 3
+    },
+    {
+      "id": "sg.incumbency",
+      "name": "董事在职证明",
+      "category": "在职证明",
+      "localNames": [
+        "Certificate of Incumbency"
+      ],
+      "jurisdictions": [
+        "SG"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "incumbency"
+      ],
+      "builtIn": true,
+      "validityMonths": 3
+    },
+    {
+      "id": "sg.constitution",
+      "name": "章程",
+      "category": "章程",
+      "localNames": [
+        "Constitution",
+        "Memorandum and Articles of Association"
+      ],
+      "jurisdictions": [
+        "SG"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "constitution of"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "sg.directors",
+      "name": "董事名册",
+      "category": "董事名册",
+      "localNames": [
+        "Register of Directors"
+      ],
+      "jurisdictions": [
+        "SG"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "register of directors"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "sg.members",
+      "name": "股东名册",
+      "category": "股东名册",
+      "localNames": [
+        "Register of Members",
+        "Electronic Register of Members"
+      ],
+      "jurisdictions": [
+        "SG"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "register of members"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "sg.rorc",
+      "name": "可登记控制人登记册",
+      "category": "受益所有人登记",
+      "localNames": [
+        "Register of Registrable Controllers",
+        "RORC"
+      ],
+      "jurisdictions": [
+        "SG"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "registrable controller"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "vg.coi",
+      "name": "注册证书",
+      "category": "注册证书",
+      "localNames": [
+        "Certificate of Incorporation"
+      ],
+      "jurisdictions": [
+        "VG"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "british virgin islands",
+        "bvi business companies act",
+        "registrar of corporate affairs"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "vg.ma",
+      "name": "公司章程",
+      "category": "章程",
+      "localNames": [
+        "Memorandum and Articles of Association",
+        "Memorandum of Association"
+      ],
+      "jurisdictions": [
+        "VG"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "memorandum and articles",
+        "bvi business companies act"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "vg.cogs",
+      "name": "存续证明",
+      "category": "存续证明",
+      "localNames": [
+        "Certificate of Good Standing"
+      ],
+      "jurisdictions": [
+        "VG"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "good standing",
+        "british virgin islands",
+        "registrar of corporate affairs"
+      ],
+      "builtIn": true,
+      "validityMonths": 6
+    },
+    {
+      "id": "vg.incumbency",
+      "name": "董事在职证明",
+      "category": "在职证明",
+      "localNames": [
+        "Certificate of Incumbency"
+      ],
+      "jurisdictions": [
+        "VG"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "incumbency",
+        "british virgin islands"
+      ],
+      "builtIn": true,
+      "validityMonths": 6
+    },
+    {
+      "id": "vg.directors",
+      "name": "董事名册",
+      "category": "董事名册",
+      "localNames": [
+        "Register of Directors"
+      ],
+      "jurisdictions": [
+        "VG"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "register of directors",
+        "british virgin islands"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "vg.members",
+      "name": "股东名册",
+      "category": "股东名册",
+      "localNames": [
+        "Register of Members"
+      ],
+      "jurisdictions": [
+        "VG"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "register of members",
+        "british virgin islands"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "vg.bo",
+      "name": "实益拥有人登记",
+      "category": "受益所有人登记",
+      "localNames": [
+        "Register of Beneficial Owners",
+        "BOSS"
+      ],
+      "jurisdictions": [
+        "VG"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "beneficial owner"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "ky.coi",
+      "name": "注册证书",
+      "category": "注册证书",
+      "localNames": [
+        "Certificate of Incorporation"
+      ],
+      "jurisdictions": [
+        "KY"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "cayman islands",
+        "exempted company",
+        "registrar of companies"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "ky.ma",
+      "name": "公司章程",
+      "category": "章程",
+      "localNames": [
+        "Memorandum and Articles of Association"
+      ],
+      "jurisdictions": [
+        "KY"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "memorandum and articles",
+        "cayman islands"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "ky.cogs",
+      "name": "存续证明",
+      "category": "存续证明",
+      "localNames": [
+        "Certificate of Good Standing"
+      ],
+      "jurisdictions": [
+        "KY"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "good standing",
+        "cayman islands"
+      ],
+      "builtIn": true,
+      "validityMonths": 6
+    },
+    {
+      "id": "ky.incumbency",
+      "name": "董事在职证明",
+      "category": "在职证明",
+      "localNames": [
+        "Certificate of Incumbency"
+      ],
+      "jurisdictions": [
+        "KY"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "incumbency",
+        "cayman islands"
+      ],
+      "builtIn": true,
+      "validityMonths": 6
+    },
+    {
+      "id": "ky.directors",
+      "name": "董事及高管名册",
+      "category": "董事名册",
+      "localNames": [
+        "Register of Directors and Officers"
+      ],
+      "jurisdictions": [
+        "KY"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "register of directors and officers"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "ky.members",
+      "name": "股东名册",
+      "category": "股东名册",
+      "localNames": [
+        "Register of Members"
+      ],
+      "jurisdictions": [
+        "KY"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "register of members",
+        "cayman islands"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "ky.bo",
+      "name": "实益拥有人登记",
+      "category": "受益所有人登记",
+      "localNames": [
+        "Beneficial Ownership Register",
+        "Register of Beneficial Ownership"
+      ],
+      "jurisdictions": [
+        "KY"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "beneficial ownership"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "ky.annual-return",
+      "name": "年报回执",
+      "category": "年报回执",
+      "localNames": [
+        "Annual Return",
+        "Annual Return Receipt"
+      ],
+      "jurisdictions": [
+        "KY"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "annual return",
+        "cayman islands"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "vi.formation",
+      "name": "成立证书",
+      "category": "注册证书",
+      "localNames": [
+        "Certificate of Formation",
+        "Articles of Organization",
+        "Certificate of Incorporation"
+      ],
+      "jurisdictions": [
+        "VI"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "virgin islands of the united states",
+        "lieutenant governor",
+        "division of corporations"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "vi.operating",
+      "name": "运营协议",
+      "category": "章程",
+      "localNames": [
+        "Operating Agreement",
+        "Bylaws"
+      ],
+      "jurisdictions": [
+        "VI"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "operating agreement"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "vi.cogs",
+      "name": "存续证明",
+      "category": "存续证明",
+      "localNames": [
+        "Certificate of Good Standing",
+        "Certificate of Existence"
+      ],
+      "jurisdictions": [
+        "VI"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "good standing",
+        "virgin islands"
+      ],
+      "builtIn": true,
+      "validityMonths": 6
+    },
+    {
+      "id": "vi.annual",
+      "name": "年报与特许经营税收据",
+      "category": "年报回执",
+      "localNames": [
+        "Annual Report",
+        "Franchise Tax Receipt"
+      ],
+      "jurisdictions": [
+        "VI"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "franchise tax",
+        "annual report",
+        "catalyst"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "jp.rireki",
+      "name": "履历事项全部证明书",
+      "category": "存续证明",
+      "localNames": [
+        "履歴事項全部証明書",
+        "登記簿謄本",
+        "Certificate of Registered Matters"
+      ],
+      "jurisdictions": [
+        "JP"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "履歴事項全部証明書",
+        "法務局",
+        "会社法人等番号"
+      ],
+      "builtIn": true,
+      "validityMonths": 3
+    },
+    {
+      "id": "jp.teikan",
+      "name": "定款",
+      "category": "章程",
+      "localNames": [
+        "定款",
+        "Articles of Incorporation"
+      ],
+      "jurisdictions": [
+        "JP"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "定款",
+        "第1章 総則"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "jp.inkan",
+      "name": "印鉴证明书",
+      "category": "印章证明",
+      "localNames": [
+        "印鑑証明書"
+      ],
+      "jurisdictions": [
+        "JP"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "印鑑証明書",
+        "登記官"
+      ],
+      "builtIn": true,
+      "validityMonths": 3
+    },
+    {
+      "id": "jp.tax",
+      "name": "法人税申告书副本",
+      "category": "税务申报",
+      "localNames": [
+        "法人税申告書",
+        "申告書控え"
+      ],
+      "jurisdictions": [
+        "JP"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "法人税",
+        "確定申告"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "kr.registry",
+      "name": "法人登记簿誊本",
+      "category": "存续证明",
+      "localNames": [
+        "법인등기부등본",
+        "등기사항전부증명서",
+        "Certificate of Corporate Registration"
+      ],
+      "jurisdictions": [
+        "KR"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "등기사항전부증명서",
+        "법인등기부",
+        "등기번호"
+      ],
+      "builtIn": true,
+      "validityMonths": 3
+    },
+    {
+      "id": "kr.bizreg",
+      "name": "事业者登记证",
+      "category": "商业登记",
+      "localNames": [
+        "사업자등록증",
+        "Business Registration Certificate"
+      ],
+      "jurisdictions": [
+        "KR"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "사업자등록증",
+        "국세청"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "kr.articles",
+      "name": "章程",
+      "category": "章程",
+      "localNames": [
+        "정관",
+        "Articles of Incorporation"
+      ],
+      "jurisdictions": [
+        "KR"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "정관",
+        "제1장 총칙"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "kr.shareholders",
+      "name": "股东名册",
+      "category": "股东名册",
+      "localNames": [
+        "주주명부",
+        "사원명부"
+      ],
+      "jurisdictions": [
+        "KR"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "주주명부"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "kr.seal",
+      "name": "法人印鉴证明书",
+      "category": "印章证明",
+      "localNames": [
+        "법인인감증명서"
+      ],
+      "jurisdictions": [
+        "KR"
+      ],
+      "owner": "company",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "인감증명서"
+      ],
+      "builtIn": true,
+      "validityMonths": 3
+    },
+    {
+      "id": "tw.registration",
+      "name": "公司设立（变更）登记表",
+      "category": "注册证书",
+      "localNames": [
+        "公司設立登記表",
+        "公司變更登記表",
+        "登記表"
+      ],
+      "jurisdictions": [
+        "TW"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "設立登記表",
+        "變更登記表",
+        "統一編號"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "tw.approval",
+      "name": "公司登记核准函",
+      "category": "存续证明",
+      "localNames": [
+        "核准函",
+        "公司登記核准函"
+      ],
+      "jurisdictions": [
+        "TW"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "核准",
+        "經濟部"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "tw.articles",
+      "name": "公司章程",
+      "category": "章程",
+      "localNames": [
+        "公司章程",
+        "章程"
+      ],
+      "jurisdictions": [
+        "TW"
+      ],
+      "owner": "company",
+      "validity": "permanent",
+      "hints": [
+        "章程",
+        "第一章 總則"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "tw.members",
+      "name": "股东名簿",
+      "category": "股东名册",
+      "localNames": [
+        "股東名簿"
+      ],
+      "jurisdictions": [
+        "TW"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "股東名簿"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "tw.directors",
+      "name": "董事名册",
+      "category": "董事名册",
+      "localNames": [
+        "董事名冊",
+        "董監事名單"
+      ],
+      "jurisdictions": [
+        "TW"
+      ],
+      "owner": "company",
+      "validity": "untilChanged",
+      "hints": [
+        "董事",
+        "監察人"
+      ],
+      "builtIn": true
+    }
+  ],
+  "rules": [
+    {
+      "id": "hk.annual-return",
+      "name": "周年申报表",
+      "localName": "Annual Return (NAR1)",
+      "jurisdictions": [
+        "HK"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterAnniversary",
+        "days": 42
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "公司秘书",
+      "penalty": "逾期按时长分档收费，最高可被检控",
+      "notes": "每个成立周年日后 42 天内交公司注册处。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "hk.br-renewal",
+      "name": "商业登记证续期",
+      "localName": "Business Registration Renewal",
+      "jurisdictions": [
+        "HK"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "documentExpiry",
+        "documentTypeID": "hk.br"
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "公司秘书或会计",
+      "penalty": "逾期罚款，并可被检控",
+      "notes": "按现有商业登记证的到期日提醒；登记证有 1 年和 3 年两种。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "hk.profits-tax",
+      "name": "利得税报税表",
+      "localName": "Profits Tax Return (BIR51)",
+      "jurisdictions": [
+        "HK"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "annualFixed",
+        "date": "05-02"
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "税务代表或会计师",
+      "penalty": "罚款，并可能被估税",
+      "notes": "税务局通常 4 月初发出，期限一个月；有会计师延期安排的，改成延期后的日期。附经审计账目。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "hk.agm",
+      "name": "周年大会或书面决议",
+      "localName": "Annual General Meeting",
+      "jurisdictions": [
+        "HK"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 9
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "公司秘书",
+      "penalty": "董事可被罚款",
+      "notes": "私人公司在会计参照期结束后 9 个月内举行，可用全体成员书面决议代替；单一成员公司可豁免。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "hk.officer-change",
+      "name": "董事、秘书变更通知",
+      "localName": "ND2A / ND2B",
+      "jurisdictions": [
+        "HK"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "event",
+        "event": "directorChange",
+        "days": 15
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "公司秘书",
+      "penalty": "逾期罚款",
+      "notes": "变更后 15 天内通知公司注册处。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "hk.address-change",
+      "name": "注册地址变更通知",
+      "localName": "NR1",
+      "jurisdictions": [
+        "HK"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "event",
+        "event": "addressChange",
+        "days": 15
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "公司秘书",
+      "penalty": "逾期罚款",
+      "notes": "变更后 15 天内通知公司注册处。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "hk.scr-update",
+      "name": "更新重要控制人登记册",
+      "localName": "SCR update",
+      "jurisdictions": [
+        "HK"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "event",
+        "event": "shareholderChange",
+        "days": 7
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "公司秘书",
+      "penalty": "属刑事罪行，可被罚款",
+      "notes": "控制人变更后更新登记册；7 天期限有待核对。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "sg.agm",
+      "name": "周年大会",
+      "localName": "Annual General Meeting",
+      "jurisdictions": [
+        "SG"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 6
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "公司秘书",
+      "penalty": "罚款，董事可被追责",
+      "notes": "财年结束后 6 个月内；私人公司可经成员同意豁免。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "sg.annual-return",
+      "name": "周年申报",
+      "localName": "Annual Return (ACRA)",
+      "jurisdictions": [
+        "SG"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 7
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "公司秘书",
+      "penalty": "逾期 3 个月内 300 新元，超过 3 个月 600 新元",
+      "notes": "财年结束后 7 个月内向 ACRA 申报。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "sg.eci",
+      "name": "估计应税收入",
+      "localName": "Estimated Chargeable Income",
+      "jurisdictions": [
+        "SG"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 3
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "税务代理",
+      "penalty": "可被估税",
+      "notes": "财年结束后 3 个月内；收入 500 万新元以下且应税收入为零可免报。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "sg.form-c",
+      "name": "企业所得税申报",
+      "localName": "Form C / C-S / C-S Lite",
+      "jurisdictions": [
+        "SG"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "annualFixed",
+        "date": "11-30"
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "税务代理",
+      "penalty": "罚款，欠税加收滞纳金",
+      "notes": "每年 11 月 30 日前电子申报上一财年。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "sg.rorc-update",
+      "name": "更新可登记控制人登记册",
+      "localName": "RORC update",
+      "jurisdictions": [
+        "SG"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "event",
+        "event": "shareholderChange",
+        "days": 7
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "公司秘书",
+      "penalty": "罚款",
+      "notes": "变更后 7 天内更新，并在之后 2 个工作日内报送中央登记册。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "sg.officer-change",
+      "name": "董事、高管变更申报",
+      "localName": "Change of Officers",
+      "jurisdictions": [
+        "SG"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "event",
+        "event": "directorChange",
+        "days": 14
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "公司秘书",
+      "penalty": "逾期罚款",
+      "notes": "变更后 14 天内向 ACRA 申报。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "vg.annual-fee",
+      "name": "政府年费",
+      "localName": "Annual Registration Fee",
+      "jurisdictions": [
+        "VG"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "incorporationHalf",
+        "firstHalf": "05-31",
+        "secondHalf": "11-30"
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "注册代理",
+      "penalty": "逾期加收 10%，再逾期加收 50%，之后可能被除名",
+      "notes": "1–6 月成立的公司 5 月 31 日前缴，7–12 月成立的 11 月 30 日前缴。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "vg.annual-return",
+      "name": "年度财务申报",
+      "localName": "Annual Return (financial)",
+      "jurisdictions": [
+        "VG"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 9
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "注册代理",
+      "penalty": "首月 300 美元，之后每月 200 美元，最高 5,000 美元",
+      "notes": "财年结束后 9 个月内把资产负债表和损益表交给注册代理；向 BVI 税务局报税的公司可豁免。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "vg.es-return",
+      "name": "经济实质申报",
+      "localName": "Economic Substance Return",
+      "jurisdictions": [
+        "VG"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 6
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "注册代理",
+      "penalty": "罚款",
+      "notes": "财年结束后 6 个月内经注册代理申报。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "vg.register-update",
+      "name": "董事名册变更报送",
+      "localName": "Register of Directors update",
+      "jurisdictions": [
+        "VG"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "event",
+        "event": "directorChange",
+        "days": 30
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "注册代理",
+      "penalty": "罚款，且无法取得存续证明",
+      "notes": "董事变更后 30 天内报送。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "vg.bo-update",
+      "name": "股东及实益拥有人变更报送",
+      "localName": "Members / BO register update",
+      "jurisdictions": [
+        "VG"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "event",
+        "event": "shareholderChange",
+        "days": 30
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "注册代理",
+      "penalty": "罚款，且无法取得存续证明",
+      "notes": "股东或实益拥有人变更后 30 天内报送。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "ky.annual-return",
+      "name": "周年申报与年费",
+      "localName": "Annual Return and Annual Fee",
+      "jurisdictions": [
+        "KY"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "annualFixed",
+        "date": "01-31"
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "注册办事处",
+      "penalty": "罚款，严重时被除名",
+      "notes": "每年 1 月 31 日前向公司注册处申报并缴费。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "ky.es-notification",
+      "name": "经济实质通知",
+      "localName": "Economic Substance Notification",
+      "jurisdictions": [
+        "KY"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "annualFixed",
+        "date": "01-31"
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "注册办事处",
+      "penalty": "罚款",
+      "notes": "通常与周年申报一起提交。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "ky.es-return",
+      "name": "经济实质报告",
+      "localName": "Economic Substance Return",
+      "jurisdictions": [
+        "KY"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 12
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "注册办事处或顾问",
+      "penalty": "罚款，可被视为不符合经济实质",
+      "notes": "只有从事“相关活动”的公司需要，默认关闭。",
+      "needsReview": true,
+      "enabled": false,
+      "builtIn": true
+    },
+    {
+      "id": "ky.bo-update",
+      "name": "实益拥有人信息更新",
+      "localName": "Beneficial Ownership update",
+      "jurisdictions": [
+        "KY"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "event",
+        "event": "shareholderChange",
+        "days": 30
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "注册办事处",
+      "penalty": "罚款",
+      "notes": "实益拥有人变更后告知注册办事处更新；期限有待核对。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "vi.annual-report",
+      "name": "年度报告与特许经营税",
+      "localName": "Annual Report and Franchise Tax",
+      "jurisdictions": [
+        "VI"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "annualFixed",
+        "date": "06-30"
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "注册代理",
+      "penalty": "7 月 1 日起加收罚款和利息，状态降为不良，无法取得存续证明",
+      "notes": "每年 6 月 30 日前经 Catalyst 系统提交。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "jp.corp-tax",
+      "name": "法人税申告",
+      "localName": "法人税・地方法人税申告",
+      "jurisdictions": [
+        "JP"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 2
+      },
+      "adjust": "nextBusinessDay",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "税理士",
+      "penalty": "无申告加算税和延滞税",
+      "notes": "财年结束后 2 个月内；设有会计监查人等情况可申请延长 1 个月。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "jp.consumption-tax",
+      "name": "消费税申告",
+      "localName": "消費税申告",
+      "jurisdictions": [
+        "JP"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 2
+      },
+      "adjust": "nextBusinessDay",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "税理士",
+      "penalty": "无申告加算税和延滞税",
+      "notes": "只有课税事业者需要。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "jp.agm",
+      "name": "定时股东大会",
+      "localName": "定時株主総会",
+      "jurisdictions": [
+        "JP"
+      ],
+      "entityForms": [
+        "株式会社"
+      ],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 3
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "董事或司法书士",
+      "penalty": "",
+      "notes": "通常在财年结束后 3 个月内召开。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "jp.officer-registration",
+      "name": "董事变更登记",
+      "localName": "役員変更登記",
+      "jurisdictions": [
+        "JP"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "event",
+        "event": "directorChange",
+        "days": 14
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "司法书士",
+      "penalty": "最高 100 万日元过料",
+      "notes": "变更生效后 2 周内登记；任期届满重任也需要登记。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "jp.address-registration",
+      "name": "总公司迁址登记",
+      "localName": "本店移転登記",
+      "jurisdictions": [
+        "JP"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "event",
+        "event": "addressChange",
+        "days": 14
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "司法书士",
+      "penalty": "过料",
+      "notes": "迁址后 2 周内登记。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "kr.corp-tax",
+      "name": "法人税申报",
+      "localName": "법인세 신고",
+      "jurisdictions": [
+        "KR"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 3
+      },
+      "adjust": "nextBusinessDay",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "税务师",
+      "penalty": "未申报加算税 20% 起，另有滞纳金",
+      "notes": "财年结束后 3 个月内申报并缴纳；12 月结账的为 3 月 31 日。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "kr.local-tax",
+      "name": "法人地方所得税申报",
+      "localName": "법인지방소득세 신고",
+      "jurisdictions": [
+        "KR"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 4
+      },
+      "adjust": "nextBusinessDay",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "税务师",
+      "penalty": "加算税",
+      "notes": "法人税申报期满后 1 个月内，经 Wetax 申报。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "kr.agm",
+      "name": "定期股东大会",
+      "localName": "정기주주총회",
+      "jurisdictions": [
+        "KR"
+      ],
+      "entityForms": [
+        "주식회사"
+      ],
+      "schedule": {
+        "kind": "afterFiscalYearEnd",
+        "months": 3
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "代表董事",
+      "penalty": "最高 500 万韩元罚款",
+      "notes": "财年结束后 3 个月内召开，批准财务报表。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    },
+    {
+      "id": "kr.change-registration",
+      "name": "变更登记",
+      "localName": "변경등기",
+      "jurisdictions": [
+        "KR"
+      ],
+      "entityForms": [],
+      "schedule": {
+        "kind": "event",
+        "event": "directorChange",
+        "days": 14
+      },
+      "adjust": "none",
+      "requiredDocTypeIDs": [],
+      "responsibleHint": "法务士",
+      "penalty": "罚款",
+      "notes": "股东大会决议等变更后 2 周内登记。",
+      "needsReview": true,
+      "enabled": true,
+      "builtIn": true
+    }
+  ],
+  "packets": [
+    {
+      "id": "bank",
+      "name": "银行开户",
+      "categories": [
+        "注册证书",
+        "章程",
+        "存续证明",
+        "在职证明",
+        "董事名册",
+        "股东名册",
+        "受益所有人登记"
+      ],
+      "includeDirectorsPassports": true,
+      "maxAgeMonths": 3
+    },
+    {
+      "id": "audit",
+      "name": "年度审计",
+      "categories": [
+        "注册证书",
+        "董事名册",
+        "股东名册",
+        "董事会决议",
+        "年报回执",
+        "审计报告"
+      ],
+      "includeDirectorsPassports": false
+    },
+    {
+      "id": "kyc",
+      "name": "KYC 更新",
+      "categories": [
+        "存续证明",
+        "在职证明",
+        "受益所有人登记",
+        "股东名册"
+      ],
+      "includeDirectorsPassports": true,
+      "maxAgeMonths": 3
+    }
+  ]
+}

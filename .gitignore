@@ -1,11 +1,6 @@
-.DS_Store
-xcuserdata/
-DerivedData/
-*.xcuserstate
-build/
+node_modules/
 dist/
-.env
-.env.*
-*.p12
-*.p8
-*.mobileprovision
+desktop/src-tauri/target/
+*.dmg
+.DS_Store
+build-mac.log
