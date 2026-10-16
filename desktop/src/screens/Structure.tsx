@@ -10,8 +10,10 @@ import { isMember, sourceLabel } from "../domain/groups";
 import { useApp } from "../state/hooks";
 import type { ShareholderStatus, Store } from "../state/store";
 import { platform } from "../platform/platform";
+import { installSampleData } from "../state/sample";
 import { Icon } from "../ui/Icon";
-import { ActionMenu, Button, EmptyStateView, JurisdictionBadge, Pill, Segmented, Spinner, Switch, item } from "../ui/kit";
+import { ActionMenu, Button, EmptyStateView, JurisdictionBadge, PageHeader, Pill, Segmented, Spinner, Switch, item } from "../ui/kit";
+import { InfoCard } from "./InfoCard";
 
 // MARK: - 股东核对的展示
 
@@ -29,7 +31,9 @@ export function StructureView() {
   const { store, router } = useApp();
   const [stopIndex, setStopIndex] = useState<number | null>(null);
   const [hover, setHover] = useState<NodeRef | null>(null);
-  const [selected, setSelected] = useState<NodeRef | null>(null);
+  // 选中公司与路由同步（搜索、信息卡里的跳转都会改它）；选中人只在本页
+  const [personSel, setPersonSel] = useState<NodeRef | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   const [drag, setDrag] = useState<{ key: string; dx: number; dy: number } | null>(null);
   const [savedZoom, setSavedZoomState] = useState(readZoom);
   const [playing, setPlaying] = useState(false);
@@ -38,14 +42,13 @@ export function StructureView() {
   const setSavedZoom = (z: number) => { setSavedZoomState(z); platform().prefSet(zoomKey, String(z)); };
 
   const group = router.groupFilter;
-  const upward = router.structureUpward && store.company(router.structureUpward) ? router.structureUpward : null;
-  const scope = (day?: Day) => (upward ? store.upwardScope(upward, day) : store.companyIDsForFilter(group, day));
+  const upward: string | null = null;
+  const scope = (day?: Day) => (upward ? store.upwardScope(upward, day) : store.brandScope(group, day));
   const dataVersion = [store.data.companies, store.data.holdings, store.data.groups, store.data.people, store.today] as const;
 
   const stops = useMemo(() => timelineStops(store.data.holdings, scope() ?? new Set(store.data.companies.map((c) => c.id)), store.today),
     [group, upward, ...dataVersion]);
   useEffect(() => { setStopIndex(null); setPlaying(false); }, [group, upward]);
-  useEffect(() => { if (upward) setSelected(ref("company", upward)); }, [upward]);
   const asOf = stops.length ? stops[Math.min(stopIndex ?? stops.length - 1, stops.length - 1)] : store.today;
   const isToday = asOf === store.today;
 
@@ -66,8 +69,14 @@ export function StructureView() {
   }, [snapshot, drag]);
   const routes = useMemo(() => routeEdges(snapshot.activeHoldings, positions), [snapshot, positions]);
   const nodeKeys = new Set(snapshot.nodes.map(refKey));
+  const selected: NodeRef | null = personSel ?? (router.selectedCompanyID && nodeKeys.has("company:" + router.selectedCompanyID) ? ref("company", router.selectedCompanyID) : null);
+  const setSelected = (n: NodeRef | null) => {
+    if (n?.kind === "person") { setPersonSel(n); router.set("selectedCompanyID", null); }
+    else { setPersonSel(null); router.set("selectedCompanyID", n ? n.id : null); }
+  };
+  useEffect(() => { if (!showHistory) { setStopIndex(null); setPlaying(false); } }, [showHistory]);
   useEffect(() => {
-    if (selected && !nodeKeys.has(refKey(selected))) setSelected(null);
+    if (personSel && !nodeKeys.has(refKey(personSel))) setPersonSel(null);
     if (hover && !nodeKeys.has(refKey(hover))) setHover(null);
   }, [snapshot]);
 
@@ -161,17 +170,11 @@ export function StructureView() {
     target.addEventListener("pointerup", up);
   };
 
-  const setUpward = (up: boolean) => {
-    if (!up) { router.set("structureUpward", null); return; }
-    const sel = selected?.kind === "company" ? selected.id : null;
-    const cur = router.selectedCompanyID && snapshot.companies.some((c) => c.id === router.selectedCompanyID) ? router.selectedCompanyID : null;
-    const widest = snapshot.companies.reduce<Company | null>((m, c) => (!m || store.upwardScope(c.id).size > store.upwardScope(m.id).size ? c : m), null)?.id ?? null;
-    router.set("structureUpward", sel ?? cur ?? widest);
-  };
 
   if (!store.data.companies.length) return (
     <div className="col grow" style={{ justifyContent: "center" }}>
-      <EmptyStateView symbol="point.3.connected.trianglepath.dotted" title="还没有股权结构" message="新建集团并添加公司和持股关系后，这里会自动画出股权结构图。" actionTitle="新建集团" action={() => router.open({ kind: "newGroup" })} />
+      <EmptyStateView symbol="point.3.connected.trianglepath.dotted" title="还没有公司" message="从最上层的控股公司开始建，下面的公司选它做股东，结构图会自己连起来。" actionTitle="新建公司" action={() => router.open({ kind: "newCompany" })} />
+      <div className="row gap8" style={{ justifyContent: "center", marginTop: 8 }}><Button onClick={() => void installSampleData(store)}>先看示例数据</Button></div>
     </div>
   );
 
@@ -183,29 +186,27 @@ export function StructureView() {
   return (
     <div className="row grow" style={{ alignItems: "stretch", minHeight: 0 }}>
       <div className="col grow" style={{ minWidth: 0, position: "relative" }}>
-        <div className="col gap4" style={{ padding: "0 var(--page-edge) 8px" }}>
-          <div className="row gap12 wrap">
-            <span title="向下：从集团顶层沿持股往下展开。向上：从一家公司沿股东一直追到自然人。">
-              <Segmented options={[[false, "向下展开"], [true, "向上穿透"]]} value={!!upward} onChange={setUpward} />
-            </span>
-            <span className="row baseline gap8 t-meta muted" style={{ minWidth: 0 }}>
-              <span className="ellipsis">{upward ? `从 ${store.company(upward)?.name ?? ""} 向上` : store.filterName(group)}</span>
-              <span>·</span><span className="num">{snapshot.companies.length} 家公司</span>
-              {!upward && g && excluded > 0 && <><span>·</span>
-                <button className="link" title={`这些公司股权能推导到，但你把它们排除在${latinPad(g.name)}之外`} onClick={() => router.open({ kind: "groupMembers", group: g.id })}>已排除 {excluded} 家</button></>}
-            </span>
+        <div className="col gap8" style={{ padding: "var(--page-edge) var(--page-edge) 8px" }}>
+          <PageHeader title="结构">
+            <Button kind="primary" icon="plus" onClick={() => router.open({ kind: "newCompany" })}>新建公司</Button>
+          </PageHeader>
+          <div className="row gap8 wrap">
+            <BrandPills />
+            {g && excluded > 0 && <button className="link t-meta" title={`这些公司股权能推导到，但你把它们排除在${latinPad(g.name)}之外`} onClick={() => router.open({ kind: "groupMembers", group: g.id })}>已排除 {excluded} 家</button>}
             <span className="spacer" />
-            <span className="row gap8" title="按股东录入情况给公司标色，并列出需要补充的公司">
-              <Switch checked={checkOn} onChange={(v) => router.set("structureCheck", v)}><span className="t-meta">核对股东</span></Switch>
-            </span>
+            <button className={`v4-toggle ${checkOn ? "on" : ""}`} aria-pressed={checkOn} title="按股东录入情况给公司标色，并列出需要补充的公司" onClick={() => router.set("structureCheck", !checkOn)}>核对股东</button>
             <span className="seg-group row">
               <Button kind="quiet" size="small" icon="minus" title="缩小" onClick={() => setSavedZoom(clampZoom(z - 0.1))} />
               <Button kind="quiet" size="small" title="适合窗口" onClick={() => { setSavedZoom(0); scroller.current?.scrollTo({ left: 0, top: 0 }); }}><span className="num">{savedZoom === 0 ? "适合窗口" : `${Math.round(z * 100)}%`}</span></Button>
               <Button kind="quiet" size="small" icon="plus" title="放大" onClick={() => setSavedZoom(clampZoom(z + 0.1))} />
             </span>
-            <Button size="small" icon="arrow.triangle.branch" title="查询某人或某公司到目标公司之间的持股路径"
-              onClick={() => router.open({ kind: "chainQuery", from: selected?.kind === "person" ? selected : undefined, to: selected?.kind === "company" ? selected.id : undefined })}>查询链条</Button>
-            <Button size="small" icon="rectangle.3.group" title="清除拖动过的位置，按层级自动排列" onClick={resetLayout}>重新排列</Button>
+            <button className={`v4-toggle ${showHistory ? "on" : ""}`} aria-pressed={showHistory} title="显示时间轴，回看历年的持股结构" onClick={() => setShowHistory(!showHistory)}>历史</button>
+            <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" entries={[
+              item("查询链条…", "arrow.triangle.branch", () => router.open({ kind: "chainQuery", from: selected?.kind === "person" ? selected : undefined, to: selected?.kind === "company" ? selected.id : undefined })),
+              item("重新排列", "rectangle.3.group", resetLayout),
+              item("导出 PDF…", "doc.text", () => void exportStructurePNG(store, snapshot, positions, routes, store.filterName(group), true)),
+              item("导出图片（PNG）…", "square.and.arrow.up", () => void exportStructurePNG(store, snapshot, positions, routes, store.filterName(group))),
+            ]} />
           </div>
           {isToday ? <span className="t-body muted">按住 {platform().os === "mac" ? "⌘" : "Ctrl"} 滚动或双指捏合缩放。点选固定链路，拖动调整位置。</span>
             : <span className="t-body amber-text" style={{ fontWeight: 500 }}>历史视图：{D.year(asOf)} 年末的持股。不显示当前的截止日和文件提醒。</span>}
@@ -267,7 +268,7 @@ export function StructureView() {
           </div>
         </div>
         {checkOn && <CheckList snapshot={snapshot} onPick={(c) => { const r = ref("company", c.id); setSelected(r); reveal(r); }} />}
-        <div className="row" style={{ justifyContent: "center", padding: "12px 0" }}>
+        {showHistory && <div className="row" style={{ justifyContent: "center", padding: "12px 0" }}>
           <div className="row gap4 floating" style={{ padding: 6, borderRadius: 26, overflowX: "auto", maxWidth: "calc(100% - 24px)" }}>
             <button onClick={() => setPlaying(!playing)} title={playing ? "暂停" : "回放结构变化"} aria-label={playing ? "暂停结构回放" : "回放结构变化"}
               style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--ink)", color: "var(--on-ink)", display: "grid", placeItems: "center", flex: "none" }}>
@@ -280,9 +281,10 @@ export function StructureView() {
                 {d === store.today ? "今天" : D.year(d)}</button>;
             })}
           </div>
-        </div>
+        </div>}
       </div>
-      {selected && (
+      {selected?.kind === "company" && isToday && <InfoCard store={store} router={router} id={selected.id} />}
+      {selected && !(selected.kind === "company" && isToday) && (
         <div className="col inspector" style={{ width: 340, flex: "none", background: "var(--surface)", borderLeft: "1px solid var(--hairline)", position: "relative", minHeight: 0 }}>
           <button className="close-x" aria-label="关闭详情" title="关闭" onClick={() => setSelected(null)}><Icon name="xmark" size={11} /></button>
           <Inspector key={refKey(selected)} n={selected} asOf={snapshot.asOf} />
@@ -345,13 +347,22 @@ function NodeView({ n, highlighted, selected, dimmed, showNext, showAlerts }: { 
     let detail: string, warn = false;
     if (showNext && next) { const left = Math.round(D.daysBetween(store.today, next.due)); detail = left < 0 ? `逾期 ${-left} 天：${next.rule.name}` : `${left} 天后：${next.rule.name}`; }
     else if (alert) { detail = "有文件需要更新"; warn = true; }
-    else detail = [c?.registrationNumber ?? "", c?.incorporationDate ?? ""].filter(Boolean).join("  ") || store.jurisdictionName(c?.jurisdiction ?? "");
+    else {
+      const dirs = [...new Set(store.officers(n.id).map((a) => store.person(a.personID)?.name ?? ""))].filter(Boolean);
+      detail = store.jurisdictionName(c?.jurisdiction ?? "") + (dirs.length ? " · 董事 " + dirs.join("、") : "");
+    }
+    const brand = store.brandOf(n.id);
+    const soon = showAlerts && !!next && D.daysBetween(store.today, next.due) <= 30;
     return (
       <div style={{ ...base, gap: 12, padding: "0 14px", borderRadius: 22, boxShadow: `${halo}, 0 ${selected ? 8 : 3}px ${selected ? 16 : 8}px rgba(0,0,0,${selected ? 0.16 : 0.06})` }}>
         <JurisdictionBadge code={c?.jurisdiction ?? "?"} size={42} highlighted={highlighted} />
-        <span className="col" style={{ minWidth: 0 }}>
+        <span className="col grow" style={{ minWidth: 0 }}>
           <span className="t-row" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c?.name ?? ""}</span>
           <span className="t-meta num ellipsis" style={{ color: warn ? "var(--amber-text)" : "var(--muted)", fontWeight: warn ? 600 : 400 }}>{detail}</span>
+        </span>
+        <span className="col" style={{ gap: 6, alignItems: "center", flex: "none" }}>
+          <span className="v4-dot" title={brand ? brand.name : "各集团共用"} style={{ background: brand ? store.brandColor(brand) : "transparent", boxShadow: brand ? undefined : "inset 0 0 0 1.5px var(--muted)" }} />
+          {soon && <span className="v4-dot" title="30 天内有事项到期" style={{ background: next && next.due < store.today ? "var(--danger)" : "var(--amber)" }} />}
         </span>
       </div>
     );
@@ -487,7 +498,7 @@ function CompanyInspector({ id, asOf }: { id: string; asOf: Day }) {
           </div>
         ))}
         {memberships.filter(([, m]) => isMember(m)).length > 1 && <span className="t-meta amber-text">同时属于多个集团。如果只应归入其中一个，把其他的移出即可。</span>}
-        {router.structureUpward !== id && <span><Button size="small" title="只显示这家公司和它的各层股东，直到自然人" onClick={() => router.set("structureUpward", id)}>从这家公司向上穿透</Button></span>}
+        
       </Block>
       <Block title="任职人员">
         {!officers.length && <span className="muted">未录入</span>}
@@ -541,7 +552,7 @@ function CompanyInspector({ id, asOf }: { id: string; asOf: Day }) {
           <b className="num" style={{ color: left < 0 ? "var(--danger)" : left <= 7 ? "var(--amber-text)" : "var(--ink)" }}>{left < 0 ? `逾期 ${-left} 天` : `${left} 天后`}</b></div>
       </Block>}
       {c && <><div className="hairline" /><div style={{ padding: 24 }}>
-        <Button kind="accent" icon="doc.on.doc" title="公司名称、注册编号、成立日期、地址、董事、股东、穿透和链条，可直接发给同事或负责方"
+        <Button kind="accent" icon="doc.on.doc" title="公司名称、注册编号、成立日期、地址、董事、股东、穿透和链条，可直接发给同事或中介"
           onClick={() => { void platform().copyText(store.companySummary(c, asOf)); store.showToast("公司资料摘要已复制。"); }}>复制公司资料摘要</Button>
       </div></>}
     </div>
@@ -576,3 +587,101 @@ function PersonInspector({ id, asOf }: { id: string; asOf: Day }) {
 }
 
 void Spinner; void personSize;
+
+// MARK: - 导出图片
+
+/** 单页 PDF，内嵌一张 JPEG（DCTDecode），页面尺寸按图片比例，单位 pt。 */
+function jpegPDF(jpeg: Uint8Array, w: number, h: number, pageW: number, pageH: number): Uint8Array {
+  const enc = new TextEncoder();
+  const parts: Uint8Array[] = [];
+  const offsets: number[] = [];
+  let len = 0;
+  const push = (b: Uint8Array | string) => { const x = typeof b === "string" ? enc.encode(b) : b; parts.push(x); len += x.length; };
+  push("%PDF-1.4\n");
+  const obj = (n: number, body: (Uint8Array | string)[]) => { offsets[n] = len; push(`${n} 0 obj\n`); body.forEach(push); push("\nendobj\n"); };
+  const content = `q ${pageW} 0 0 ${pageH} 0 0 cm /Im0 Do Q`;
+  obj(1, ["<< /Type /Catalog /Pages 2 0 R >>"]);
+  obj(2, ["<< /Type /Pages /Kids [3 0 R] /Count 1 >>"]);
+  obj(3, [`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`]);
+  obj(4, [`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`, jpeg, "\nendstream"]);
+  obj(5, [`<< /Length ${content.length} >>\nstream\n${content}\nendstream`]);
+  const xref = len;
+  push(`xref\n0 6\n0000000000 65535 f \n` + [1, 2, 3, 4, 5].map((i) => String(offsets[i]).padStart(10, "0") + " 00000 n \n").join(""));
+  push(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  const out = new Uint8Array(len); let o = 0; for (const x of parts) { out.set(x, o); o += x.length; }
+  return out;
+}
+
+async function exportStructurePNG(store: Store, snap: StructureSnapshot, positions: Map<string, Pt>, routes: Map<string, Route>, title: string, pdf = false) {
+  const p = platform();
+  const name = `${title} 结构图 ${store.today}.${pdf ? "pdf" : "png"}`;
+  const path = await p.saveDialog({ defaultName: name, extensions: [pdf ? "pdf" : "png"], title: "导出结构图" });
+  if (!path) return;
+  const pad = 40, head = 56, scale = 2;
+  const W = snap.canvas.width + pad * 2, H = snap.canvas.height + pad * 2 + head;
+  const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale;
+  const g = cv.getContext("2d")!; g.scale(scale, scale);
+  const font = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", sans-serif';
+  g.fillStyle = "#FFFFFF"; g.fillRect(0, 0, W, H);
+  g.fillStyle = "#121212"; g.font = `700 20px ${font}`; g.fillText(name.replace(/\.(png|pdf)$/, ""), pad, pad + 6);
+  g.translate(pad, pad + head);
+  for (const h of snap.activeHoldings) {
+    const r = routes.get(h.id); if (!r) continue;
+    g.strokeStyle = h.isNominee ? "#E3A21A" : "#B0B0B8"; g.lineWidth = 1.4; g.setLineDash(h.isNominee ? [6, 4] : []);
+    g.stroke(new Path2D(routePath(r)));
+  }
+  g.setLineDash([]);
+  for (const l of edgeLabels(store, routes, new Set(), snap.activeHoldings)) {
+    g.font = `600 11px ${font}`; const w = l.width;
+    g.beginPath(); g.roundRect(l.x - w / 2, l.y - 10, w, 20, 10); g.fillStyle = l.nominee ? "#FCEFD3" : "#FFFFFF"; g.fill(); g.strokeStyle = "#E4E4E8"; g.stroke();
+    g.fillStyle = l.nominee ? "#8A5A00" : "#121212"; g.textAlign = "center"; g.fillText(l.text, l.x, l.y + 4); g.textAlign = "left";
+  }
+  const clip = (t: string, w: number) => { if (g.measureText(t).width <= w) return t; let x = t; while (x && g.measureText(x + "…").width > w) x = x.slice(0, -1); return x + "…"; };
+  for (const n of snap.nodes) {
+    const c = positions.get(refKey(n)); if (!c) continue;
+    const s = sizeOf(n), x = c.x - s.width / 2, y = c.y - s.height / 2;
+    g.beginPath(); g.roundRect(x, y, s.width, s.height, n.kind === "company" ? 22 : s.height / 2); g.fillStyle = "#FFFFFF"; g.fill(); g.strokeStyle = "#D6D6DB"; g.lineWidth = 1; g.stroke();
+    if (n.kind === "company") {
+      const co = store.company(n.id)!;
+      g.beginPath(); g.roundRect(x + 14, y + s.height / 2 - 21, 42, 42, 12); g.fillStyle = "#F4F4F6"; g.fill();
+      g.fillStyle = "#121212"; g.font = `700 13px ${font}`; g.textAlign = "center"; g.fillText(co.jurisdiction, x + 35, y + s.height / 2 + 5); g.textAlign = "left";
+      g.font = `600 14px ${font}`; g.fillText(clip(co.name, s.width - 90), x + 68, y + s.height / 2 - 3);
+      const dirs = [...new Set(store.officers(n.id).map((a) => store.person(a.personID)?.name ?? ""))].filter(Boolean);
+      g.fillStyle = "#6B6B73"; g.font = `12px ${font}`; g.fillText(clip(store.jurisdictionName(co.jurisdiction) + (dirs.length ? " · 董事 " + dirs.join("、") : ""), s.width - 90), x + 68, y + s.height / 2 + 15);
+      const b = store.brandOf(n.id); if (b) { g.beginPath(); g.arc(x + s.width - 16, y + s.height / 2, 4, 0, Math.PI * 2); g.fillStyle = store.brandColor(b); g.fill(); }
+    } else {
+      g.fillStyle = "#121212"; g.beginPath(); g.arc(x + 28, y + s.height / 2, 20, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#FFFFFF"; g.font = `700 15px ${font}`; g.textAlign = "center"; g.fillText([...store.nameOf(n)][0] ?? "", x + 28, y + s.height / 2 + 5); g.textAlign = "left";
+      g.fillStyle = "#121212"; g.font = `600 14px ${font}`; g.fillText(clip(store.nameOf(n), s.width - 70), x + 56, y + s.height / 2 + 5);
+    }
+  }
+  if (pdf) {
+    const blob: Blob = await new Promise((res) => cv.toBlob((b) => res(b!), "image/jpeg", 0.92));
+    await p.writeBytes(path, jpegPDF(new Uint8Array(await blob.arrayBuffer()), cv.width, cv.height, W, H));
+  } else {
+    const blob: Blob = await new Promise((res) => cv.toBlob((b) => res(b!), "image/png"));
+    await p.writeBytes(path, new Uint8Array(await blob.arrayBuffer()));
+  }
+  store.showToast("结构图已导出。", () => void p.reveal(path), "在访达中显示");
+}
+
+/** 集团切换：结构页和公司页共用 router.groupFilter。 */
+export function BrandPills() {
+  const { store, router } = useApp();
+  const group = router.groupFilter;
+  return (
+    <div className="v4-pills" role="tablist" aria-label="集团">
+      <button role="tab" aria-selected={!group} className={!group ? "on" : ""} onClick={() => router.set("groupFilter", null)}>全部</button>
+      {[...store.data.groups].sort((a, b) => a.name.localeCompare(b.name)).map((x) => (
+        <button key={x.id} role="tab" aria-selected={group === x.id} className={group === x.id ? "on" : ""} onClick={() => router.set("groupFilter", x.id)}>
+          <span className="v4-dot" style={{ background: store.brandColor(x) }} />{x.name}
+        </button>
+      ))}
+      <ActionMenu icon="ellipsis" ariaLabel="集团" align="end" showsChevron={false} kind="quiet" size="small" entries={[
+        ...(store.group(group) ? [item(`编辑“${store.group(group)!.name}”…`, "pencil", () => router.openSettings("groups", group))] : []),
+        item("新建集团…", "plus", () => router.openSettings("groups", "new")),
+        item("管理全部集团…", "square.stack.3d.up", () => router.openSettings("groups")),
+      ]} />
+    </div>
+  );
+}

@@ -34,7 +34,7 @@ describe("snapshots", () => {
     const snaps = await listSnapshots(s2.folder);
     const manual = snaps.find((x) => x.reason === "手动备份")!;
     expect(manual).toBeTruthy();
-    expect(manual.companies).toBe(12);
+    expect(manual.companies).toBe(17);
     expect(manual.documents).toBe(s.data.documents.length);
   });
 
@@ -51,12 +51,12 @@ describe("snapshots", () => {
     });
     await s.restoreFromSnapshot(snap);
     expect(s.errorMessage ?? null).toBeNull();
-    expect(s.data.companies.length).toBe(12);
+    expect(s.data.companies.length).toBe(17);
     expect(s.data.documents.length).toBe(docs);
     expect(s.data.settings.notificationHour).not.toBe(21);
     expect(s.data.library.packets[0].name).not.toBe("备份后改名");
     const s2 = await reopen();
-    expect(s2.data.companies.length).toBe(12);
+    expect(s2.data.companies.length).toBe(17);
     expect(s2.data.library.packets[0].name).not.toBe("备份后改名");
     expect((await listSnapshots(s2.folder)).some((x) => x.reason.startsWith("恢复到"))).toBe(true);
   });
@@ -102,7 +102,7 @@ describe("snapshots", () => {
     const snap = s.snapshots.find((x) => x.reason === "清空所有数据前")!;
     expect(snap).toBeTruthy();
     await s.restoreFromSnapshot(snap);
-    expect(s.data.companies.length).toBe(12);
+    expect(s.data.companies.length).toBe(17);
     expect((await p.stat(file)).exists).toBe(true);
     expect(await p.readBytes(file)).toEqual(bytes);
   });

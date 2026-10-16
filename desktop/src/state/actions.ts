@@ -31,125 +31,19 @@ export interface ChangePlan {
   evidenceTypeID: string;
 }
 
-export const newPlan = (companyID: string, kind: ChangeKind = "directorChange"): ChangePlan => ({
+const newPlan = (companyID: string, kind: ChangeKind = "directorChange"): ChangePlan => ({
   companyID, kind, effectiveOn: D.today(), summary: "", endingAppointmentIDs: [], newAppointments: [], newPeople: [],
   endingHoldingIDs: [], newHoldings: [], evidenceTypeID: "common.resolution",
 });
 
 export type EffectKind = "record" | "appointment" | "holding" | "company" | "document" | "obligation" | "evidence";
-export interface ChangeEffect { kind: EffectKind; text: string }
+interface ChangeEffect { kind: EffectKind; text: string }
 
-const personName = (s: Store, id: string, p: ChangePlan) => s.person(id)?.name ?? p.newPeople.find((x) => x.id === id)?.name ?? "未命名";
-const holderName = (s: Store, r: NodeRef, p: ChangePlan) => (r.kind === "person" ? personName(s, r.id, p) : s.nameOf(r));
 
-export function detailLines(s: Store, p: ChangePlan): string[] {
-  const lines: string[] = [];
-  for (const a of s.data.appointments) if (p.endingAppointmentIDs.includes(a.id)) lines.push(`${personName(s, a.personID, p)} 离任${a.title}`);
-  for (const a of p.newAppointments) lines.push(`${personName(s, a.personID, p)} 就任${a.title}`);
-  for (const h of s.data.holdings) if (p.endingHoldingIDs.includes(h.id)) lines.push(`${holderName(s, h.holder, p)} 不再持有 ${percentLabel(h.percent)}`);
-  for (const h of p.newHoldings) lines.push(`${holderName(s, h.holder, p)} 持有 ${percentLabel(h.percent)}${h.isNominee ? "（代持）" : ""}`);
-  const c = s.company(p.companyID);
-  if (p.newAddress !== undefined && p.newAddress !== c?.registeredAddress) lines.push(`注册地址改为：${p.newAddress}`);
-  if (p.newName !== undefined && p.newName !== c?.name) lines.push(`公司名称由 ${c?.name ?? ""} 改为 ${p.newName}`);
-  if (p.newStatus !== undefined && p.newStatus !== c?.status) lines.push(`公司状态改为：${companyStatusLabel[p.newStatus]}`);
-  return lines;
-}
 
-export function autoSummary(s: Store, p: ChangePlan) {
-  const lines = detailLines(s, p);
-  if (!lines.length) return changeKindLabel[p.kind];
-  return lines.slice(0, 2).join("；") + (lines.length > 2 ? `等 ${lines.length} 项` : "");
-}
 
-export function changeEffects(s: Store, p: ChangePlan): ChangeEffect[] {
-  const c = s.company(p.companyID);
-  if (!c) return [];
-  const eff = D.long(p.effectiveOn);
-  const out: ChangeEffect[] = [{ kind: "record", text: `在变更记录里新增：${eff} ${p.summary || autoSummary(s, p)}` }];
-  for (const a of s.data.appointments) if (p.endingAppointmentIDs.includes(a.id)) out.push({ kind: "appointment", text: `${personName(s, a.personID, p)} 的${a.title}任期结束于 ${eff}` });
-  for (const a of p.newAppointments) out.push({ kind: "appointment", text: `${personName(s, a.personID, p)} 自 ${eff} 起任${a.title}` });
-  for (const h of s.data.holdings) if (p.endingHoldingIDs.includes(h.id)) out.push({ kind: "holding", text: `${holderName(s, h.holder, p)} 的 ${percentLabel(h.percent)} 持股结束于 ${eff}` });
-  for (const h of p.newHoldings) out.push({ kind: "holding", text: `${holderName(s, h.holder, p)} 自 ${eff} 起持有 ${percentLabel(h.percent)}` });
-  if (p.newAddress !== undefined && p.newAddress !== c.registeredAddress) out.push({ kind: "company", text: `注册地址更新为“${p.newAddress}”` });
-  if (p.newName !== undefined && p.newName !== c.name) out.push({ kind: "company", text: `公司名称更新为 ${p.newName}，${c.name} 记为曾用名` });
-  if (p.newStatus !== undefined && p.newStatus !== c.status) out.push({ kind: "company", text: `公司状态改为“${companyStatusLabel[p.newStatus]}”` });
-  for (const d of s.affectedDocuments(p.kind, c.id)) out.push({ kind: "document", text: `${s.docType(d.typeID)?.name ?? "文件"}（${d.issueDate ? `${D.long(d.issueDate)}签发` : "日期未知"}）标为“需要更新”` });
-  if (s.complianceOn) for (const [r, due] of s.eventRules(p.kind, c, p.effectiveOn)) {
-    const note = s.trustOf(r.id, c).kind === "confirmed" ? "" : "（规则待核对）";
-    out.push({ kind: "obligation", text: `新增事项：${r.name}，${D.long(due)}前办妥${note}` });
-  }
-  if (p.evidencePath) out.push({ kind: "evidence", text: `${basename(p.evidencePath)} 归档为${latinPadStart(s.docType(p.evidenceTypeID)?.name ?? "文件")}` });
-  return out;
-}
 
-function validatePlan(s: Store, p: ChangePlan) {
-  const people = new Set([...s.data.people.map((x) => x.id), ...p.newPeople.map((x) => x.id)]);
-  const companies = new Set(s.data.companies.map((c) => c.id));
-  const activeAppts = new Set(s.data.appointments.filter((a) => a.companyID === p.companyID && isActiveOn(a, p.effectiveOn)).map((a) => a.id));
-  const activeHolds = new Set(s.data.holdings.filter((h) => h.companyID === p.companyID && isActiveOn(h, p.effectiveOn)).map((h) => h.id));
-  const ok = p.newAppointments.every((a) => a.companyID === p.companyID && people.has(a.personID))
-    && p.newHoldings.every((h) => h.companyID === p.companyID)
-    && p.endingAppointmentIDs.every((id) => activeAppts.has(id))
-    && p.endingHoldingIDs.every((id) => activeHolds.has(id));
-  if (!ok) throw new Error("任职或持股的对象、比例或任期不匹配，请返回第一步检查。");
-  if (p.newHoldings.length || p.endingHoldingIDs.length) {
-    const cand = s.data.holdings.map((h) => (p.endingHoldingIDs.includes(h.id) ? { ...h, to: p.effectiveOn } : h))
-      .concat(p.newHoldings.map((h) => ({ ...h, from: p.effectiveOn })));
-    validateHoldings(cand, companies, people, new Set([p.companyID]));
-  }
-  if (p.evidencePath && s.docType(p.evidenceTypeID)?.owner !== "company") throw invalidTargetError();
-}
 
-/** 一次写入整个变更；失败时恢复原状。 */
-export async function applyChange(s: Store, p: ChangePlan) {
-  if (s.loadFailed || s.isLoading || s.isImporting) throw unavailableError();
-  const c0 = s.company(p.companyID);
-  if (!c0) throw invalidTargetError();
-  validatePlan(s, p);
-  const before = s.data;
-  s.isImporting = true; s.emit();
-  let copied: string | undefined;
-  try {
-    let documents = before.documents;
-    let evidenceID: string | undefined;
-    if (p.evidencePath) {
-      const owner = ref("company", c0.id);
-      const path = await s.folder.archive(p.evidencePath, c0.name, owner, s.docType(p.evidenceTypeID)?.name ?? "证明文件", p.effectiveOn);
-      copied = s.folder.abs(path);
-      const ev: Document = { id: uuid(), typeID: p.evidenceTypeID, owner, issueDate: p.effectiveOn, form: "扫描件", filePath: path,
-        originalFileName: basename(p.evidencePath), needsUpdate: false, addedOn: s.today, notes: "" };
-      documents = Store.insertingVersion(ev, documents);
-      evidenceID = ev.id;
-    }
-    const referenced = new Set([...p.newAppointments.map((a) => a.personID), ...p.newHoldings.map((h) => h.holder.id), ...p.newHoldings.flatMap((h) => (h.beneficialOwner ? [h.beneficialOwner.id] : []))]);
-    const people = [...before.people, ...p.newPeople.filter((np) => referenced.has(np.id) && !before.people.some((x) => x.id === np.id))];
-    const appointments = before.appointments.map((a) => (p.endingAppointmentIDs.includes(a.id) ? { ...a, to: p.effectiveOn } : a))
-      .concat(p.newAppointments.map((a) => ({ ...a, from: p.effectiveOn })));
-    const holdings = before.holdings.map((h) => (p.endingHoldingIDs.includes(h.id) ? { ...h, to: p.effectiveOn } : h))
-      .concat(p.newHoldings.map((h) => ({ ...h, from: p.effectiveOn })));
-    const c: Company = { ...c0, formerNames: [...c0.formerNames] };
-    if (p.newAddress !== undefined) c.registeredAddress = p.newAddress;
-    if (p.newName !== undefined && p.newName !== c.name) { if (!c.formerNames.includes(c.name)) c.formerNames.push(c.name); c.name = p.newName; }
-    if (p.newStatus !== undefined) c.status = p.newStatus;
-    const companies = before.companies.map((x) => (x.id === c.id ? c : x));
-    const affected = new Set(s.affectedDocuments(p.kind, c.id).map((d) => d.id));
-    documents = documents.map((d) => (affected.has(d.id) ? { ...d, needsUpdate: true } : d));
-    const record: ChangeRecord = {
-      id: uuid(), companyID: c.id, kind: p.kind, effectiveOn: p.effectiveOn, recordedOn: s.today,
-      summary: p.summary || autoSummary(s, p), details: detailLines(s, p), evidenceDocumentID: evidenceID,
-    };
-    const changes = [...before.changes, record];
-    await s.persistCollections({ companies, people, holdings, appointments, documents, changes });
-    const undoID = s.replace({ companies, people, holdings, appointments, documents, changes }, { label: "记录变更", before, createdFiles: copied ? [documents.find((d) => d.id === evidenceID)!.filePath] : [] });
-    const n = s.complianceOn ? s.eventRules(p.kind, c, p.effectiveOn).length : 0;
-    s.showToast("已记录变更" + (n ? `，新增 ${n} 件申报事项。` : "。"), undoID ? () => s.undoID(undoID) : undefined);
-  } catch (e) {
-    if (copied) { try { await platform().removeFile(copied); } catch { /* 忽略 */ } }
-    throw e;
-  } finally {
-    s.isImporting = false; s.emit();
-  }
-}
 
 // MARK: - 配置
 
@@ -339,4 +233,33 @@ export async function discardStaged(id: string) {
   staged.delete(id);
   const p = platform();
   try { await p.removeDir(f.path.slice(0, Math.max(f.path.lastIndexOf("/"), f.path.lastIndexOf("\\")))); } catch { /* 忽略 */ }
+}
+
+/**
+ * Charter 4：把文件拖到一家公司上。认得出类型、且没有归属冲突的直接归档（可撤销）；
+ * 其余的交回给调用方走确认流程。返回没能直接归档的文件路径。
+ */
+export async function quickArchive(s: Store, paths: string[], companyID: string): Promise<string[]> {
+  const c = s.company(companyID);
+  if (!c) return paths;
+  const left: string[] = [];
+  const done: string[] = [];
+  for (const path of paths) {
+    let f: StagedFile;
+    try { f = await stage(s, path, { owner: { kind: "company", id: companyID } }); } catch { left.push(path); continue; }
+    const r = f.recognition;
+    const t = f.typeID ? s.docType(f.typeID) : undefined;
+    const fits = !!t && t.owner === "company" && (!t.jurisdictions.length || t.jurisdictions.includes(c.jurisdiction));
+    const conflict = (r.companyID && r.companyID !== companyID) || (r.jurisdiction && r.jurisdiction !== c.jurisdiction);
+    if (!fits || conflict) { await discardStaged(f.id); left.push(path); continue; }
+    try {
+      const doc = await commitStaged(s, f.id, { typeID: f.typeID!, owner: { kind: "company", id: companyID }, issued: r.issueDate, expiry: r.expiryDate, form: f.form });
+      const name = s.docType(doc.typeID)?.name ?? "文件";
+      const touches = s.openObligations.some((o) => o.company.id === companyID && o.rule.schedule.kind === "documentExpiry" && o.rule.schedule.documentTypeID === doc.typeID);
+      done.push(name + (doc.expiryDate ? `（${D.long(doc.expiryDate)}到期${touches ? "，到期已更新" : ""}）` : doc.issueDate ? `（${D.long(doc.issueDate)}签发）` : ""));
+    } catch { left.push(path); }
+  }
+  if (done.length > 1) s.showToast(`已归档 ${done.length} 份：${done.join("、")}。`);
+  else if (done.length === 1) s.showToast(`已归档${latinPadStart(done[0])}。可在档案清单里修改。`, () => s.undo());
+  return left;
 }

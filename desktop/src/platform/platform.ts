@@ -69,10 +69,6 @@ export function basename(path: string): string {
   const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return i >= 0 ? path.slice(i + 1) : path;
 }
-export function dirname(path: string): string {
-  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return i >= 0 ? path.slice(0, i) : "";
-}
 export function extname(path: string): string {
   const b = basename(path);
   const i = b.lastIndexOf(".");

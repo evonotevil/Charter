@@ -91,13 +91,13 @@ function App() {
       if (k === "k") { e.preventDefault(); router.open({ kind: "quickSearch" }); return; }
       if (k === ",") { e.preventDefault(); router.openSettings("sync"); return; }
       if (router.sheet || router.settings) return;
-      if (/^[1-5]$/.test(k)) { e.preventDefault(); router.go((["overview", "companies", "files", "people", "parties"] as const)[+k - 1]); return; }
+      if (/^[1-6]$/.test(k)) { e.preventDefault(); router.go((["structure", "due", "agents", "companies", "files", "people"] as const)[+k - 1]); return; }
       if (blocked) return;
       if (k === "n" && e.shiftKey) { e.preventDefault(); router.open({ kind: "newCompany" }); return; }
       if (k === "n") {
         e.preventDefault();
         if (router.section === "people") router.set("newPersonRequest", router.newPersonRequest + 1);
-        else if (router.section === "parties") router.set("newPartyRequest", router.newPartyRequest + 1);
+        else if (router.section === "parties" || router.section === "agents") router.set("newPartyRequest", router.newPartyRequest + 1);
         else router.open({ kind: "newCompany" });
         return;
       }

@@ -14,7 +14,7 @@ import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Button, Checkbox, DateField, FormGroup, Modal, Pill, SelectField, SheetScaffold, Spinner, TextField } from "../ui/kit";
 import { PurposeReadinessAction, ReissueRequestSheet, computeReadiness, versionNotice } from "./common";
-import { ProgressTrack } from "./Matrix";
+import { ProgressTrack } from "../ui/kit";
 
 const exts = new Set(["pdf", "png", "jpg", "jpeg", "heic", "tif", "tiff"]);
 const extOf = (p: string) => (p.split(".").pop() ?? "").toLowerCase();
@@ -259,7 +259,7 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
       finished.current = true;
       store.savePendingImport(null);
       const n = byKey.size;
-      store.showToast(`已归档 ${archived.length} 份文件${received}${n ? `，新建 ${n} 家公司。请补充新公司的财年结束日和负责方。` : "。"}`, undoID ? () => store.undoID(undoID) : undefined);
+      store.showToast(`已归档 ${archived.length} 份文件${received}${n ? `，新建 ${n} 家公司。请补充新公司的财年结束日和中介。` : "。"}`, undoID ? () => store.undoID(undoID) : undefined);
       setResult({ count: archived.length, companyIDs: ids, newCompanyCount: n });
     } catch (e) {
       setCommitError(`归档失败，档案没有改动：${(e as Error).message}`);
@@ -389,11 +389,11 @@ export function ImportDoneView({ result, focusCompanyID, onClose }: { result: Re
   return (
     <Modal onClose={onClose}>
       <SheetScaffold title={focus ? `已归档到 ${focus.name}` : "归档完成"} width={860} height={820}
-        leading={<span className="muted">{focus ? "下一步：在档案清单里补齐缺失文件。" : "下一步：补齐缺失文件，或打开总览查看全部公司。"}</span>}
+        leading={<span className="muted">{focus ? "下一步：在档案清单里补齐缺失文件。" : "下一步：打开公司页，补齐缺失文件。"}</span>}
         trailing={<>
           <Button onClick={onClose}>完成</Button>
           {focus ? <Button kind="primary" onClick={() => { router.companyTab = 0; router.openCompany(focus.id); onClose(); }}>查看档案</Button>
-            : <Button kind="primary" onClick={() => { router.go("overview"); onClose(); }}>打开总览</Button>}
+            : <Button kind="primary" onClick={() => { const first = rows[0] && store.data.companies.find((c) => rows.some((r) => r.companyID === c.id)); if (first) router.openCompany(first.id); else router.go("companies"); onClose(); }}>打开公司页</Button>}
         </>}>
         <div className="col gap32">
           <div className="row" style={{ gap: 28, padding: 32, borderRadius: 26, background: "var(--lime)", color: "var(--on-lime)" }}>
@@ -406,7 +406,7 @@ export function ImportDoneView({ result, focusCompanyID, onClose }: { result: Re
           {rows.length > 0 && <>
             <div className="col gap4">
               <span className="t-section">随时能出哪些材料</span>
-              <span className="t-body muted">{focus ? "按用途检查还缺什么，缺的那份可以直接请负责方补发。" : "按用途检查每家公司缺什么，缺的那份可以直接请负责方补发。"}</span>
+              <span className="t-body muted">{focus ? "按用途检查还缺什么。" : "按用途检查每家公司缺什么。"}</span>
             </div>
             <div className="col" style={{ background: "var(--band)", borderRadius: "var(--r-surface)" }}>
               {rows.map((r, i) => (

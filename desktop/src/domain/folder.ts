@@ -12,7 +12,6 @@ import { normLibrary } from "./normalize";
 export const FORMAT_VERSION = 1;
 
 export const collections = ["companies", "people", "holdings", "appointments", "parties", "documents", "obligations", "changes", "settings", "groups", "requests"] as const;
-export type CollectionName = (typeof collections)[number];
 
 export class CollectionSaveError extends Error {
   constructor(public cause: unknown, public rollbackFailures: string[]) {

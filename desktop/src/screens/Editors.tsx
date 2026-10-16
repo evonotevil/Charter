@@ -227,8 +227,8 @@ export function CompanyEditor({ companyID, groupID: initialGroup, onClose }: { c
               </>}
             </>}
           </FormGroup>
-          <FormGroup title="负责方与提醒">
-            <FieldRow label="默认负责方"><SelectField options={[[null, "未指定"] as [string | null, string], ...store.data.parties.map((p) => [p.id, `${p.name}（${({ agent: "外部代理", department: "内部部门", person: "个人" })[p.kind]}）`] as [string, string])]}
+          <FormGroup title="中介与提醒">
+            <FieldRow label="默认中介"><SelectField options={[[null, "未指定"] as [string | null, string], ...store.data.parties.map((p) => [p.id, `${p.name}（${({ agent: "外部代理", department: "内部部门", person: "个人" })[p.kind]}）`] as [string, string])]}
               value={draft.defaultPartyID ?? null} onChange={(v) => set({ defaultPartyID: v ?? undefined })} minWidth={220} /></FieldRow>
             <FieldRow label="开始跟踪" hint="此日期之前的截止日不再提醒。补录已有公司时，可设为今天。"><DateField value={draft.trackingSince} onChange={(d) => d && set({ trackingSince: d })} allowsClear={false} /></FieldRow>
           </FormGroup>
@@ -346,70 +346,3 @@ function AppointmentRow({ a, roles, onChange, onDelete }: { a: Appointment; role
 
 // MARK: - 事项详情
 
-export function ObligationSheet({ obligationKey, onClose }: { obligationKey: string; onClose: () => void }) {
-  const { store } = useApp();
-  const o = store.allObligations.find((x) => x.key === obligationKey);
-  const [note, setNote] = useState(o?.record?.note ?? "");
-  const [overrideDay, setOverrideDay] = useState<Day | undefined>(o?.record?.overrideDue);
-  const [partyID, setPartyID] = useState<string | null>(o?.record?.partyID ?? null);
-  const [startStage, stageNode] = useStageFile();
-  if (!o) return (
-    <Modal onClose={onClose}><SheetScaffold title="找不到这个事项" subtitle="它可能已经完成或规则已关闭。" width={420} trailing={<Button kind="primary" onClick={onClose}>关闭</Button>}><span /></SheetScaffold></Modal>
-  );
-  const done = obligationDone(o);
-  const fallback = store.party(o.company.rulePartyIDs[o.rule.id] ?? o.company.defaultPartyID)?.name ?? "未指定";
-  const saveEdits = (x: Obligation) => {
-    if (note !== (x.record?.note ?? "")) store.setObligationNote(x, note);
-    if (overrideDay !== x.record?.overrideDue) store.reschedule(x, overrideDay);
-    if (partyID && partyID !== x.record?.partyID && store.party(partyID)) store.setObligationParty(x, partyID);
-  };
-  const fmt = new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
-  const history: string[] = [];
-  const r = o.record;
-  if (r?.log?.length) for (const e of r.log) {
-    const dt = D.fromStamp(e.at);
-    let line = `${dt.getMonth() + 1}月${dt.getDate()}日 ${fmt.format(dt).split(" ").pop()}　${handoffActionLabel[e.action]}`;
-    const p = store.party(e.partyID);
-    if (p && ["drafted", "copied", "sent"].includes(e.action)) line += `（${p.name}）`;
-    if (e.channel && e.action !== "drafted") line += `，通过${e.channel}`;
-    history.push(line);
-  } else if (r) {
-    if (r.handedOffOn) history.push(`${D.long(r.handedOffOn)}交给${latinPad(store.party(r.partyID)?.name ?? "负责方")}`);
-    if (r.completedOn) history.push(`${D.long(r.completedOn)}标记完成`);
-  }
-  if (!history.length) history.push("还没有处理");
-  const receipt = store.receipt(o);
-  const attach = () => void startStage({ typeID: "common.receipt", owner: ref("company", o.company.id), onArchived: (doc) => { saveEdits(o); if (done) store.attachReceipt(doc, o); else store.complete(o, doc); onClose(); } });
-  return (
-    <Modal onClose={onClose}>
-      <SheetScaffold title={o.rule.name} subtitle={o.company.name} width={600} height={780}
-        leading={done ? <Button onClick={() => { store.revertToPending(o); onClose(); }}>改回未完成</Button> : null}
-        trailing={<>
-          <Button onClick={onClose}>取消</Button>
-          <Button kind={done ? "primary" : "secondary"} onClick={() => { saveEdits(o); onClose(); }}>保存</Button>
-          {!done && <NextStepControls o={o} large={false} />}
-        </>}>
-        <div className="col" style={{ gap: 18 }}>
-          <div className="row gap8"><Pill text={obligationStatusLabel[obligationStatus(o)]} kind={obligationPill(o)} /><TrustBadge trust={store.trust(o)} /></div>
-          <FormGroup title="事项">
-            <FieldRow label="截止日"><span>{o.due === o.originalDue ? D.long(o.originalDue) : `${D.long(o.due)}（原定 ${D.long(o.originalDue)}）`}</span></FieldRow>
-            {o.rule.penalty && <FieldRow label="逾期后果"><span>{o.rule.penalty}</span></FieldRow>}
-            {o.rule.notes && <span className="muted">{o.rule.notes}</span>}
-          </FormGroup>
-          <FormGroup title="截止日依据"><DeadlineBasis o={o} /></FormGroup>
-          <FormGroup title="进度">
-            {history.map((l, i) => <span key={i} className="row gap10"><span style={{ width: 6, height: 6, borderRadius: 3, background: "var(--amber-text)", flex: "none" }} />{l}</span>)}
-            {receipt && <span><Button size="small" onClick={() => void store.openDocument(receipt)}>打开回执</Button></span>}
-          </FormGroup>
-          <FormGroup title="处理">
-            <FieldRow label="负责方"><SelectField options={[[null, `用默认（${fallback}）`] as [string | null, string], ...store.data.parties.map((p) => [p.id, p.name] as [string, string])]} value={partyID} onChange={setPartyID} minWidth={240} /></FieldRow>
-            <FieldRow label="改期到" hint="留空则按规则算出的截止日"><DateField value={overrideDay} onChange={setOverrideDay} placeholder="不改期" /></FieldRow>
-            <FieldRow label="备注"><TextField multiline rows={2} value={note} onChange={setNote} placeholder="可选" /></FieldRow>
-            {!done ? <span><Button size="small" onClick={attach}>附上回执并标记完成…</Button></span> : !r?.receiptDocumentID && <span><Button size="small" onClick={attach}>补传回执…</Button></span>}
-          </FormGroup>
-        </div>
-        {stageNode}
-      </SheetScaffold>
-    </Modal>
-  );
-}

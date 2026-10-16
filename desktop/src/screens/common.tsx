@@ -32,7 +32,6 @@ export function freshnessPill(f: Freshness): PillKind {
     default: return "neutral";
   }
 }
-export const freshnessColor = (f: Freshness) => (f.kind === "expired" ? "var(--danger)" : f.kind === "expiring" || f.kind === "needsUpdate" ? "var(--amber-text)" : "var(--ink)");
 
 export function statePill(s: ArchiveState): PillKind {
   switch (s.kind) {
@@ -61,7 +60,7 @@ export function TrustBadge({ trust, showConfirmed }: { trust: RuleTrust; showCon
   if (trust.kind === "confirmed" && !showConfirmed) return null;
   const text = trust.kind === "draft" ? "待核对" : trust.kind === "needsReview" ? "需复核" : "已确认";
   const icon = trust.kind === "draft" ? "questionmark.circle" : trust.kind === "needsReview" ? "clock.arrow.circlepath" : "checkmark.seal";
-  const help = trust.kind === "draft" ? "这条规则尚未向负责方或官方来源核对，截止日仅供参考"
+  const help = trust.kind === "draft" ? "这条规则尚未向中介或官方来源核对，截止日仅供参考"
     : trust.kind === "needsReview" ? `上次确认于 ${trust.on ? D.long(trust.on) : "未知日期"}，已超过 12 个月` : `${trust.scope}，${trust.on ? D.long(trust.on) : ""}确认`;
   const style = trust.kind === "confirmed" ? { background: "var(--lime-soft)", color: "var(--lime-text)" }
     : trust.kind === "needsReview" ? { background: "var(--amber-soft)", color: "var(--amber-text)" }
@@ -131,9 +130,9 @@ export function ScheduleEditor({ schedule, onChange }: { schedule: Schedule; onC
 
 export function stateLine(store: Store, o: Obligation): string {
   const p = store.party(o.record?.partyID) ?? store.responsibleParty(o);
-  const who = latinPad(p?.name ?? "负责方");
+  const who = latinPad(p?.name ?? "中介");
   switch (normalizedStatus(obligationStatus(o))) {
-    case "pending": return p ? `通常由${who}办理，尚未交办。` : "还没有指定负责方。";
+    case "pending": return p ? `通常由${who}办理，尚未交办。` : "还没有指定中介。";
     case "drafted": return `${o.record?.draftedOn ? D.ago(o.record.draftedOn, store.today) : ""}给${who}起草了消息，尚未确认发出。`;
     case "handedOff": {
       const since = o.record?.handedOffOn;
@@ -280,11 +279,11 @@ export function NextStepControls({ o, large = true, emphasized = true }: { o: Ob
           item("复制邮件格式文字", "envelope", () => sendDraft(party)),
           item("复制简短消息（企业微信、飞书等）", "doc.on.doc", () => copy(party)),
           item("已通过其他方式交办", "paperplane", () => store.confirmSent([o], party, "其他")),
-          ...(others.length ? [divider, header("交给其他负责方"), ...others.map((q) => item(`${q.name}（${partyKindLabel[q.kind]}）`, undefined, () => sendDraft(q)))] : []),
+          ...(others.length ? [divider, header("交给其他中介"), ...others.map((q) => item(`${q.name}（${partyKindLabel[q.kind]}）`, undefined, () => sendDraft(q)))] : []),
           divider, item("已自行完成", "checkmark", () => store.complete(o)),
         ])}
       </>;
-    } else body = <Button kind={kind} size={size} onClick={() => router.open({ kind: "obligation", key: o.key })}>指定负责方…</Button>;
+    } else body = <Button kind={kind} size={size} onClick={() => router.open({ kind: "obligation", key: o.key })}>指定中介…</Button>;
   } else if (st === "drafted") {
     body = <>
       <Button kind={kind} size={size} onClick={() => store.confirmSent([o], undefined, o.record?.log?.[o.record.log.length - 1]?.channel)} title="把复制的文字发出后点此确认，Charter 将开始计算等待回件的天数">确认已发送</Button>
@@ -436,7 +435,7 @@ export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect
       <span className="row gap6" style={{ width: FileColumns.actions, flex: "none", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
         {busy ? <Spinner /> : f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补充日期</Button>
           : freshnessNeedsAttention(f) ? <>
-            <Button size="small" onClick={() => setReissue(true)} title="生成请负责方补发新版的文字，可先修改再复制">请补发</Button>
+            <Button size="small" onClick={() => setReissue(true)} title="生成请中介补发新版的文字，可先修改再复制">请补发</Button>
             <Button size="small" onClick={upload} title="类型和归属沿用这份，旧版保留">归档新版</Button>
           </> : <Button size="small" kind="quiet" onClick={() => void store.openDocument(d)}>打开</Button>}
       </span>
@@ -461,11 +460,11 @@ export function ReissueRequestSheet({ owner, typeIDs, onClose }: { owner: NodeRe
   const [generated, setGenerated] = useState(gen);
   useEffect(() => { if (message === generated) setMessage(gen); setGenerated(gen); }, [gen]);
   const p = store.party(pid);
-  const hint = !p ? (store.data.parties.length ? undefined : "还没有负责方，可以先复制文字自行发送。")
-    : p.email.trim() ? p.email : "这个负责方没有填邮箱。";
+  const hint = !p ? (store.data.parties.length ? undefined : "还没有中介，可以先复制文字自行发送。")
+    : p.email.trim() ? p.email : "这个中介没有填邮箱。";
   const stateText = (id: string) => {
     const r = store.openRequest(owner, id);
-    if (r) return `已在等${latinPad(store.party(r.partyID)?.name ?? "负责方")}补发`;
+    if (r) return `已在等${latinPad(store.party(r.partyID)?.name ?? "中介")}补发`;
     const g = store.gapDescription(owner, id);
     return g.hasFile ? g.state : "未归档";
   };
@@ -477,13 +476,13 @@ export function ReissueRequestSheet({ owner, typeIDs, onClose }: { owner: NodeRe
   };
   return (
     <Modal onClose={onClose}>
-      <SheetScaffold title="请补发" subtitle={`${store.nameOf(owner)}。复制文字发给负责方，Charter 会记在“在等回件”里，到期提醒你催办。`} width={560}
+      <SheetScaffold title="请补发" subtitle={`${store.nameOf(owner)}。复制文字发给中介，Charter 会记在“在等回件”里，到期提醒你催办。`} width={560}
         trailing={<><Button onClick={onClose}>取消</Button><Button kind="primary" disabled={!chosen.length} onClick={() => void send()}>复制并记录</Button></>}>
         <div className="col gap24">
           <FormGroup title="发给">
-            <FieldRow label="负责方" hint={hint}>
-              <SelectField options={[["", "未指定负责方"] as [string, string], ...store.data.parties.map((x) => [x.id, x.name] as [string, string])]}
-                value={partyID} onChange={(v) => { setPartyID(v); setDays(store.followUpDays(v || undefined)); }} placeholder="选择负责方" />
+            <FieldRow label="中介" hint={hint}>
+              <SelectField options={[["", "未指定中介"] as [string, string], ...store.data.parties.map((x) => [x.id, x.name] as [string, string])]}
+                value={partyID} onChange={(v) => { setPartyID(v); setDays(store.followUpDays(v || undefined)); }} placeholder="选择中介" />
             </FieldRow>
             <FieldRow label="跟进" hint={`到 ${D.short(D.addDays(store.today, days))}还没收到，总览会提醒你催办。`}>
               <KitStepper value={days} onChange={setDays} min={1} max={90} unit="天" />
@@ -514,82 +513,10 @@ export function ReissueRequestSheet({ owner, typeIDs, onClose }: { owner: NodeRe
 
 // MARK: - 等回件
 
-export function WaitingRequestRow({ request: r, showsParty = true, showsOwner = true }: { request: DocumentRequest; showsParty?: boolean; showsOwner?: boolean }) {
-  const { store, router } = useApp();
-  const [nudging, setNudging] = useState(false);
-  const due = store.isFollowUpDue(r);
-  const waited = store.daysWaiting(r);
-  const pending = pendingTypeIDs(r);
-  const entries: MenuEntry[] = [
-    item("催办…", "bell", () => setNudging(true)),
-    ...(r.owner.kind === "company" ? [item("打开公司", "building.2", () => { router.companyTab = 0; router.openCompany(r.owner.id); })] : []),
-    ...(store.data.parties.length ? [divider, header("改由谁补发"), ...store.data.parties.filter((p) => p.id !== r.partyID).map((p) => item(p.name, "person.crop.circle", () => store.reassignRequest(r.id, p.id)))] : []),
-    divider, item("不再等了", "xmark.circle", () => store.cancelRequest(r.id)),
-  ];
-  return (
-    <div className="row gap12" style={{ padding: "0 16px", minHeight: 56 }}>
-      <div className="col grow" style={{ gap: 2 }}>
-        <span className="t-row ellipsis" title={store.nameOf(r.owner)}>{showsOwner ? store.nameOf(r.owner) : store.typeNames(pending)}</span>
-        <span className="t-meta muted ellipsis">{showsOwner ? store.typeNames(pending) : `${D.display(D.dayOfStamp(r.createdAt), store.today)}发出`}</span>
-      </div>
-      {showsParty && <span className="ellipsis" style={{ width: 170, fontSize: 13.5, color: r.partyID ? "var(--ink)" : "var(--muted)" }}>{store.party(r.partyID)?.name ?? "未指定负责方"}</span>}
-      <div className="col" style={{ width: 96, alignItems: "flex-end", gap: 2 }}>
-        {due ? <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--amber-text)" }}>该催办了</span> : <span className="t-meta muted">{D.short(r.followUpOn)}跟进</span>}
-        <span className="t-meta num" style={{ color: due ? "var(--amber-text)" : "var(--muted)" }}>{waited === 0 ? "今天发出" : `已等 ${waited} 天`}</span>
-      </div>
-      <div className="row gap6" style={{ width: 104, justifyContent: "flex-end" }}>
-        {due && <Button size="small" onClick={() => setNudging(true)}>催办</Button>}
-        <ActionMenu icon="ellipsis" kind="quiet" size="small" entries={entries} align="end" ariaLabel="更多操作" />
-      </div>
-      {nudging && <CopyTextSheet title={`催办：${store.typeNames(pending)}`} subtitle={`复制后，下次跟进顺延 ${store.followUpDays(r.partyID)} 天。`}
-        initial={store.followUpText(r)} onCopy={() => store.markNudged(r.id)} onClose={() => setNudging(false)} />}
-    </div>
-  );
-}
 
-export function SectionHeader({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children?: ReactNode }) {
-  return (
-    <div className="row baseline">
-      <div className="col" style={{ gap: 2 }}>
-        <span className="t-section">{title}</span>
-        {subtitle && <span className="t-meta muted">{subtitle}</span>}
-      </div>
-      <span className="spacer" />
-      {children}
-    </div>
-  );
-}
 
-export function Surface({ children, style }: { children: ReactNode; style?: React.CSSProperties }) {
-  return <div style={{ background: "var(--surface)", borderRadius: "var(--r-surface)", padding: "4px 0", overflow: "hidden", ...style }}>{children}</div>;
-}
 
-export function Rows({ children, inset = 16 }: { children: ReactNode[]; inset?: number }) {
-  const list = children.filter(Boolean);
-  return <>{list.map((c, i) => <div key={i}>{i > 0 && <div className="hairline" style={{ margin: `0 ${inset}px` }} />}{c}</div>)}</>;
-}
 
-export function WaitingRequestsSection({ scope, obligations = [] }: { scope: Set<string> | null; obligations?: Obligation[] }) {
-  const { store, router } = useApp();
-  const list = store.openRequests.filter((r) => r.owner.kind !== "company" || !scope || scope.has(r.owner.id))
-    .sort((a, b) => (store.isFollowUpDue(a) ? 0 : 1) - (store.isFollowUpDue(b) ? 0 : 1) || (a.followUpOn < b.followUpOn ? -1 : 1));
-  if (!list.length && !obligations.length) return null;
-  const due = list.filter((r) => store.isFollowUpDue(r)).length;
-  const parts: string[] = [];
-  if (list.length) parts.push(due ? `${list.length} 个补发请求，其中 ${due} 个该催办了` : `${list.length} 个补发请求，都还没到跟进日`);
-  if (obligations.length) parts.push(`${obligations.length} 件合规事项已交办`);
-  return (
-    <div className="col gap12">
-      <SectionHeader title="在等回件" subtitle={<span style={{ color: due ? "var(--amber-text)" : undefined }}>{parts.join("；")}</span>} />
-      <Surface>
-        <Rows>{[
-          ...list.map((r) => <WaitingRequestRow key={r.id} request={r} />),
-          ...obligations.map((o) => <div key={o.key} style={{ padding: "0 4px" }}><ObligationRow o={o} detail={`${o.company.name}，${stateLine(store, o)}`} onTap={() => router.open({ kind: "obligation", key: o.key })} /></div>),
-        ]}</Rows>
-      </Surface>
-    </div>
-  );
-}
 
 export function CompanyWaitingLine({ companyID }: { companyID: string }) {
   const { store } = useApp();
@@ -598,7 +525,7 @@ export function CompanyWaitingLine({ companyID }: { companyID: string }) {
   const oldest = list.reduce((m, r) => (r.createdAt < m.createdAt ? r : m));
   const count = list.reduce((a, r) => a + pendingTypeIDs(r).length, 0);
   const parties = new Set(list.map((r) => r.partyID ?? ""));
-  const who = parties.size > 1 ? `${parties.size} 个负责方` : store.party(oldest.partyID)?.name ?? "未指定负责方";
+  const who = parties.size > 1 ? `${parties.size} 个中介` : store.party(oldest.partyID)?.name ?? "未指定中介";
   const waited = store.daysWaiting(oldest);
   const due = list.some((r) => store.isFollowUpDue(r));
   return (
@@ -624,7 +551,7 @@ export function DeadlineBasis({ o }: { o: Obligation }) {
         {v.conditions && <FieldRow label="适用条件"><span className="selectable">{v.conditions}</span></FieldRow>}
         <FieldRow label="核对人"><span>{v.confirmedBy || "—"}</span></FieldRow>
         <FieldRow label="核对日期"><span>{v.confirmedOn ? D.long(v.confirmedOn) : "—"}</span></FieldRow>
-      </> : <span className="muted">这条规则尚未核对。截止日按草稿算法得出，请向负责方或官方来源确认后记录。</span>}
+      </> : <span className="muted">这条规则尚未核对。截止日按草稿算法得出，请向中介或官方来源确认后记录。</span>}
       <div className="row gap8">
         {ev && <Button size="small" onClick={() => void store.openDocument(ev)}>打开确认文件</Button>}
         <Button size="small" onClick={() => router.open({ kind: "confirmRule", ruleID: o.rule.id, companyID: o.company.id })}>{trust.kind === "confirmed" ? "修改核对信息…" : "确认这条规则…"}</Button>
@@ -635,71 +562,6 @@ export function DeadlineBasis({ o }: { o: Obligation }) {
   );
 }
 
-export function RuleConfirmSheet({ ruleID, companyID, onClose }: { ruleID: string; companyID?: string; onClose: () => void }) {
-  const { store } = useApp();
-  const rule = store.data.library.rules.find((r) => r.id === ruleID);
-  const company = store.company(companyID);
-  const ov = company?.ruleOverrides?.[ruleID];
-  const [companyOnly, setCompanyOnly] = useState(!!ov);
-  const [different, setDifferent] = useState(!!ov?.schedule);
-  const [schedule, setSchedule] = useState<Schedule>(ov?.schedule ?? rule?.schedule ?? { kind: "annualFixed", date: "12-31" });
-  const [v, setV] = useState<RuleVerification>(() => {
-    const base = ov?.verification ?? rule?.verification ?? newVerification();
-    return { ...base, confirmedOn: base.confirmedOn ?? store.today };
-  });
-  const [evidenceName, setEvidenceName] = useState(() => (v.evidenceDocumentID ? store.data.documents.find((d) => d.id === v.evidenceDocumentID)?.originalFileName ?? "" : ""));
-  const [startStage, stageNode] = useStageFile();
-  const canConfirm = !!v.confirmedBy.trim() && !(!v.source && !v.evidenceDocumentID);
-  const current = ov?.verification ?? rule?.verification;
-  const save = (status: RuleVerification["status"]) => {
-    const ver = { ...v, status };
-    if (companyOnly && company) store.confirmRule(ruleID, company.id, ver, different ? schedule : undefined);
-    else store.confirmRule(ruleID, null, ver);
-    onClose();
-  };
-  const p = company ? store.party(company.rulePartyIDs[ruleID] ?? company.defaultPartyID) : undefined;
-  const draftAsk = () => {
-    if (!rule || !company || !p) return;
-    const next = store.openObligations.find((o) => o.rule.id === rule.id && o.company.id === company.id);
-    const body = `${p.contactName ? `${p.contactName}，您好：` : "您好："}\n\n想请您确认 ${company.name} 的「${rule.name}」${rule.localName ? `（${rule.localName}）` : ""}截止日规则。\n我们目前的理解是：${store.scheduleText(rule.schedule)}${next ? `，下一次截止日为 ${D.long(next.due)}` : ""}。\n如有不同，或有例外情况，烦请告知，谢谢。`;
-    void platform().copyText(body).then(() => store.showToast(`确认请求已复制，粘贴发给${latinPad(p.name)}即可`));
-  };
-  return (
-    <Modal onClose={onClose}>
-      <SheetScaffold title="确认截止日规则" subtitle={rule?.name} width={580} height={680}
-        leading={<>
-          {company && p && <Button onClick={draftAsk}>复制文字请{latinPad(p.name)}确认</Button>}
-          {current?.status === "confirmed" && <Button onClick={() => save("draft")}>改回待核对</Button>}
-        </>}
-        trailing={<><Button onClick={onClose}>取消</Button><Button kind="primary" disabled={!canConfirm} onClick={() => save("confirmed")}>确认</Button></>}>
-        <div className="col" style={{ gap: 18 }}>
-          <FormGroup title="规则">
-            <FieldRow label="当前算法"><span>{rule ? store.scheduleText(rule.schedule) : ""}</span></FieldRow>
-            {company && <FieldRow label="确认范围"><RadioGroup options={[[false, `${store.jurisdictionName(company.jurisdiction)}所有公司`], [true, `仅 ${company.name}`]]} value={companyOnly} onChange={setCompanyOnly} /></FieldRow>}
-            {company && companyOnly && <Checkbox checked={different} onChange={setDifferent}>负责方给出的截止日与通用规则不同</Checkbox>}
-            {company && companyOnly && different && <ScheduleEditor schedule={schedule} onChange={setSchedule} />}
-          </FormGroup>
-          <FormGroup title="依据">
-            <FieldRow label="来源类型"><SelectField options={sourceKinds.map((k) => [k, k] as [string, string])} value={v.sourceKind} onChange={(sourceKind) => setV({ ...v, sourceKind })} minWidth={200} /></FieldRow>
-            <FieldRow label="来源"><TextField multiline rows={2} value={v.source} onChange={(source) => setV({ ...v, source })} placeholder="链接或说明，例如代理邮件日期、官网网址" /></FieldRow>
-            <FieldRow label="适用条件"><TextField multiline rows={2} value={v.conditions} onChange={(conditions) => setV({ ...v, conditions })} placeholder="适用条件与例外（可选）" /></FieldRow>
-            {company && <FieldRow label="确认文件">
-              <div className="row gap10">
-                <span className={`ellipsis grow ${evidenceName ? "" : "muted"}`}>{evidenceName || "可选"}</span>
-                <Button size="small" onClick={() => void startStage({ typeID: "common.confirmation", owner: ref("company", company.id), onArchived: (d) => { setV((x) => ({ ...x, evidenceDocumentID: d.id })); setEvidenceName(d.originalFileName); } })}>附上…</Button>
-              </div>
-            </FieldRow>}
-          </FormGroup>
-          <FormGroup title="核对人">
-            <FieldRow label="核对人"><TextField value={v.confirmedBy} onChange={(confirmedBy) => setV({ ...v, confirmedBy })} placeholder="核对人及方式，例如“张三，与 Lime Tree 邮件确认”" /></FieldRow>
-            <FieldRow label="核对日期"><DateField value={v.confirmedOn} onChange={(confirmedOn) => setV({ ...v, confirmedOn })} allowsClear={false} /></FieldRow>
-          </FormGroup>
-        </div>
-        {stageNode}
-      </SheetScaffold>
-    </Modal>
-  );
-}
 
 // MARK: - 文件包准备度
 
@@ -735,10 +597,7 @@ export function computeReadiness(store: Store, companyIDs: string[]): PurposeRea
 export function PurposeReadinessAction({ row, onReissue }: { row: PurposeReadiness; onReissue: (owner: NodeRef, typeIDs: string[]) => void }) {
   const { store, router } = useApp();
   if (row.complete) return <Button size="small" onClick={() => router.open({ kind: "packet", companyID: row.companyID })}>准备文件包</Button>;
-  const owner = ref("company", row.companyID);
-  const toAsk = row.missingTypeIDs.filter((t) => !store.openRequest(owner, t));
-  if (!toAsk.length) return <span className="t-meta muted">{row.missingTypeIDs.length ? "已在等负责方补发" : "需要自行补齐"}</span>;
-  return <Button size="small" onClick={() => onReissue(owner, toAsk)}>请负责方补发</Button>;
+  return <span className="t-meta muted">缺 {row.missingTypeIDs.length || row.missing.length} 份</span>;
 }
 
 export { isHandedOff };

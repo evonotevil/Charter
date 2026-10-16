@@ -33,7 +33,7 @@ export const normAppointment = (r: Raw): Appointment => ({ ...r, title: str(r.ti
 
 export const normParty = (r: Raw): Party =>
   ({
-    ...r, kind: r.kind ?? "agent", contactName: str(r.contactName), email: str(r.email), phone: str(r.phone),
+    ...r, kind: "agent", contactName: str(r.contactName), email: str(r.email), phone: str(r.phone),
     followUpDays: typeof r.followUpDays === "number" ? r.followUpDays : 14, notes: str(r.notes),
   }) as Party;
 

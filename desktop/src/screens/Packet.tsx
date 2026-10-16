@@ -85,14 +85,7 @@ export function PacketView({ companyID: initialCompany, purposeID, onClose }: { 
       ...included.map((it, i) => `${String(i + 1).padStart(2, "0")} ${packetItemTitle(it, typeName(it))}${it.document?.issueDate ? `，${D.long(it.document.issueDate)}签发` : ""}`)];
     if (missing.length) {
       lines.push("", `尚缺（${missing.length} 项）：`, ...missing.map((it) => `— ${packetItemTitle(it)}：${packetReason(it)}`));
-      if (company) {
-        const pending = requestable().map((id) => store.openRequest(ref("company", company.id), id)).filter((r): r is NonNullable<typeof r> => !!r);
-        if (pending.length) {
-          const latest = pending.map((r) => r.followUpOn).sort().pop()!;
-          const names = [...new Set(pending.map((r) => store.party(r.partyID)?.name ?? "负责方"))];
-          lines.push("", `已请 ${names.join("、")} 补发，预计 ${D.short(latest)}前补齐，收到后另行发送。`);
-        } else lines.push("", "缺少的文件补齐后另行发送。");
-      }
+      lines.push("", "缺少的文件补齐后另行发送。");
     }
     return lines.join("\n");
   };
@@ -101,12 +94,6 @@ export function PacketView({ companyID: initialCompany, purposeID, onClose }: { 
 
   let leading: React.ReactNode = null;
   if (choosing || building) {
-    if (!complete && items.length) {
-      const gaps = requestable();
-      const toAsk = gaps.filter((id) => !company || !store.openRequest(ref("company", company.id), id));
-      if (gaps.length && !toAsk.length) leading = <span className="row gap6 t-meta muted"><Icon name="hourglass" />缺的 {gaps.length} 份已在等负责方补发</span>;
-      else if (toAsk.length) leading = <Button disabled={!choosing} title="生成一封合并的补发请求，跟进日到了会在总览提醒" onClick={() => company && setReissue({ owner: ref("company", company.id), typeIDs: toAsk })}>请负责方补发缺少的 {toAsk.length} 份</Button>;
-    }
   } else if (phase.kind === "failed") leading = <Button onClick={() => setPhase({ kind: "choosing" })}>返回清单</Button>;
   else if (phase.kind === "done") {
     leading = <>
@@ -385,11 +372,9 @@ export function DocumentSheet({ documentID, onClose }: { documentID: string; onC
             item("打开", "arrow.up.forward.app", () => void store.openDocument(doc)),
             item(reveal, "folder", () => void store.revealDocument(doc)),
             item("归档新版…", "square.and.arrow.up", () => void startStage({ typeID: doc.typeID, owner: doc.owner, replaces: doc, form: doc.form, onArchived: (n) => setDoc({ ...n }) })),
-            item("请补发…", "text.bubble", () => setReissue(true)),
             divider,
             item("从 Charter 移除记录", "trash", () => { store.deleteDocument(doc); onClose(); }, { destructive: true }),
           ]} />
-          {needsReissue && (waiting ? <span className="t-meta muted ellipsis">已在等{store.party(waiting.partyID)?.name ?? "负责方"}补发</span> : <Button onClick={() => setReissue(true)}>请负责方补发</Button>)}
           {saveError && <span className="row gap6 t-meta amber-text" title={saveError} aria-label={`无法保存：${saveError}`}><Icon name="exclamationmark.triangle.fill" /><span className="ellipsis" style={{ maxWidth: 240 }}>{saveError}</span></span>}
         </>}
         trailing={<><Button onClick={onClose}>取消</Button><Button kind="primary" onClick={() => void save()}>保存</Button></>}>

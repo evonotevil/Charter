@@ -458,12 +458,6 @@ export function ConfirmSheet({ title, message, details = [], confirmTitle, destr
   );
 }
 
-/** 用 hook 管理确认框：const confirm = useConfirm(); confirm({...}). */
-export function useConfirm() {
-  const [state, setState] = useState<Parameters<typeof ConfirmSheet>[0] | null>(null);
-  const ask = useCallback((p: Omit<Parameters<typeof ConfirmSheet>[0], "onClose">) => setState({ ...p, onClose: () => setState(null) }), []);
-  return { ask, node: state ? <ConfirmSheet {...state} /> : null };
-}
 
 export function CopyTextSheet({ title, subtitle, initial, onCopy, onClose }: { title: string; subtitle?: string; initial: string; onCopy?: () => void; onClose: () => void }) {
   const [text, setText] = useState(initial);
@@ -513,33 +507,8 @@ export function ErrorStateView({ title, message, retryTitle = "重试", retry }:
 export const Skeleton = ({ width, height = 12 }: { width?: number | string; height?: number }) =>
   <div className="skeleton" style={{ width: width ?? "100%", height, borderRadius: Math.min(height / 2, 10) }} />;
 
-export type StatStyle = "ink" | "plain" | "lime" | "warn" | "danger";
-export function StatCard({ title, value, caption, style = "plain", alert, progress, onClick }: { title: string; value: string; caption: string; style?: StatStyle; alert?: boolean; progress?: number; onClick?: () => void }) {
-  const bg = { ink: "var(--emphasis)", plain: "var(--band)", lime: "var(--lime)", warn: "var(--amber-soft)", danger: "var(--danger)" }[style];
-  const main = { ink: "var(--on-emphasis)", plain: "var(--ink)", lime: "var(--on-lime)", warn: "var(--amber-text)", danger: "#fff" }[style];
-  return (
-    <button onClick={onClick} disabled={!onClick} className="col" style={{ gap: 4, padding: 18, minHeight: 128, borderRadius: 22, background: bg, color: main, textAlign: "left", alignItems: "stretch", opacity: 1 }}>
-      <span style={{ fontSize: 13, fontWeight: 500, opacity: .7 }}>{title}</span>
-      <span className="num" style={{ fontSize: 40, fontWeight: 600, letterSpacing: -1.2, color: alert ? "var(--danger)" : main }}>{value}</span>
-      {progress !== undefined && <ProgressCapsule value={progress} style={{ margin: "4px 0" }} />}
-      <span className="ellipsis" style={{ fontSize: 12.5, opacity: .7 }}>{caption}</span>
-    </button>
-  );
-}
 
-export function useOutsideKey(key: string, mods: { meta?: boolean; shift?: boolean }, fn: () => void, enabled = true) {
-  useEffect(() => {
-    if (!enabled) return;
-    const h = (e: KeyboardEvent) => {
-      const cmd = e.metaKey || e.ctrlKey;
-      if (e.key.toLowerCase() === key && !!mods.meta === cmd && !!mods.shift === e.shiftKey) { e.preventDefault(); fn(); }
-    };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [key, mods.meta, mods.shift, fn, enabled]);
-}
 
-export function useMemoOnce<T>(f: () => T) { return useMemo(f, []); }
 
 /** 页头：标题与右侧操作在同一行垂直居中，说明文字放在下一行。所有页面共用，保证位置一致。 */
 export function PageHeader({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children?: ReactNode }) {
@@ -553,4 +522,10 @@ export function PageHeader({ title, subtitle, children }: { title: string; subti
       {subtitle && <span className="t-body muted">{subtitle}</span>}
     </div>
   );
+}
+
+export function ProgressTrack({ value, width = 48 }: { value: number; width?: number }) {
+  return <span aria-hidden style={{ display: "block", width, height: 5, borderRadius: 3, background: "var(--band)", overflow: "hidden" }}>
+    <span style={{ display: "block", height: "100%", width: `${Math.max(0, Math.min(1, value)) * 100}%`, background: "var(--lime)", borderRadius: 3 }} />
+  </span>;
 }

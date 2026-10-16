@@ -273,7 +273,7 @@ export async function writeCalendarFile(s: Store): Promise<string> {
     if (o.due > limit) continue;
     const party = s.responsibleParty(o)?.name;
     const st = obligationStatus(o);
-    const notes = [s.scheduleText(o.rule.schedule), party ? `负责方：${party}` : null, st === "pending" ? null : `状态：${st}`].filter(Boolean).join("\n");
+    const notes = [s.scheduleText(o.rule.schedule), party ? `中介：${party}` : null, st === "pending" ? null : `状态：${st}`].filter(Boolean).join("\n");
     const d = o.due.replace(/-/g, "");
     const next = D.addDays(o.due, 1).replace(/-/g, "");
     lines.push("BEGIN:VEVENT", `UID:${encodeURIComponent(o.key)}@charter`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${d}`, `DTEND;VALUE=DATE:${next}`,

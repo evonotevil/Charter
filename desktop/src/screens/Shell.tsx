@@ -9,13 +9,15 @@ import { ActionMenu, Button, CountBadge, ErrorStateView, Modal, Popover, Popover
 import { syncDetail, syncNeedsAttention, syncSymbol, syncTitle } from "../state/sync";
 import { platform } from "../platform/platform";
 import { SheetHost } from "./SheetHost";
-import { Dashboard } from "./Dashboard";
 import { CompaniesView } from "./Companies";
 import { FilesView } from "./Files";
 import { PeopleView } from "./People";
-import { PartiesView } from "./Parties";
-import { CalendarView } from "./Calendar";
 import { SettingsView } from "./Settings";
+import { leftText } from "./InfoCard";
+import { StructureView } from "./Structure";
+import { DueView } from "./Due";
+import { AgentsView } from "./Agents";
+import * as D from "../domain/day";
 
 export function GroupIcon({ groupID, size = 22, fill = "var(--band)" }: { groupID: string | null; size?: number; fill?: string }) {
   const { store } = useApp();
@@ -35,49 +37,6 @@ export function GroupIcon({ groupID, size = 22, fill = "var(--band)" }: { groupI
       display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.46, fontWeight: 600 }}>
       {text ?? <Icon name="square.stack.3d.up" size={size * 0.48} />}
     </span>
-  );
-}
-
-function GroupSwitcher() {
-  const { store, router } = useApp();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLButtonElement>(null);
-  const g = store.group(router.groupFilter);
-  const subtitle = g ? (g.tops.length ? `顶层：${store.topLabel(g)}` : `${store.companyIDsIn(g).size} 家公司`)
-    : router.groupFilter === ungrouped ? `${store.ungroupedCompanies.length} 家公司` : `${store.data.companies.length} 家公司`;
-  const groups = [...store.data.groups].sort((a, b) => a.name.localeCompare(b.name));
-  const row = (id: string | null, name: string, count: number) => (
-    <button key={id ?? "all"} className="prow" style={{ height: 34 }} onClick={() => { setOpen(false); router.set("groupFilter", id); }}>
-      <GroupIcon groupID={id} size={22} />
-      <span className="ellipsis grow" style={{ fontWeight: router.groupFilter === id ? 600 : 400 }}>{name}</span>
-      <span className="t-meta muted num">{count}</span>
-      <Icon name="checkmark" size={12} style={{ opacity: router.groupFilter === id ? 1 : 0 }} />
-    </button>
-  );
-  return (
-    <>
-      <button ref={ref} onClick={() => setOpen((o) => !o)} className="row gap8 grow no-drag" aria-label={`切换集团，当前：${store.filterName(router.groupFilter)}`}
-        style={{ padding: "6px 10px 6px 6px", borderRadius: 14, background: open ? "color-mix(in srgb, var(--hairline) 70%, transparent)" : "var(--band)", textAlign: "left" }}>
-        <GroupIcon groupID={router.groupFilter} size={30} fill="var(--surface)" />
-        <span className="col grow" style={{ gap: 1 }}>
-          <span className="ellipsis" style={{ fontSize: 14, fontWeight: 600 }}>{store.filterName(router.groupFilter)}</span>
-          <span className="ellipsis muted" style={{ fontSize: 11.5 }}>{subtitle}</span>
-        </span>
-        <Icon name="chevron.up.chevron.down" size={11} className="muted" />
-      </button>
-      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} placement="right" minWidth={270}>
-        {row(null, "全部公司", store.data.companies.length)}
-        {groups.length > 0 && <div className="pheader" style={{ paddingTop: 8 }}>集团</div>}
-        <div style={{ maxHeight: groups.length > 9 ? 320 : undefined, overflow: "auto" }}>
-          {groups.map((x) => row(x.id, x.name, store.companyIDsIn(x).size))}
-        </div>
-        {store.ungroupedCompanies.length > 0 && <><div className="pdivider" />{row(ungrouped, "未归入集团", store.ungroupedCompanies.length)}</>}
-        <div className="pdivider" />
-        <PopoverRow title="新建集团…" icon="plus" onClick={() => { setOpen(false); router.open({ kind: "newGroup" }); }} />
-        {g && <PopoverRow title="编辑当前集团…" icon="pencil" onClick={() => { setOpen(false); router.open({ kind: "editGroup", group: g.id }); }} />}
-        {g && <PopoverRow title="管理成员…" icon="checklist" onClick={() => { setOpen(false); router.open({ kind: "groupMembers", group: g.id }); }} />}
-      </Popover>
-    </>
   );
 }
 
@@ -111,39 +70,53 @@ function SidebarFooter() {
 
 function Sidebar() {
   const { store, router } = useApp();
-  // 设计规范：“公司”带需处理数角标（有文件需处理的公司数）。
-  const badge = (s: Section) => (s === "companies" ? store.attentionCompanyCount(router.groupFilter) : 0);
+  const soon = store.openObligations.filter((o) => D.daysBetween(store.today, o.due) <= 90).sort((a, b) => (a.due < b.due ? -1 : 1));
+  const badge = (s: Section) => (s === "due" ? soon.filter((o) => D.daysBetween(store.today, o.due) <= 30).length : s === "files" ? store.attentionCompanyCount(null) : 0);
   const groupExists = (id: string) => !!store.group(id);
+  const navButton = (s: (typeof sections)[number], i: number) => {
+    const on = router.section === s.id || (s.id === "agents" && router.section === "parties");
+    const n = badge(s.id);
+    return (
+      <button key={s.id} onClick={() => router.go(s.id)} title={`${s.title}（⌘${i + 1}）`} aria-current={on ? "page" : undefined}
+        className="row gap12" style={{ height: 36, flex: "none", padding: "0 12px", borderRadius: "var(--r-row)", background: on ? "var(--selection)" : "transparent",
+          color: on ? "var(--on-selection)" : "var(--ink)", transition: "background var(--standard) var(--ease)", fontWeight: on ? 600 : 500 }}>
+        <span style={{ width: 20, display: "inline-flex", justifyContent: "center" }}><Icon name={s.symbol} size={16} /></span>
+        <span className="grow" style={{ textAlign: "left" }}>{s.title}</span>
+        {n > 0 && <CountBadge count={n} inverted={on} />}
+      </button>
+    );
+  };
   return (
     <aside className="col" style={{ width: 250, flex: "none", padding: "8px 12px 12px", background: "var(--canvas)", borderRight: "1px solid var(--hairline)" }}>
       <div className="drag-region" data-tauri-drag-region style={{ height: platform().os === "mac" ? 34 : 6, flex: "none" }} />
-      <div className="row gap8" style={{ paddingBottom: 16 }}>
-        <GroupSwitcher />
+      <div className="row gap8" style={{ paddingBottom: 12 }} data-tauri-drag-region>
+        <span className="v4-logo" data-tauri-drag-region>C</span>
+        <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: -0.3 }} className="grow" data-tauri-drag-region>Charter</span>
         <ActionMenu icon="plus" ariaLabel="新建" entries={[
-          item("新建公司", "building.2", () => {
-            const g = router.groupFilter;
-            if (g && g !== ungrouped && store.group(g)) router.open({ kind: "newCompanyInGroup", group: g }); else router.open({ kind: "newCompany" });
-          }, { shortcut: "⇧⌘N" }),
-          item("新建集团", "square.stack.3d.up", () => router.open({ kind: "newGroup" })),
+          item("新建公司", "building.2", () => router.open({ kind: "newCompany" }), { shortcut: "⇧⌘N" }),
+          item("新建集团", "square.stack.3d.up", () => router.openSettings("groups", "new")),
           divider,
           item("上传材料…", "square.and.arrow.down", () => void router.chooseFiles(router.currentImportContext(groupExists)), { shortcut: "⌘I" }),
         ]} />
       </div>
-      <nav className="col grow scroll" style={{ gap: 2 }}>
-        {sections.map((s, i) => {
-          const on = router.section === s.id;
-          const n = badge(s.id);
-          return (
-            <button key={s.id} onClick={() => router.go(s.id)} title={`${s.title}（Ctrl/⌘+${i + 1}）`} aria-current={on ? "page" : undefined}
-              className="row gap12" style={{ height: 36, padding: "0 12px", borderRadius: "var(--r-row)", background: on ? "var(--selection)" : "transparent",
-                color: on ? "var(--on-selection)" : "var(--ink)", transition: "background var(--standard) var(--ease)", fontWeight: on ? 600 : 500 }}>
-              <span style={{ width: 20, display: "inline-flex", justifyContent: "center" }}><Icon name={s.symbol} size={16} /></span>
-              <span className="grow" style={{ textAlign: "left" }}>{s.title}</span>
-              {n > 0 && <CountBadge count={n} inverted={on} />}
-            </button>
-          );
-        })}
-      </nav>
+      <button className="v4-search" onClick={() => router.open({ kind: "quickSearch" })} aria-label="搜索公司或人（⌘K）">
+        <Icon name="magnifyingglass" size={14} /><span className="grow" style={{ textAlign: "left" }}>搜索公司或人</span><span className="mono" style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)" }}>⌘K</span>
+      </button>
+      <nav className="col" style={{ gap: 2 }}>{sections.slice(0, 3).map(navButton)}</nav>
+      <div className="v4-label" style={{ padding: "16px 12px 6px" }}>档案</div>
+      <nav className="col" style={{ gap: 2 }}>{sections.slice(3).map((s, i) => navButton(s, i + 3))}</nav>
+      <div className="v4-label" style={{ padding: "18px 12px 4px" }}>接下来 90 天</div>
+      <div className="col scroll grow" style={{ minHeight: 0 }}>
+        {soon.length ? soon.slice(0, 8).map((o) => (
+          <button key={o.key} className="v4-side" onClick={() => router.openDue(o.key)}>
+            <span className="row" style={{ justifyContent: "space-between", gap: 6 }}>
+              <span className="ellipsis" style={{ fontSize: 12.5, fontWeight: 600 }}>{o.company.jurisdiction} {o.rule.name}</span>
+              <span className="num" style={{ fontSize: 11, flex: "none", color: D.daysBetween(store.today, o.due) < 0 ? "var(--danger)" : D.daysBetween(store.today, o.due) <= 30 ? "var(--amber-text)" : "var(--muted)" }}>{leftText(D.daysBetween(store.today, o.due)).replace("天后", "天")}</span>
+            </span>
+            <span className="ellipsis muted" style={{ fontSize: 11.5 }}>{o.company.name}</span>
+          </button>
+        )) : <span className="t-meta muted" style={{ padding: "4px 12px" }}>没有临近的事项</span>}
+      </div>
       <SidebarFooter />
     </aside>
   );
@@ -151,13 +124,14 @@ function Sidebar() {
 
 function Page() {
   const { router } = useApp();
-  if (router.showCalendar) return <CalendarView onBack={() => router.set("showCalendar", false)} />;
   switch (router.section) {
-    case "overview": return <Dashboard />;
+    case "structure": return <StructureView />;
+    case "due": return <DueView />;
+    case "agents": case "parties": return <AgentsView />;
+    case "overview": return <StructureView />;
     case "companies": return <CompaniesView />;
     case "files": return <FilesView />;
     case "people": return <PeopleView />;
-    case "parties": return <PartiesView />;
   }
 }
 

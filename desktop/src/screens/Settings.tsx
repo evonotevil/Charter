@@ -1,12 +1,13 @@
-// 设置：数据与同步、提醒、档案清单、文件包用途、合规规则、备份与配置、功能模块。移植自 SettingsView.swift 与 ArchiveItemsSettings.swift。
+// 设置（Charter 4）：居中浮层。常规（数据与同步、提醒）/ 公司资料（集团、档案清单、文件包用途）/ 到期规则（合规规则）/ 高级（备份与恢复）。
 
 import { useEffect, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
-import { type DateAdjust, type DocumentType, type NodeKind, type RuleTemplate, type ValidityKind, dateAdjustLabel, uuid, validityKinds, validityLabel } from "../domain/models";
+import { type CorporateGroup, type DateAdjust, type DocumentType, type NodeKind, type NodeRef, type RuleTemplate, type ValidityKind, brandPalette, dateAdjustLabel, ref, refKey, uuid, validityKinds, validityLabel } from "../domain/models";
 import { snapshotKeep, snapshotTitle, type DataSnapshot } from "../domain/folder";
+import { sourceLabel } from "../domain/groups";
 import { useApp } from "../state/hooks";
-import { type SettingsPane, settingsGroups, settingsPaneSymbol, settingsPaneTitle } from "../state/router";
-import { syncDetail, syncNeedsAttention, syncSymbol, syncTitle } from "../state/sync";
+import { type SettingsPane, settingsGroups, settingsPaneTitle } from "../state/router";
+import { syncDetail, syncNeedsAttention, syncTitle } from "../state/sync";
 import { type ConfigBundle, applyConfig, configImportDiff, exportConfig, readConfig } from "../state/actions";
 import { type OpenedBackup, exportBackup, readBackup, restoreBackup } from "../services/backup";
 import { installSampleData } from "../state/sample";
@@ -14,60 +15,52 @@ import { nonArchiveTypeIDs } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Button, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField } from "../ui/kit";
-import { ScheduleEditor, TrustBadge, RuleConfirmSheet } from "./common";
+import { ScheduleEditor } from "./common";
 import { ArchiveItemFields, type ItemDraft, newItemDraft } from "./Companies";
 import { PurposeEditor } from "./Packet";
+import { InlineText } from "./Agents";
 
 export function SettingsView() {
-  const { store, router } = useApp();
-  const raw = router.settings ?? "sync";
-  const pane: SettingsPane = raw === "rules" && !store.complianceOn ? "sync" : raw;
+  const { router } = useApp();
+  const pane: SettingsPane = router.settings ?? "sync";
+  const close = () => router.set("settings", null);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !router.sheet && !document.querySelector(".overlay .sheet, .popover")) { e.preventDefault(); router.set("settings", null); } };
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !router.sheet && !document.querySelector(".overlay .sheet, .popover")) { e.preventDefault(); close(); } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
   return (
-    <div className="settings-window row" role="dialog" aria-label="设置">
-      <nav className="col" style={{ width: 210, flex: "none", padding: "16px 12px 12px", gap: 16, background: "var(--band)" }}>
-        <div className="drag-region" data-tauri-drag-region style={{ height: platform().os === "mac" ? 18 : 0, margin: "-16px -12px 0" }} />
-        {settingsGroups(store.complianceOn).map((g, i) => (
-          <div key={i} className="col" style={{ gap: 2 }}>
-            {g.title && <span className="t-micro muted" style={{ padding: "0 0 4px 12px" }}>{g.title}</span>}
-            {g.panes.map((p) => (
-              <button key={p} className="row gap10" onClick={() => router.set("settings", p)} aria-current={p === pane || undefined}
-                style={{ height: 32, padding: "0 12px", borderRadius: "var(--r-row)", fontSize: 13, fontWeight: p === pane ? 600 : 400,
-                  background: p === pane ? "var(--selection)" : undefined, color: p === pane ? "var(--on-selection)" : "color-mix(in srgb, var(--ink) 75%, transparent)" }}>
-                <span style={{ width: 18, display: "grid", placeItems: "center" }}><Icon name={settingsPaneSymbol[p]} size={13} /></span>{settingsPaneTitle[p]}
-              </button>
-            ))}
-          </div>
-        ))}
-        <span className="spacer" />
-        <SyncFooter onClick={() => router.set("settings", "sync")} />
-        <Button kind="quiet" size="small" icon="chevron.left" onClick={() => router.set("settings", null)}>返回 Charter</Button>
-        <span className="t-micro muted num" style={{ textAlign: "center" }}>Charter {typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : ""}</span>
-      </nav>
-      <div className="col grow" style={{ minWidth: 0, background: "var(--canvas)" }} key={pane}>
-        {pane === "archiveItems" ? <ArchiveItemsSettings /> : pane === "purposes" ? <PacketSettings /> : pane === "rules" ? <RulesSettings /> : <GeneralSettings pane={pane} />}
+    <div className="s4-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+      <div className="s4-window appear" role="dialog" aria-label="设置">
+        <nav className="s4-nav">
+          <div style={{ fontSize: 18, fontWeight: 800, padding: "4px 12px 6px" }}>设置</div>
+          {settingsGroups().map((g) => (
+            <div key={g.title} className="col" style={{ gap: 2 }}>
+              <span className="v4-label" style={{ padding: "14px 12px 6px" }}>{g.title}</span>
+              {g.panes.map((p) => (
+                <button key={p} className={`s4-navitem ${p === pane ? "on" : ""}`} aria-current={p === pane || undefined} onClick={() => router.set("settings", p)}>{settingsPaneTitle[p]}</button>
+              ))}
+            </div>
+          ))}
+          <span className="spacer" />
+          <span className="t-micro muted num" style={{ padding: "0 12px" }}>Charter {typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : ""}</span>
+        </nav>
+        <div className="col grow" style={{ minWidth: 0, position: "relative" }} key={pane}>
+          <button className="v4-x" aria-label="关闭设置" title="关闭（Esc）" onClick={close} style={{ position: "absolute", right: 14, top: 14, zIndex: 2 }}><Icon name="xmark" size={12} /></button>
+          {pane === "groups" ? <GroupsSettings /> : pane === "archiveItems" ? <ArchiveItemsSettings /> : pane === "purposes" ? <PacketSettings /> : pane === "rules" ? <RulesSettings /> : <GeneralSettings pane={pane} />}
+        </div>
       </div>
     </div>
   );
 }
 
-function SyncFooter({ onClick }: { onClick: () => void }) {
-  const { sync } = useApp();
-  const s = sync.state;
-  return <button className="row gap6" onClick={onClick} style={{ fontSize: 12, paddingLeft: 12, color: syncNeedsAttention(s) ? "var(--amber-text)" : "var(--muted)" }}><Icon name={syncSymbol(s)} size={12} /><span className="ellipsis">{syncTitle(s)}</span></button>;
-}
-
-// MARK: - 共用
+// MARK: - 共用（设置组：白色卡片，行 = 左名称+说明，右控件）
 
 function PaneHeader({ title, detail, children }: { title: string; detail?: string; children?: ReactNode }) {
   return (
-    <div className="row start gap12">
-      <div className="col grow" style={{ gap: 3, minWidth: 0 }}>
-        <span className="ellipsis" style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.44 }}>{title}</span>
+    <div className="row start gap12" style={{ paddingRight: 36 }}>
+      <div className="col grow" style={{ gap: 4, minWidth: 0 }}>
+        <span className="ellipsis" style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.4 }}>{title}</span>
         {detail && <span className="t-meta muted">{detail}</span>}
       </div>
       {children}
@@ -75,211 +68,309 @@ function PaneHeader({ title, detail, children }: { title: string; detail?: strin
   );
 }
 
-function Section({ title, children, gap = 16 }: { title?: string; children: ReactNode; gap?: number }) {
+export function SGroup({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
+  return <div className="col gap8"><div className="s4-card">{children}</div>{footer && <span className="t-meta muted" style={{ padding: "0 4px" }}>{footer}</span>}</div>;
+}
+
+export function SRow({ title, detail, children, danger }: { title: ReactNode; detail?: ReactNode; children?: ReactNode; danger?: boolean }) {
   return (
-    <div className="col gap10">
-      {title && <span style={{ fontSize: 13, fontWeight: 600, paddingLeft: 6 }} className="muted">{title}</span>}
-      <div className="col surface" style={{ padding: 24, gap }}>{children}</div>
+    <div className="s4-row">
+      <span className="col grow" style={{ gap: 3, minWidth: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: danger ? "var(--danger)" : undefined }}>{title}</span>
+        {detail && <span className="t-meta muted">{detail}</span>}
+      </span>
+      {children && <span className="row gap8" style={{ flex: "none" }}>{children}</span>}
     </div>
   );
 }
 
-function Row({ icon, title, detail, children }: { icon: string; title: string; detail?: string; children?: ReactNode }) {
-  return (
-    <div className="row gap14">
-      <span style={{ width: 38, height: 38, borderRadius: 11, background: "var(--band)", display: "grid", placeItems: "center", flex: "none" }}><Icon name={icon} size={14} /></span>
-      <span className="col grow" style={{ gap: 2, minWidth: 0 }}><span className="t-row">{title}</span>{detail && <span className="t-meta muted">{detail}</span>}</span>
-      {children}
-    </div>
-  );
-}
-
-function Hero({ icon, label, title, status, dot, children }: { icon: string; label: string; title: string; status: ReactNode; dot: string; children?: ReactNode }) {
-  return (
-    <div className="row surface" style={{ gap: 18, padding: 24 }}>
-      <span style={{ width: 64, height: 64, borderRadius: 18, background: "var(--ink)", color: "var(--on-ink)", display: "grid", placeItems: "center", flex: "none" }}><Icon name={icon} size={26} /></span>
-      <div className="col grow" style={{ gap: 5, minWidth: 0 }}>
-        <span className="t-micro muted">{label}</span>
-        <span className="ellipsis" style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.44 }}>{title}</span>
-        <span className="row gap6 t-meta muted"><span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flex: "none" }} />{status}</span>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-const Scroll = ({ children, max = 760 }: { children: ReactNode; max?: number }) => (
-  <div className="scroll grow"><div className="col" style={{ gap: 26, padding: 28, maxWidth: max, margin: "0 auto" }}>{children}</div></div>
+const Scroll = ({ children }: { children: ReactNode; max?: number }) => (
+  <div className="scroll grow"><div className="col" style={{ gap: 22, padding: "28px 36px 32px" }}>{children}</div></div>
 );
 
-// MARK: - 通用
+/** 列表 + 详情：左列表 250px，右详情；两栏等高，各自内部滚动。 */
+function Split({ header, list, detail }: { header: ReactNode; list: ReactNode; detail: ReactNode }) {
+  return (
+    <div className="col grow" style={{ minHeight: 0, padding: "28px 36px 28px", gap: 18 }}>
+      {header}
+      <div className="row grow" style={{ gap: 16, minHeight: 0, alignItems: "stretch" }}>
+        <div className="s4-card scroll" style={{ width: 250, flex: "none", padding: 6 }}>{list}</div>
+        <div className="scroll grow col" style={{ minWidth: 0, gap: 14 }}>{detail}</div>
+      </div>
+    </div>
+  );
+}
+
+function ListItem({ on, onClick, lead, title, sub, trailing }: { on: boolean; onClick: () => void; lead?: ReactNode; title: ReactNode; sub?: ReactNode; trailing?: ReactNode }) {
+  return (
+    <button className={`s4-item ${on ? "on" : ""}`} onClick={onClick} aria-current={on || undefined}>
+      {lead}
+      <span className="col grow" style={{ minWidth: 0, gap: 1 }}>
+        <span className="ellipsis" style={{ fontSize: 13.5, fontWeight: 600 }}>{title}</span>
+        {sub && <span className="ellipsis" style={{ fontSize: 12, opacity: on ? 0.7 : 1, color: on ? undefined : "var(--muted)" }}>{sub}</span>}
+      </span>
+      {trailing}
+    </button>
+  );
+}
+
+// MARK: - 常规与高级
 
 const paneDetail: Partial<Record<SettingsPane, string>> = {
-  sync: "档案数据保存在哪里，以及它现在是否已经同步。",
-  reminders: "什么时候、由哪台电脑提醒你文件到期。",
-  modules: "按需打开的功能。关闭后已有数据仍会保留。",
-  backup: "快照、配置迁移，以及会删除数据的操作。",
+  sync: "档案保存在哪个文件夹，以及是否在同步。",
+  reminders: "到期事项什么时候提醒、由哪台电脑提醒、写进哪个日历。",
+  backup: "完整备份、配置迁移和快照。会删除数据的操作在最下面。",
 };
 
 function GeneralSettings({ pane }: { pane: SettingsPane }) {
   const { store, sync } = useApp();
-  const [confirmSample, setConfirmSample] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmSample, setConfirmSample] = useState(false);
   const [restoring, setRestoring] = useState<DataSnapshot | null>(null);
   const [pendingConfig, setPendingConfig] = useState<{ bundle: ConfigBundle; fileName: string } | null>(null);
   const [pendingBackup, setPendingBackup] = useState<{ opened: OpenedBackup; fileName: string } | null>(null);
+  const [confirmFolder, setConfirmFolder] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [newDay, setNewDay] = useState("");
+  const [adding, setAdding] = useState(false);
   useEffect(() => { if (pane === "backup") void store.refreshSnapshots(); }, [pane]);
   const p = platform();
   const root = store.folder.root;
   const s = sync.state;
   const cloud = s.kind !== "local";
-  const reveal = p.os === "windows" ? "在资源管理器中打开" : "在访达中打开";
+  const finder = p.os === "windows" ? "在资源管理器中显示" : "在访达中显示";
   const settings = store.data.settings;
   const addDay = () => {
     const d = parseInt(newDay.trim(), 10);
     if (d > 0 && d <= 730 && !settings.reminderDays.includes(d)) store.saveSettings((x) => { x.reminderDays = [...x.reminderDays, d].sort((a, b) => b - a); });
-    setNewDay("");
+    setNewDay(""); setAdding(false);
   };
   const chooseFolder = async () => {
+    setConfirmFolder(false);
     const dir = await p.pickFolder({ title: "选择数据文件夹" });
     if (dir) await store.changeDataRoot(dir);
   };
   const counts = (x: DataSnapshot) => [x.companies != null ? `${x.companies} 家公司` : null, x.documents != null ? `${x.documents} 份文件` : null].filter(Boolean) as string[];
-  const device = "电脑"; // 主设备可能是 Mac 也可能是 Windows，统一叫“电脑”
+  const icsPath = p.join(root, `${settings.calendarName}.ics`);
   return (
     <Scroll>
       <PaneHeader title={settingsPaneTitle[pane]} detail={paneDetail[pane]} />
       {pane === "sync" && <>
-        <div className="row surface" style={{ gap: 18, padding: 24 }}>
-          <span style={{ width: 64, height: 64, borderRadius: 18, background: "var(--ink)", color: "var(--on-ink)", display: "grid", placeItems: "center", flex: "none" }}><Icon name={cloud ? "icloud.fill" : "folder.fill"} size={26} /></span>
-          <div className="col grow" style={{ gap: 5, minWidth: 0 }}>
-            <span className="t-micro muted">数据文件夹</span>
-            <span className="ellipsis" style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.44 }}>{root.split(/[\\/]/).filter(Boolean).pop()}</span>
-            <span className="row gap6 t-meta muted"><span style={{ width: 7, height: 7, borderRadius: "50%", background: syncNeedsAttention(s) ? "var(--amber-text)" : cloud ? "var(--lime)" : "color-mix(in srgb, var(--muted) 50%, transparent)" }} />
-              {cloud ? `在同步盘中 · ${syncTitle(s)}` : "仅保存在这台电脑上"}</span>
-            <span className="ellipsis selectable" title={root} style={{ fontSize: 11, color: "color-mix(in srgb, var(--muted) 80%, transparent)", direction: "rtl", textAlign: "left" }}>{root}</span>
-          </div>
-          <div className="col gap8" style={{ alignItems: "flex-end" }}>
-            <Button size="small" onClick={() => void p.openPath(root)}>{reveal}</Button>
-            <Button kind="quiet" size="small" onClick={() => void chooseFolder()}>更换文件夹…</Button>
-          </div>
-        </div>
-        <Section title="同步状态">
-          <Row icon={syncSymbol(s)} title={syncTitle(s)} detail={syncDetail(s)}><Button size="small" onClick={() => void sync.refresh()}>立即检查</Button></Row>
-        </Section>
-        <span className="t-meta muted" style={{ padding: "0 6px" }}>把数据文件夹放进 iCloud 云盘、OneDrive 或其他同步盘，Mac 和 Windows 电脑就能共用同一套档案。</span>
+        <SGroup footer="把数据文件夹放进 iCloud 云盘或 OneDrive，Mac 和 Windows 电脑就能共用同一套档案。">
+          <SRow title={root.split(/[\\/]/).filter(Boolean).pop()} detail={<span className="selectable mono" title={root}>{root}</span>}>
+            <Button size="small" onClick={() => void p.openPath(root)}>{finder}</Button>
+            <Button size="small" onClick={() => setConfirmFolder(true)}>更换…</Button>
+          </SRow>
+          <SRow title={<span className="row gap6"><span className="v4-dot" style={{ background: syncNeedsAttention(s) ? "var(--amber)" : cloud ? "#B5D334" : "var(--muted)" }} />{cloud ? syncTitle(s) : "仅保存在这台电脑上"}</span>} detail={syncDetail(s)}>
+            <Button size="small" onClick={() => void sync.refresh()}>立即检查</Button>
+          </SRow>
+        </SGroup>
       </>}
-      {pane === "reminders" && <Section title="提醒">
-        <Row icon="bell.badge" title="到期前提醒" detail={`文件到期前按这些天数提醒，每天 ${settings.notificationHour}:00 发出。`} />
-        <div className="row wrap gap8" style={{ paddingLeft: 52 }}>
-          {[...settings.reminderDays].sort((a, b) => b - a).map((d) => (
-            <span key={d} className="row gap6 num" style={{ height: 28, padding: "0 12px", borderRadius: 999, background: "var(--lime-soft)", color: "var(--lime-text)", fontSize: 12.5, fontWeight: 600 }}>
-              {d} 天{settings.reminderDays.length > 1 && <button aria-label={`移除 ${d} 天`} onClick={() => store.saveSettings((x) => { x.reminderDays = x.reminderDays.filter((y) => y !== d); })}><Icon name="xmark" size={8.5} /></button>}
-            </span>
-          ))}
-          <label className="row gap4" title="输入天数后按回车添加" style={{ height: 28, padding: "0 10px", borderRadius: 999, border: "1px dashed var(--hairline)" }}>
-            <Icon name="plus" size={10} className="muted" />
-            <input value={newDay} onChange={(e) => setNewDay(e.target.value)} onBlur={addDay} onKeyDown={(e) => e.key === "Enter" && addDay()} placeholder="天数" inputMode="numeric"
-              style={{ width: 34, border: 0, outline: "none", background: "transparent", font: "inherit", fontSize: 12.5, color: "inherit" }} />
-          </label>
-        </div>
-        <Row icon="clock" title="提醒时间" detail="通知和日历提醒统一在这个时间。">
-          <SelectField options={Array.from({ length: 16 }, (_, i) => [i + 6, `${i + 6}:00`] as [number, string])} value={settings.notificationHour} onChange={(h) => store.saveSettings((x) => { x.notificationHour = h; })} minWidth={110} />
-        </Row>
-        <Row icon="laptopcomputer" title={`主${device}`} detail={`只有主${device}发送到期通知，避免多台电脑重复提醒。`}>
-          {store.isPrimaryDevice ? <Pill text={`这台${device}`} kind="valid" /> : <span className="row gap8">
-            <span className="t-meta muted">{settings.primaryDeviceName ?? "另一台电脑"}</span>
-            <Button size="small" onClick={() => store.saveSettings((x) => { x.primaryDeviceID = store.deviceID; x.primaryDeviceName = store.deviceName; })}>设为主{device}</Button>
-          </span>}
-        </Row>
-        {store.complianceOn && <Row icon="calendar" title="同步到日历" detail={`在数据文件夹里生成“${settings.calendarName}.ics”，可用 Apple 日历、Outlook 或 Google 日历订阅。`}>
-          <Switch checked={settings.calendarEnabled} onChange={(v) => store.saveSettings((x) => { x.calendarEnabled = v; })} />
-        </Row>}
-      </Section>}
-      {pane === "modules" && <Section title="模块">
-        <Row icon="checklist" title="合规申报与交办" detail="在总览“接下来 30 天”里显示年报、税表等申报截止日，并可打开合规日历、交办给负责方。关闭后总览只显示文件，已有数据仍会保留。">
-          <Switch checked={store.complianceOn} onChange={(v) => store.saveSettings((x) => { x.complianceEnabled = v; })} />
-        </Row>
-      </Section>}
+      {pane === "reminders" && <>
+        <SGroup>
+          <SRow title="提前提醒" detail="到期前这些天各提醒一次。">
+            {[...settings.reminderDays].sort((a, b) => b - a).map((d) => (
+              <span key={d} className="v4-chip num">{d} 天{settings.reminderDays.length > 1 && <button aria-label={`移除 ${d} 天`} onClick={() => store.saveSettings((x) => { x.reminderDays = x.reminderDays.filter((y) => y !== d); })}><Icon name="xmark" size={8} /></button>}</span>
+            ))}
+            {adding ? <input className="v4-input num" autoFocus value={newDay} onChange={(e) => setNewDay(e.target.value.replace(/\D/g, ""))} onBlur={addDay} onKeyDown={(e) => { if (e.key === "Enter") addDay(); if (e.key === "Escape") { e.stopPropagation(); setAdding(false); setNewDay(""); } }} placeholder="天数" aria-label="添加提醒天数" style={{ width: 64, height: 28 }} />
+              : <button className="v4-toggle" onClick={() => setAdding(true)}>+ 添加</button>}
+          </SRow>
+          <SRow title="提醒时间" detail="系统通知和日历提醒都在这个时间。">
+            <SelectField options={Array.from({ length: 16 }, (_, i) => [i + 6, `${String(i + 6).padStart(2, "0")}:00`] as [number, string])} value={settings.notificationHour} onChange={(h) => store.saveSettings((x) => { x.notificationHour = h; })} minWidth={110} />
+          </SRow>
+          <SRow title="由这台电脑发通知" detail={store.isPrimaryDevice ? "多台电脑共用一个数据文件夹时，只让一台发，避免重复。" : `现在由“${settings.primaryDeviceName ?? "另一台电脑"}”发通知。`}>
+            <Switch checked={store.isPrimaryDevice} onChange={(v) => store.saveSettings((x) => { if (v) { x.primaryDeviceID = store.deviceID; x.primaryDeviceName = store.deviceName; } else { x.primaryDeviceID = "none"; x.primaryDeviceName = undefined; } })} />
+          </SRow>
+        </SGroup>
+        <SGroup footer="用 Apple 日历或 Outlook 订阅这个文件后，手机上也能看到到期事项。">
+          <SRow title="同步到日历" detail={`在数据文件夹里生成 ${settings.calendarName}.ics，事项变化时自动更新。`}>
+            <Switch checked={settings.calendarEnabled} onChange={(v) => store.saveSettings((x) => { x.calendarEnabled = v; })} />
+          </SRow>
+          {settings.calendarEnabled && <SRow title="订阅文件" detail={<span className="mono selectable">{icsPath}</span>}>
+            <Button size="small" onClick={() => void p.reveal(icsPath).catch(() => void p.openPath(root))}>{finder}</Button>
+            <Button size="small" onClick={() => { void p.copyText(icsPath); store.showToast("路径已复制。"); }}>复制路径</Button>
+          </SRow>}
+        </SGroup>
+      </>}
       {pane === "backup" && <>
-        <Section title="档案备份">
-          <Row icon="archivebox" title="导出备份" detail="把全部档案打包成一个 ZIP：公司、集团、人员、关系、负责方、事项记录、归档的 PDF，以及设置和模板库。可以存到别处，或在另一台电脑上恢复。">
-            <Button size="small" disabled={store.isLoading || store.loadFailed || backupBusy} onClick={async () => {
+        <SGroup>
+          <SRow title="导出备份" detail="把公司、集团、人员、中介、事项和归档的 PDF 打包成一个 ZIP，可在另一台电脑上恢复。">
+            <Button size="small" kind="primary" disabled={store.isLoading || store.loadFailed || backupBusy} onClick={async () => {
               const t = await p.saveDialog({ defaultName: `Charter 备份 ${store.today}.zip`, extensions: ["zip"], title: "导出备份" });
               if (!t) return;
               setBackupBusy(true);
-              try { const i = await exportBackup(store, t); store.showToast(`备份已导出：${i.companies} 家公司、${i.groups} 个集团、${i.documents} 份文件记录、${i.files} 个归档文件。`); }
+              try { const i = await exportBackup(store, t); store.showToast(`备份已导出：${i.companies} 家公司、${i.groups} 个集团、${i.files} 个归档文件。`, () => void p.reveal(t), finder); }
               catch (e) { store.setError(`导出备份失败：${(e as Error).message}。请换一个可写入的位置再试。`); }
               finally { setBackupBusy(false); }
             }}>{backupBusy ? "正在导出…" : "导出备份…"}</Button>
-          </Row>
-          <Row icon="arrow.counterclockwise" title="从备份恢复" detail="用备份替换当前的全部档案。恢复前会自动给当前状态做一份快照，随时可以退回。">
+          </SRow>
+          <SRow title="从备份恢复" detail="用备份替换当前全部档案。恢复前会先给当前状态做快照。">
             <Button size="small" disabled={store.isLoading || store.isImporting || backupBusy} onClick={async () => {
               const f = (await p.pickFiles({ multiple: false, extensions: ["zip"], title: "选择备份" }))[0];
               if (!f) return;
               try { setPendingBackup({ opened: await readBackup(f), fileName: f.split(/[\\/]/).pop()! }); } catch (e) { store.setError((e as Error).message); }
-            }}>从备份恢复…</Button>
-          </Row>
-        </Section>
-        <Section title="配置">
-          <Row icon="square.and.arrow.up" title="导出配置" detail="只含提醒设置和模板库（法域、文件类型、档案条目、规则、用途），用来让另一套数据沿用同样的规则。不含公司、集团、文件等档案；要搬迁档案请用上面的“导出备份”。">
-            <Button size="small" onClick={async () => { const t = await p.saveDialog({ defaultName: `Charter 配置 ${store.today}.json`, extensions: ["json"], title: "导出" }); if (t) await exportConfig(store, t); }}>导出配置…</Button>
-          </Row>
-          <Row icon="square.and.arrow.down" title="导入配置" detail="读取导出的配置文件，确认变化后再应用。">
+            }}>选择备份…</Button>
+          </SRow>
+        </SGroup>
+        <SGroup footer="配置只含提醒设置和模板库（法域、档案条目、规则、文件包用途），不含公司和文件。">
+          <SRow title="导出配置" detail="让另一套数据沿用同样的规则和清单。">
+            <Button size="small" onClick={async () => { const t = await p.saveDialog({ defaultName: `Charter 配置 ${store.today}.json`, extensions: ["json"], title: "导出" }); if (t) await exportConfig(store, t); }}>导出…</Button>
+          </SRow>
+          <SRow title="导入配置" detail="先列出会有哪些变化，确认后再应用。">
             <Button size="small" disabled={store.isLoading || store.loadFailed} onClick={async () => {
               const f = (await p.pickFiles({ multiple: false, extensions: ["json"], title: "读取配置" }))[0];
               if (!f) return;
               try { setPendingConfig({ bundle: await readConfig(f), fileName: f.split(/[\\/]/).pop()! }); } catch (e) { store.setError((e as Error).message); }
-            }}>导入配置…</Button>
-          </Row>
-        </Section>
-        <Section title="备份与恢复">
-          <Row icon="clock.arrow.circlepath" title="本地快照" detail={`每天第一次打开，以及导入、批量移除、清空数据、导入配置之前，自动保存一份档案记录的快照（不含 PDF；清空数据前的快照连同归档文件一起保存），保留最近 ${snapshotKeep} 份。`}>
-            <span className="row gap8">
-              <Button kind="quiet" size="small" onClick={() => void store.revealSnapshots()}>{p.os === "windows" ? "在资源管理器中显示" : "在访达中显示"}</Button>
-              <Button size="small" disabled={store.isLoading || store.loadFailed} onClick={() => void store.backUpNow()}>立即备份</Button>
-            </span>
-          </Row>
-          {!store.snapshots.length ? <span className="t-meta muted" style={{ paddingLeft: 52 }}>还没有快照。</span> : (
-            <div className="col" style={{ paddingLeft: 52 }}>
-              {store.snapshots.slice(0, 5).map((x, i) => (
-                <div key={x.id}>
-                  {i > 0 && <div className="hairline" />}
-                  <div className="row gap12" style={{ padding: "8px 0" }}>
-                    <span className="col grow" style={{ gap: 2, minWidth: 0 }}><span className="t-row num">{snapshotTitle(x.date)}</span><span className="t-meta muted ellipsis">{[x.reason, ...counts(x)].join(" · ")}</span></span>
-                    <Button kind="quiet" size="small" disabled={store.isLoading || store.isImporting} onClick={() => setRestoring(x)}>恢复…</Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Section>
-        <Section title="危险操作">
-          <Row icon="shippingbox" title="载入示例数据" detail="一套虚构的远澜集团数据，会覆盖当前文件夹里的公司、人员和负责方。建议先更换为空文件夹。"><Button size="small" onClick={() => setConfirmSample(true)}>载入…</Button></Row>
-          <Row icon="trash" title="清空所有数据" detail="移除公司、集团、人员、关系、文件（含归档的 PDF）、负责方和事项记录，设置和模板库保留。清空前会自动保存快照，可以恢复。适合试用结束后重新开始。">
+            }}>导入…</Button>
+          </SRow>
+        </SGroup>
+        <SGroup footer={`每天第一次打开，以及恢复、清空、导入配置之前自动保存，保留最近 ${snapshotKeep} 份。`}>
+          <SRow title="本地快照" detail="档案记录的自动存档。">
+            <Button size="small" onClick={() => void store.revealSnapshots()}>{finder}</Button>
+            <Button size="small" disabled={store.isLoading || store.loadFailed} onClick={() => void store.backUpNow()}>立即保存</Button>
+          </SRow>
+          {store.snapshots.slice(0, 5).map((x) => (
+            <SRow key={x.id} title={<span className="num" style={{ fontWeight: 500 }}>{snapshotTitle(x.date)}</span>} detail={[x.reason, ...counts(x)].join(" · ")}>
+              <Button size="small" kind="quiet" disabled={store.isLoading || store.isImporting} onClick={() => setRestoring(x)}>恢复…</Button>
+            </SRow>
+          ))}
+        </SGroup>
+        <SGroup>
+          <SRow title="载入示例数据" detail="一套虚构的远澜、明岸集团数据。会替换当前档案，建议先换一个空文件夹。"><Button size="small" onClick={() => setConfirmSample(true)}>载入…</Button></SRow>
+          <SRow title="清空所有数据" danger detail="移除公司、集团、人员、中介、文件和事项，设置与模板库保留。清空前自动保存快照。">
             <Button kind="danger" size="small" disabled={store.isLoading || store.isImporting || store.loadFailed} onClick={() => setConfirmClear(true)}>清空…</Button>
-          </Row>
-        </Section>
+          </SRow>
+        </SGroup>
       </>}
-      {confirmSample && <ConfirmSheet title="载入示例数据？" message="示例数据会覆盖当前数据文件夹里的公司、人员和负责方。建议先更换为空文件夹。" confirmTitle="载入" destructive onClose={() => setConfirmSample(false)} onConfirm={() => { setConfirmSample(false); void installSampleData(store); }} />}
-      {confirmClear && <ConfirmSheet title="清空所有数据？" message="以下内容会从数据文件夹里移除。清空前会自动保存一份快照，归档文件也一起收进快照，需要时可在这里恢复。设置和模板库（法域、档案条目、规则、用途）会保留。" details={store.clearSummaryLines}
+      {confirmFolder && <ConfirmSheet title="更换数据文件夹？" message="Charter 会改用新文件夹里的档案；当前文件夹的内容原样保留，不会移动或删除。" confirmTitle="选择文件夹…" onClose={() => setConfirmFolder(false)} onConfirm={() => void chooseFolder()} />}
+      {confirmSample && <ConfirmSheet title="载入示例数据？" message="示例数据会替换当前档案。载入前会自动保存快照，可以恢复。" confirmTitle="载入" destructive onClose={() => setConfirmSample(false)} onConfirm={() => { setConfirmSample(false); void installSampleData(store); }} />}
+      {confirmClear && <ConfirmSheet title="清空所有数据？" message="清空前会自动保存一份快照（连同归档文件），需要时可在这里恢复。设置和模板库会保留。" details={store.clearSummaryLines}
         confirmTitle="清空" destructive onClose={() => setConfirmClear(false)} onConfirm={() => { setConfirmClear(false); void store.clearAllData(); }} />}
-      {restoring && <ConfirmSheet title={`恢复到 ${snapshotTitle(restoring.date)} 的状态？`} message={"当前状态会先自动保存一份快照，之后也可以再恢复回来。" + (restoring.reason === "清空所有数据前" ? "这份快照连同当时的归档文件一起保存，恢复时会一起放回。" : "快照只包含档案记录，不包含 PDF 文件本身。")}
+      {restoring && <ConfirmSheet title={`恢复到 ${snapshotTitle(restoring.date)} 的状态？`} message="当前状态会先自动保存一份快照，之后也可以再恢复回来。"
         details={[`快照原因：${restoring.reason}`, ...counts(restoring).map((c) => `快照里有 ${c}`), `当前：${store.data.companies.length} 家公司、${store.data.documents.length} 份文件`]}
         confirmTitle="恢复" onClose={() => setRestoring(null)} onConfirm={() => { const x = restoring; setRestoring(null); void store.restoreFromSnapshot(x); }} />}
       {pendingBackup && (() => {
         const i = pendingBackup.opened.info, d = store.data;
         const when = new Date(i.exportedAt);
-        return <ConfirmSheet title="用这份备份替换当前档案？" message={`来自“${pendingBackup.fileName}”，导出于 ${isNaN(+when) ? i.exportedAt : when.toLocaleString("zh-CN")}。当前档案会先自动保存一份快照，之后可在这里恢复回来。`}
-          details={[`备份里：${i.companies} 家公司、${i.groups} 个集团、${i.people} 个人员、${i.documents} 份文件记录、${i.files} 个归档文件`,
-            `当前：${d.companies.length} 家公司、${d.groups.length} 个集团、${d.people.length} 个人员、${d.documents.length} 份文件记录`]}
-          confirmTitle="恢复" onClose={() => setPendingBackup(null)}
-          onConfirm={() => { const x = pendingBackup.opened; setPendingBackup(null); void restoreBackup(store, x); }} />;
+        return <ConfirmSheet title="用这份备份替换当前档案？" message={`来自“${pendingBackup.fileName}”，导出于 ${isNaN(+when) ? i.exportedAt : when.toLocaleString("zh-CN")}。当前档案会先自动保存一份快照。`}
+          details={[`备份里：${i.companies} 家公司、${i.groups} 个集团、${i.people} 个人员、${i.files} 个归档文件`, `当前：${d.companies.length} 家公司、${d.groups.length} 个集团、${d.people.length} 个人员`]}
+          confirmTitle="恢复" onClose={() => setPendingBackup(null)} onConfirm={() => { const x = pendingBackup.opened; setPendingBackup(null); void restoreBackup(store, x); }} />;
       })()}
       {pendingConfig && <ConfigImportSheet bundle={pendingConfig.bundle} fileName={pendingConfig.fileName} onClose={() => setPendingConfig(null)} />}
     </Scroll>
+  );
+}
+
+// MARK: - 集团
+
+function GroupsSettings() {
+  const { store, router } = useApp();
+  const groups = [...store.data.groups].sort((a, b) => a.name.localeCompare(b.name));
+  const sel = store.group(router.settingsGroupID) ?? groups[0];
+  const loose = store.ungroupedCompanies.length;
+  const create = () => {
+    const used = new Set(store.data.groups.map((g) => store.brandColor(g)));
+    const g: CorporateGroup = { id: uuid(), name: "新集团", tops: [], extraCompanyIDs: [], notes: "", color: brandPalette.find((c) => !used.has(c)) ?? brandPalette[0] };
+    store.commit((d) => { d.groups.push(g as any); }, { label: "新建集团" });
+    router.set("settingsGroupID", g.id);
+  };
+  useEffect(() => { if (router.settingsGroupID === "new") create(); }, [router.settingsGroupID]);
+  return (
+    <Split
+      header={<PaneHeader title="集团" detail="结构图顶部的分组。删除集团只删除分组，公司和持股不受影响。"><Button kind="primary" icon="plus" onClick={create}>新建集团</Button></PaneHeader>}
+      list={<>
+        {groups.map((g) => <ListItem key={g.id} on={g.id === sel?.id} onClick={() => router.set("settingsGroupID", g.id)}
+          lead={<span className="v4-dot" style={{ background: store.brandColor(g) }} />} title={g.name} sub={`${store.companyIDsIn(g).size} 家公司`} />)}
+        {!groups.length && <span className="muted t-meta" style={{ padding: 12 }}>还没有集团。</span>}
+        {loose > 0 && <><div className="hairline" style={{ margin: "6px 8px" }} /><span className="row gap8 t-meta muted" style={{ padding: "10px 12px" }}><span className="v4-dot" style={{ boxShadow: "inset 0 0 0 1.5px var(--muted)" }} />不属于任何集团 · {loose} 家</span></>}
+      </>}
+      detail={sel ? <GroupDetail key={sel.id} g={sel} /> : <EmptyStateView symbol="square.stack.3d.up" title="还没有集团" message="新建一个集团，选它最上层的公司，成员会按持股自动算出。" actionTitle="新建集团" action={create} />}
+    />
+  );
+}
+
+function GroupDetail({ g }: { g: CorporateGroup }) {
+  const { store, router } = useApp();
+  const [q, setQ] = useState("");
+  const [pick, setPick] = useState<"top" | "member" | null>(null);
+  const save = (fn: (x: CorporateGroup) => void, label?: string) => store.commit((d) => { const x = d.groups.find((y) => y.id === g.id); if (x) fn(x as CorporateGroup); }, label ? { label } : {});
+  const rows = store.rowsOf(g);
+  const excluded = (g.excludedCompanyIDs ?? []).map((id) => store.company(id)).filter(Boolean);
+  const ql = q.trim().toLowerCase();
+  const options = !pick ? [] : [
+    ...store.data.companies.filter((c) => !ql || c.name.toLowerCase().includes(ql)).map((c) => ({ r: ref("company", c.id), name: c.name, code: c.jurisdiction })),
+    ...(pick === "top" ? store.data.people.filter((p) => !ql || p.name.toLowerCase().includes(ql)).map((p) => ({ r: ref("person", p.id), name: p.name, code: [...p.name][0] })) : []),
+  ].filter((o) => pick === "top" ? !g.tops.some((t) => refKey(t) === refKey(o.r)) : !rows.some((r) => r.companyID === o.r.id)).slice(0, 8);
+  const remove = () => {
+    const name = g.name;
+    if (router.groupFilter === g.id) router.set("groupFilter", null);
+    const { undoID } = store.commit((d) => { d.groups = d.groups.filter((x) => x.id !== g.id); }, { label: `删除集团 ${name}` });
+    router.set("settingsGroupID", null);
+    store.showToast(`已删除集团“${name}”，公司不受影响。`, undoID ? () => store.undoID(undoID) : undefined);
+  };
+  const choose = (r: NodeRef) => {
+    if (pick === "top") save((x) => { x.tops = [...x.tops, r]; }, "设置集团顶层");
+    else store.addToGroup(r.id, g.id);
+    setPick(null); setQ("");
+  };
+  return (
+    <>
+      <div className="s4-card">
+        <SRow title={<span className="muted" style={{ fontWeight: 500, fontSize: 13 }}>名称</span>}>
+          <InlineText value={g.name} label="集团名称" onCommit={(v) => v.trim() && save((x) => { x.name = v.trim(); }, "重命名集团")} style={{ fontWeight: 700, textAlign: "right", width: 220 }} />
+        </SRow>
+        <SRow title={<span className="muted" style={{ fontWeight: 500, fontSize: 13 }}>颜色</span>}>
+          {brandPalette.map((c) => {
+            const on = store.brandColor(g) === c;
+            return <button key={c} aria-label={`颜色 ${c}`} aria-pressed={on} onClick={() => save((x) => { x.color = c; })}
+              style={{ width: 20, height: 20, borderRadius: "50%", background: c, boxShadow: on ? "0 0 0 2px var(--surface), 0 0 0 4px var(--ink)" : undefined }} />;
+          })}
+        </SRow>
+        <SRow title={<span className="muted" style={{ fontWeight: 500, fontSize: 13 }} title="从这里沿持股往下，自动算出成员">顶层</span>}>
+          <span className="row gap6 wrap" style={{ justifyContent: "flex-end", maxWidth: 380 }}>
+            {g.tops.map((t) => (
+              <span key={refKey(t)} className="v4-chip">{t.kind === "company" ? store.company(t.id)?.jurisdiction + " " : ""}{store.nameOf(t)}
+                <button aria-label={`移除顶层 ${store.nameOf(t)}`} onClick={() => save((x) => { x.tops = x.tops.filter((y) => refKey(y) !== refKey(t)); }, "移除集团顶层")}><Icon name="xmark" size={8} /></button></span>
+            ))}
+            <button className="link t-meta" onClick={() => { setPick(pick === "top" ? null : "top"); setQ(""); }}>+ 添加</button>
+          </span>
+        </SRow>
+      </div>
+      {pick && (
+        <div className="s4-card" style={{ padding: 8 }}>
+          <input className="v4-input" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={pick === "top" ? "选公司或人做顶层…" : "选要加入的公司…"} aria-label="搜索" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setPick(null); } }} />
+          <div className="col" style={{ marginTop: 6 }}>
+            {options.map((o) => <button key={refKey(o.r)} className="v4-opt" onClick={() => choose(o.r)}><span className="v4-code" style={o.r.kind === "person" ? { borderRadius: "50%" } : undefined}>{o.code}</span><span className="grow ellipsis">{o.name}</span></button>)}
+            {!options.length && <span className="t-meta muted" style={{ padding: 10 }}>没有可选的。</span>}
+          </div>
+        </div>
+      )}
+      <div className="s4-card">
+        <SRow title="成员" detail={`${rows.length} 家公司`}><button className="link t-meta" onClick={() => { setPick(pick === "member" ? null : "member"); setQ(""); }}>+ 手动加入公司</button></SRow>
+        {rows.map((r) => {
+          const c = store.company(r.companyID);
+          if (!c) return null;
+          const m = store.membership(c.id, g);
+          return (
+            <div key={c.id} className="s4-row" style={{ minHeight: 50 }}>
+              <span className="v4-code">{c.jurisdiction}</span>
+              <span className="grow ellipsis" style={{ fontSize: 13.5, fontWeight: 600 }}>{c.name}</span>
+              <span className="t-meta muted">{sourceLabel(m)}</span>
+              {m.kind !== "top" && <button className="link t-meta" onClick={() => { let msg = ""; const u = store.undoable("移出集团", () => { msg = store.moveOut(c.id, g.id); }); store.showToast(msg || `已把 ${c.name} 移出 ${g.name}。`, u ? () => store.undoID(u) : undefined); }}>移出</button>}
+            </div>
+          );
+        })}
+        {!rows.length && <div className="s4-row t-meta muted">先添加顶层，成员会按持股自动算出。</div>}
+      </div>
+      {excluded.length > 0 && <div className="s4-card">
+        <SRow title="已移出" detail="按持股本属于这个集团，你把它们移出了。" />
+        {excluded.map((c) => <div key={c!.id} className="s4-row" style={{ minHeight: 46 }}><span className="v4-code">{c!.jurisdiction}</span><span className="grow ellipsis">{c!.name}</span><button className="link t-meta" onClick={() => store.restoreToGroup(c!.id, g.id)}>恢复</button></div>)}
+      </div>}
+      <div className="row" style={{ padding: "0 4px", justifyContent: "space-between", gap: 16 }}>
+        <span className="t-meta muted">成员从顶层沿持股自动算出。共用的上层控股公司画在集团上方，不算成员。</span>
+        <button className="t-meta" style={{ color: "var(--danger)", fontWeight: 600, whiteSpace: "nowrap" }} onClick={remove}>删除集团</button>
+      </div>
+    </>
   );
 }
 
@@ -328,7 +419,7 @@ function DocumentTypeForm({ type, onChange }: { type: DocumentType; onChange: (t
         <RadioGroup options={validityKinds.map((k) => [k, validityLabel[k]] as [ValidityKind, string])} value={type.validity} onChange={(validity) => set({ validity })} />
         {type.validity === "monthsAfterIssue" && <FieldRow label="有效月数" hint="从签发日起算"><SelectField options={months.map((m) => [m, `${m} 个月`] as [number, string])} value={type.validityMonths ?? 6} onChange={(validityMonths) => set({ validityMonths })} minWidth={140} /></FieldRow>}
       </FormGroup>
-      {type.builtIn && <span className="t-meta muted" style={{ padding: "0 4px" }}>内置类型，可以修改。名称和有效期请按负责方和银行的要求核对。</span>}
+      {type.builtIn && <span className="t-meta muted" style={{ padding: "0 4px" }}>内置类型，可以修改。名称和有效期请按中介和银行的要求核对。</span>}
     </div>
   );
 }
@@ -339,128 +430,103 @@ const personScope = "__person";
 
 function ArchiveItemsSettings() {
   const { store, router } = useApp();
-  const [code, setCode] = useState<string | null>(() => {
+  const lib = store.data.library;
+  const [code, setCode] = useState<string>(() => {
     const w = router.archiveScope;
     router.archiveScope = null;
-    return w && store.jurisdiction(w) ? w : null;
+    return w && store.jurisdiction(w) ? w : lib.jurisdictions[0]?.code ?? personScope;
   });
-  const [selected, setSelected] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const [addingJ, setAddingJ] = useState(false);
   const [creatingIn, setCreatingIn] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  useEffect(() => setSelected(null), [code]);
-  const lib = store.data.library;
   const personTypes = lib.documentTypes.filter((t) => t.owner === "person");
   const saveType = (t: DocumentType) => store.saveLibrary((l) => { const i = l.documentTypes.findIndex((x) => x.id === t.id); if (i >= 0) l.documentTypes[i] = t as any; });
   const deleteType = (id: string) => {
+    const before = store.data;
+    const name = store.docType(id)?.name ?? "";
     store.saveLibrary((l) => {
       l.documentTypes = l.documentTypes.filter((t) => t.id !== id);
       if (l.archiveItems) for (const k of Object.keys(l.archiveItems)) l.archiveItems[k] = l.archiveItems[k].filter((x) => x !== id);
     });
-    setSelected(null);
+    const u = store.recordUndo(`删除条目 ${name}`, before);
+    setEditing(null);
+    store.showToast(`已删除条目“${name}”。`, u ? () => store.undoID(u) : undefined);
   };
-
-  if (!code) return (
-    <Scroll max={820}>
-      <PaneHeader title="档案清单" detail="每个法域的公司默认管理哪些文件。新建公司时自动套用，之后可以逐家调整。">
-        <Button size="small" icon="plus" onClick={() => setAddingJ(true)}>新建法域</Button>
-      </PaneHeader>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
-        {lib.jurisdictions.map((j) => {
-          const n = store.data.companies.filter((c) => c.jurisdiction === j.code).length;
-          return <ScopeCard key={j.code} title={j.name} code={j.code} count={store.templateItems(j.code).length} note={n ? `${n} 家公司在用` : "暂无公司"} customized={!!lib.archiveItems?.[j.code]} onOpen={() => setCode(j.code)} />;
-        })}
-        <ScopeCard title="人员文件" count={personTypes.length} note={`${store.data.people.length} 位人员`} customized={false} onOpen={() => setCode(personScope)} />
-      </div>
-      <span className="t-meta muted">内置条目是管理用的起始清单，不代表已核验的法定要求。</span>
-      {addingJ && <JurisdictionForm onClose={() => setAddingJ(false)} onAdded={(c) => setCode(c)} />}
-    </Scroll>
-  );
-
   const person = code === personScope;
   const ids = person ? personTypes.map((t) => t.id) : store.templateItems(code);
   const candidates = person ? [] : lib.documentTypes.filter((t) => t.owner === "company" && !ids.includes(t.id) && !nonArchiveTypeIDs.has(t.id) && (!t.jurisdictions.length || t.jurisdictions.includes(code)));
   const move = (i: number, d: number) => { const a = [...ids]; const j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; store.setTemplateItems(a, code); };
-  const t = selected ? lib.documentTypes.find((x) => x.id === selected) : undefined;
-  const used = t ? store.data.documents.filter((d) => d.typeID === t.id).length : 0;
-  const forms = !person && t?.owner === "company" ? store.jurisdiction(code)?.entityForms ?? [] : [];
-  const chosen = new Set(t?.entityForms ?? []);
-  return (
-    <div className="row grow start" style={{ gap: 20, padding: 24, minHeight: 0 }}>
-      <div className="col" style={{ width: 340, flex: "none", gap: 14, height: "100%" }}>
-        <button className="row gap4 t-meta muted" onClick={() => setCode(null)}><Icon name="chevron.left" size={10} />全部法域</button>
-        <PaneHeader title={person ? "人员文件" : store.jurisdictionName(code)} detail={person ? "挂在人名下的文件。" : "这个法域的公司默认管理哪些文件。新建公司时自动套用。"} />
-        <div className="surface scroll grow col" style={{ padding: 8, gap: 2, minHeight: 0 }}>
-          {!ids.length && <span className="muted" style={{ padding: "12px 10px" }}>{person ? "还没有人员文件类型。" : "这个法域还没有条目。"}</span>}
+  const name = person ? "人员文件" : store.jurisdictionName(code);
+  return (<>
+    <Split
+      header={<PaneHeader title="档案清单" detail="每个法域的公司默认管理哪些文件。新建公司时自动套用，之后可以逐家调整。"><Button kind="primary" icon="plus" onClick={() => setCreatingIn(code)}>新建条目</Button></PaneHeader>}
+      list={<>
+        {lib.jurisdictions.map((j) => {
+          const n = store.data.companies.filter((c) => c.jurisdiction === j.code).length;
+          return <ListItem key={j.code} on={code === j.code} onClick={() => setCode(j.code)} lead={<span className="v4-code">{j.code}</span>} title={j.name}
+            sub={`${store.templateItems(j.code).length} 个条目 · ${n ? `${n} 家公司` : "暂无公司"}${lib.archiveItems?.[j.code] ? " · 已调整" : ""}`} />;
+        })}
+        <ListItem on={person} onClick={() => setCode(personScope)} lead={<span className="v4-code" style={{ borderRadius: "50%" }}>人</span>} title="人员文件" sub={`${personTypes.length} 个条目`} />
+        <button className="s4-item" style={{ color: "var(--muted)", minHeight: 40 }} onClick={() => setAddingJ(true)}><Icon name="plus" size={12} />新建法域</button>
+      </>}
+      detail={<>
+        <SGroup footer={person ? "护照、身份证等挂在人名下的文件。" : "内置条目是管理用的起始清单，不代表已核验的法定要求。"}>
+          <SRow title={name} detail={person ? "挂在人名下的文件。" : `${name}公司默认管理这些文件。`}>
+            {!person && lib.archiveItems?.[code] && <Button size="small" kind="quiet" onClick={() => store.saveLibrary((l) => { if (l.archiveItems) delete l.archiveItems[code]; })}>恢复内置</Button>}
+          </SRow>
+          {!ids.length && <SRow title={<span className="muted" style={{ fontWeight: 400 }}>还没有条目。</span>} />}
           {ids.map((id, i) => {
-            const on = selected === id;
-            const tt = store.docType(id);
+            const t = store.docType(id);
             return (
-              <div key={id} className={`row gap8 item-row ${on ? "on" : "hover-band"}`} onClick={() => setSelected(id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setSelected(id)}
-                style={{ height: 48, padding: "0 10px", borderRadius: 12, background: on ? "var(--selection)" : undefined, color: on ? "var(--on-selection)" : "var(--ink)", flex: "none" }}>
-                <span className="col grow" style={{ gap: 2, minWidth: 0 }}>
-                  <span className="t-row ellipsis">{tt?.name ?? id}</span>
-                  <span className="t-meta ellipsis" style={{ opacity: on ? .7 : 1, color: on ? undefined : "var(--muted)" }}>{tt ? validityText(tt) : ""}</span>
+              <div key={id} className="s4-row item-row" style={{ minHeight: 56, cursor: "default" }} onDoubleClick={() => setEditing(id)}>
+                <span className="col grow" style={{ gap: 2, minWidth: 0 }}><span className="ellipsis" style={{ fontWeight: 600 }}>{t?.name ?? id}</span><span className="t-meta muted ellipsis">{t ? validityText(t) : ""}</span></span>
+                <span className="row gap4 tools">
+                  {!person && <><button className="tool" title="上移" disabled={i === 0} onClick={() => move(i, -1)}><Icon name="chevron.up" size={10} /></button>
+                    <button className="tool" title="下移" disabled={i === ids.length - 1} onClick={() => move(i, 1)}><Icon name="chevron.down" size={10} /></button>
+                    <button className="tool" title={`从${name}的清单中去掉（不删除已有文件）`} onClick={() => store.setTemplateItems(ids.filter((x) => x !== id), code)}><Icon name="minus" size={10} /></button></>}
                 </span>
-                {!person && <span className="row gap4 tools" onClick={(e) => e.stopPropagation()}>
-                  <button className="tool" title="上移" disabled={i === 0} onClick={() => move(i, -1)}><Icon name="chevron.up" size={10} /></button>
-                  <button className="tool" title="下移" disabled={i === ids.length - 1} onClick={() => move(i, 1)}><Icon name="chevron.down" size={10} /></button>
-                  <button className="tool" title={`从${store.jurisdictionName(code)}条目中去掉（不删除已有文件）`} onClick={() => { store.setTemplateItems(ids.filter((x) => x !== id), code); setSelected(null); }}><Icon name="minus" size={10} /></button>
-                </span>}
+                <Button size="small" onClick={() => setEditing(id)}>编辑</Button>
               </div>
             );
           })}
-          {candidates.length > 0 && <>
-            <div className="hairline" style={{ margin: "10px 10px 6px" }} />
-            <span className="t-micro muted" style={{ padding: "0 10px 4px" }}>可添加的已有类型</span>
-            {candidates.map((c) => <div key={c.id} className="row gap8" style={{ height: 36, padding: "0 10px", flex: "none" }}>
-              <span className="muted ellipsis grow">{c.name}</span>
-              <Button kind="quiet" size="small" icon="plus" title={`添加到${store.jurisdictionName(code)}的条目`} onClick={() => store.setTemplateItems([...ids, c.id], code)}>添加</Button>
-            </div>)}
-          </>}
-        </div>
-        <span className="t-meta muted" style={{ padding: "0 4px" }}>{person ? "护照、身份证等挂在人名下的文件。" : "内置条目是管理用的起始清单，不代表已核验的法定要求。实际要求请按公司情况与接收方确认。"}</span>
-        <div className="row gap8">
-          <Button kind="primary" icon="plus" onClick={() => setCreatingIn(code)}>新建条目</Button>
-          <span className="spacer" />
-          {!person && lib.archiveItems?.[code] && <Button kind="quiet" size="small" title={`把${store.jurisdictionName(code)}的条目恢复为内置清单`}
-            onClick={() => store.saveLibrary((l) => { if (l.archiveItems) delete l.archiveItems[code]; })}>恢复内置</Button>}
-        </div>
-      </div>
-      <div className="scroll grow" style={{ height: "100%", minWidth: 0 }}>
-        {t ? (
-          <div className="col" style={{ gap: 20, paddingBottom: 8 }}>
-            <PaneHeader title={t.name || "未命名条目"} detail={validityText(t)}>
-              {!t.builtIn && <Button size="small" disabled={used > 0} title={used ? "仍有文件使用这个类型。请先将这些文件改为其他类型，再删除。" : "从所有法域删除这个类型"} onClick={() => setDeleting(t.id)}>删除类型</Button>}
-            </PaneHeader>
-            <span className="row gap6 t-meta muted" style={{ marginTop: -10 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: used ? "var(--lime)" : "color-mix(in srgb, var(--muted) 50%, transparent)" }} />{used ? `已有 ${used} 份文件使用这个类型` : "还没有文件使用这个类型"}</span>
-            {forms.length > 0 && <div className="col gap8">
-              <span className="t-row">适用的实体类型</span>
-              <span className="t-meta muted">{chosen.size ? "只有所选类型的公司会出现这个条目；其他类型的公司自动隐藏，不算缺件。" : `所有${store.jurisdictionName(code)}公司都需要。选择类型后，只有这些类型的公司会出现这个条目。`}</span>
-              <div className="row wrap gap6">{forms.map((f) => {
-                const on = chosen.has(f);
-                return <button key={f} className="row gap4" onClick={() => { const s = new Set(chosen); if (on) s.delete(f); else s.add(f); saveType({ ...t, entityForms: s.size ? forms.filter((x) => s.has(x)) : undefined }); }}
-                  style={{ height: 26, padding: "0 10px", borderRadius: 999, fontSize: 12, fontWeight: 500, background: on ? "var(--lime-soft)" : "var(--band)", color: on ? "var(--lime-text)" : "var(--ink)" }}>{on && <Icon name="checkmark" size={9} />}{f}</button>;
-              })}</div>
-            </div>}
-            <DocumentTypeForm key={t.id} type={t} onChange={saveType} />
-          </div>
-        ) : <div className="col" style={{ height: "100%", justifyContent: "center" }}><EmptyStateView symbol="list.bullet.rectangle" title="选择条目以查看和编辑" message="可在这里修改名称、当地名称、识别线索和有效期。" /></div>}
-      </div>
-      {creatingIn && <NewItemSheet scope={creatingIn} onClose={() => setCreatingIn(null)} onCreated={(id) => { setSelected(id); setCreatingIn(null); }} />}
-      {deleting && <ConfirmSheet title="删除这个条目类型？" message="会从所有法域的档案条目中去掉，之后不能恢复。" details={["目前没有文件使用这个类型", "各公司单独添加的此条目也会一并删除"]} confirmTitle="删除" destructive
-        onClose={() => setDeleting(null)} onConfirm={() => { const id = deleting; setDeleting(null); deleteType(id); }} />}
-    </div>
-  );
+        </SGroup>
+        {candidates.length > 0 && <SGroup>
+          <SRow title="可添加的已有类型" detail="其他法域也在用的文件类型。" />
+          {candidates.map((c) => <SRow key={c.id} title={<span style={{ fontWeight: 500 }}>{c.name}</span>}><Button size="small" kind="quiet" icon="plus" onClick={() => store.setTemplateItems([...ids, c.id], code)}>添加</Button></SRow>)}
+        </SGroup>}
+      </>}
+    />
+    {editing && <ItemEditSheet id={editing} scope={code} onClose={() => setEditing(null)} onDelete={deleteType} />}
+    {creatingIn && <NewItemSheet scope={creatingIn} onClose={() => setCreatingIn(null)} onCreated={(id) => { setCreatingIn(null); setEditing(id); }} />}
+    {addingJ && <JurisdictionForm onClose={() => setAddingJ(false)} onAdded={(c) => setCode(c)} />}
+  </>);
 }
 
-function ScopeCard({ title, code, count, note, customized, onOpen }: { title: string; code?: string; count: number; note: string; customized: boolean; onOpen: () => void }) {
+function ItemEditSheet({ id, scope, onClose, onDelete }: { id: string; scope: string; onClose: () => void; onDelete: (id: string) => void }) {
+  const { store } = useApp();
+  const t = store.data.library.documentTypes.find((x) => x.id === id);
+  if (!t) return null;
+  const save = (n: DocumentType) => store.saveLibrary((l) => { const i = l.documentTypes.findIndex((x) => x.id === n.id); if (i >= 0) l.documentTypes[i] = n as any; });
+  const used = store.data.documents.filter((d) => d.typeID === t.id).length;
+  const forms = scope !== personScope && t.owner === "company" ? store.jurisdiction(scope)?.entityForms ?? [] : [];
+  const chosen = new Set(t.entityForms ?? []);
   return (
-    <button className="col surface scope-card" onClick={onOpen} style={{ padding: 18, gap: 10, textAlign: "left" }}>
-      <span className="row baseline"><span className="ellipsis grow" style={{ fontSize: 17, fontWeight: 700 }}>{title}</span>{code && <span className="t-meta muted">{code}</span>}</span>
-      <span className="row baseline gap4"><span className="num" style={{ fontSize: 30, fontWeight: 800 }}>{count}</span><span className="t-meta muted">个条目</span></span>
-      <span className="row gap6"><span className="t-meta muted">{note}</span>{customized && <Pill text="已调整" />}<span className="spacer" /><Icon name="chevron.right" size={11} className="muted" /></span>
-    </button>
+    <Modal onClose={onClose}>
+      <SheetScaffold title={t.name || "未命名条目"} subtitle={used ? `已有 ${used} 份文件使用这个类型` : "还没有文件使用这个类型"} width={620}
+        leading={!t.builtIn && <Button kind="quiet" disabled={used > 0} title={used ? "仍有文件使用这个类型" : "从所有法域删除这个类型"} onClick={() => { onClose(); onDelete(t.id); }}>删除类型</Button>}
+        trailing={<Button kind="primary" onClick={onClose}>完成</Button>}>
+        <div className="col" style={{ gap: 18 }}>
+          {forms.length > 0 && <FormGroup title="适用的实体类型">
+            <span className="t-meta muted">{chosen.size ? "只有所选类型的公司会出现这个条目。" : "所有类型的公司都需要。选择后只对所选类型生效。"}</span>
+            <div className="row wrap gap6">{forms.map((f) => {
+              const on = chosen.has(f);
+              return <button key={f} className={`v4-seg ${on ? "on" : ""}`} onClick={() => { const s = new Set(chosen); if (on) s.delete(f); else s.add(f); save({ ...t, entityForms: s.size ? forms.filter((x) => s.has(x)) : undefined }); }}>{f}</button>;
+            })}</div>
+          </FormGroup>}
+          <DocumentTypeForm type={t} onChange={save} />
+        </div>
+      </SheetScaffold>
+    </Modal>
   );
 }
 
@@ -534,159 +600,105 @@ function PacketSettings() {
   const { store } = useApp();
   const [editing, setEditing] = useState<{ id?: string } | null>(null);
   const packets = store.data.library.packets;
-  const chip = (text: string, muted: boolean, icon?: string, title?: string) => (
-    <span key={text} title={title} className="row gap4" style={{ height: 24, padding: "0 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, background: "var(--band)", color: muted ? "var(--muted)" : "var(--ink)" }}>
-      {icon && <Icon name={icon} size={9.5} />}{text}
-    </span>
-  );
   return (
     <Scroll>
-      <Hero icon="shippingbox.fill" label="文件包用途" title={packets.length ? `${packets.length} 个用途` : "还没有用途"} status="准备文件包时按用途挑选材料，例如银行开户、年度审计、KYC 更新"
-        dot={packets.length ? "var(--lime)" : "color-mix(in srgb, var(--muted) 50%, transparent)"}>
+      <PaneHeader title="文件包用途" detail="准备文件包时按用途挑选材料，例如银行开户、年度审计、KYC 更新。">
         <Button kind="primary" icon="plus" onClick={() => setEditing({})}>新建用途</Button>
-      </Hero>
-      <Section title="用途" gap={0}>
-        {!packets.length && <span className="muted">还没有用途。新建用途并选择所需的文件类别。</span>}
-        {packets.map((p, i) => (
-          <div key={p.id}>
-            {i > 0 && <div className="hairline" style={{ margin: "14px 0 14px 52px" }} />}
-            <div className="row start gap14" onDoubleClick={() => setEditing({ id: p.id })}>
-              <span style={{ width: 38, height: 38, borderRadius: 11, background: "var(--band)", display: "grid", placeItems: "center", flex: "none" }}><Icon name="shippingbox" size={14} /></span>
-              <div className="col grow gap8" style={{ minWidth: 0 }}>
-                <span className="t-row" style={{ minHeight: 20 }}>{p.name || "未命名用途"}</span>
-                <div className="row wrap gap6">
-                  {!p.categories.length && chip("未选文件类别", true)}
-                  {p.categories.slice(0, 6).map((c) => chip(c, false))}
-                  {p.categories.length > 6 && chip(`+${p.categories.length - 6}`, false, undefined, p.categories.slice(6).join("、"))}
-                  {p.includeDirectorsPassports && chip("附董事护照", true, "person.text.rectangle")}
-                  {p.maxAgeMonths && chip(`${p.maxAgeMonths} 个月内签发`, true, "clock")}
-                </div>
-              </div>
-              <Button size="small" onClick={() => setEditing({ id: p.id })}>编辑</Button>
-            </div>
-          </div>
+      </PaneHeader>
+      <SGroup>
+        {!packets.length && <SRow title="还没有用途" detail="新建用途，选它需要哪些类别的文件。" />}
+        {packets.map((p) => (
+          <SRow key={p.id} title={p.name || "未命名用途"}
+            detail={[p.categories.length ? p.categories.join("、") : "未选文件类别", p.includeDirectorsPassports ? "附董事护照" : "", p.maxAgeMonths ? `${p.maxAgeMonths} 个月内签发` : ""].filter(Boolean).join(" · ")}>
+            <Button size="small" onClick={() => setEditing({ id: p.id })}>编辑</Button>
+          </SRow>
         ))}
-      </Section>
+      </SGroup>
       {editing && <PurposeEditor purposeID={editing.id} onClose={() => setEditing(null)} />}
     </Scroll>
   );
 }
 
-// MARK: - 合规规则
+// MARK: - 合规规则（只管算法；日期对不对在每件到期事项上确认）
 
 function RulesSettings() {
   const { store } = useApp();
   const [selection, setSelection] = useState<string | null>(null);
-  const [jurisdiction, setJurisdiction] = useState("全部");
-  const [draftsOnly, setDraftsOnly] = useState(false);
-  const [confirming, setConfirming] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [q, setQ] = useState("");
   const rules = store.data.library.rules;
-  const isDraft = (r: RuleTemplate) => r.verification?.status !== "confirmed";
-  const list = rules.filter((r) => (jurisdiction === "全部" || r.jurisdictions.includes(jurisdiction)) && (!draftsOnly || isDraft(r)));
+  const lib = store.data.library;
   const rule = rules.find((r) => r.id === selection);
+  const ql = q.trim().toLowerCase();
+  const byJ = lib.jurisdictions.map((j) => ({ j, list: rules.filter((r) => r.jurisdictions.includes(j.code) && (!ql || (r.name + r.localName).toLowerCase().includes(ql))) })).filter((x) => x.list.length);
   const add = () => {
-    const j = jurisdiction === "全部" ? [store.data.library.jurisdictions[0]?.code ?? "HK"] : [jurisdiction];
-    const r: RuleTemplate = { id: `custom.${uuid().slice(0, 8)}`, name: "新规则", localName: "", jurisdictions: j, entityForms: [], schedule: { kind: "annualFixed", date: "12-31" }, adjust: "none",
+    const j = rule?.jurisdictions[0] ?? lib.jurisdictions[0]?.code ?? "HK";
+    const r: RuleTemplate = { id: `custom.${uuid().slice(0, 8)}`, name: "新规则", localName: "", jurisdictions: [j], entityForms: [], schedule: { kind: "annualFixed", date: "12-31" }, adjust: "none",
       requiredDocTypeIDs: [], responsibleHint: "", penalty: "", notes: "", needsReview: false, enabled: true, builtIn: false };
     store.saveLibrary((l) => { l.rules.push(r as any); });
     setSelection(r.id);
   };
+  const remove = (r: RuleTemplate) => {
+    const before = store.data;
+    store.saveLibrary((l) => { l.rules = l.rules.filter((x) => x.id !== r.id); });
+    const id = store.recordUndo(`删除规则 ${r.name}`, before);
+    setSelection(null);
+    store.showToast(`已删除规则“${r.name}”。`, id ? () => store.undoID(id) : undefined);
+  };
   return (
-    <div className="col grow" style={{ gap: 20, padding: 28, minHeight: 0 }}>
-      <PaneHeader title="合规规则" detail="各法域申报截止日的计算方式。只有核对过的规则才按确定日期提醒。">
-        <Button size="small" icon="plus" onClick={add}>新建规则</Button>
-      </PaneHeader>
-      <div className="row grow start" style={{ gap: 20, minHeight: 0 }}>
-      <div className="col" style={{ width: 340, flex: "none", gap: 14, height: "100%" }}>
-        <div className="row gap8">
-          <SelectField options={[["全部", "全部法域"] as [string, string], ...store.data.library.jurisdictions.map((j) => [j.code, j.name] as [string, string])]} value={jurisdiction} onChange={setJurisdiction} minWidth={150} />
-          <span className="spacer" />
-          <Checkbox checked={draftsOnly} onChange={setDraftsOnly}>只看待核对（{rules.filter(isDraft).length}）</Checkbox>
-        </div>
-        <div className="surface scroll grow col" style={{ padding: 8, gap: 2, minHeight: 0 }}>
-          {!list.length && <span className="muted" style={{ margin: "auto" }}>没有符合条件的规则。</span>}
-          {list.map((r) => {
-            const on = r.id === selection;
-            const detail = `${r.jurisdictions.join("、")}，${store.scheduleText(r.schedule)}`;
-            return (
-              <button key={r.id} className={`row gap10 ${on ? "" : "hover-band"}`} onClick={() => setSelection(r.id)}
-                style={{ minHeight: 48, padding: "0 10px", borderRadius: "var(--r-row)", textAlign: "left", background: on ? "var(--selection)" : undefined, flex: "none" }}>
-                <span className="col grow" style={{ gap: 2, minWidth: 0 }}>
-                  <span className="t-row ellipsis" style={{ color: on ? "var(--on-selection)" : r.enabled ? "var(--ink)" : "var(--muted)" }}>{r.name || "未命名规则"}</span>
-                  <span className="t-meta ellipsis" style={{ color: on ? "color-mix(in srgb, var(--on-selection) 70%, transparent)" : "var(--muted)" }}>{r.enabled ? detail : `已停用，${detail}`}</span>
-                </span>
-                {isDraft(r) && <TrustBadge trust={{ kind: "draft" } as any} />}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="scroll grow" style={{ height: "100%", minWidth: 0 }}>
-        {rule ? <RuleForm key={rule.id} rule={rule} onConfirm={() => setConfirming(rule.id)} onDelete={() => setDeleting(true)} />
-          : <div className="col" style={{ height: "100%", justifyContent: "center" }}><EmptyStateView symbol="calendar.badge.clock" title="选择要编辑的规则" message="可在这里核对规则、调整截止日算法和提醒。" /></div>}
-      </div>
-      </div>
-      {confirming && <RuleConfirmSheet ruleID={confirming} onClose={() => setConfirming(null)} />}
-      {deleting && rule && <ConfirmSheet title="删除这条规则？" message="删除后不再按这条规则生成待办事项。已完成事项的记录会保留。" confirmTitle="删除" destructive onClose={() => setDeleting(false)}
-        onConfirm={() => { setDeleting(false); store.saveLibrary((l) => { l.rules = l.rules.filter((x) => x.id !== rule.id); }); setSelection(null); }} />}
-    </div>
+    <Split
+      header={<PaneHeader title="合规规则" detail="各法域的截止日怎么算。算出来的日期在每件到期事项上确认或修改。"><Button kind="primary" icon="plus" onClick={add}>新建规则</Button></PaneHeader>}
+      list={<>
+        <input className="v4-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索规则" aria-label="搜索规则" style={{ height: 34, marginBottom: 4 }} />
+        {byJ.map(({ j, list }) => (
+          <div key={j.code} className="col" style={{ gap: 1 }}>
+            <span className="v4-label" style={{ padding: "10px 10px 4px" }}>{j.name}</span>
+            {list.map((r) => <ListItem key={r.id} on={r.id === selection} onClick={() => setSelection(r.id)} title={<span style={{ color: r.enabled || r.id === selection ? undefined : "var(--muted)" }}>{r.name || "未命名规则"}</span>}
+              sub={r.enabled ? store.scheduleText(r.schedule) : "已停用"} />)}
+          </div>
+        ))}
+        {!byJ.length && <span className="muted t-meta" style={{ padding: 12 }}>没有符合的规则。</span>}
+      </>}
+      detail={rule ? <RuleForm key={rule.id} rule={rule} onDelete={() => remove(rule)} />
+        : <div className="col grow" style={{ justifyContent: "center" }}><EmptyStateView symbol="calendar.badge.clock" title="选择一条规则" message="可以调整截止日的算法、遇周末怎么处理，以及适用哪些公司。" /></div>}
+    />
   );
 }
 
-function RuleForm({ rule, onConfirm, onDelete }: { rule: RuleTemplate; onConfirm: () => void; onDelete: () => void }) {
+function RuleForm({ rule, onDelete }: { rule: RuleTemplate; onDelete: () => void }) {
   const { store } = useApp();
   const [r, setR] = useState<RuleTemplate>(rule);
   useEffect(() => setR(rule), [rule]);
-  // 文本输入在本地更新，停顿后再保存（算法改动会把规则退回“待核对”）
   useEffect(() => {
     if (JSON.stringify(r) === JSON.stringify(rule)) return;
     const t = setTimeout(() => store.updateRule(r), 400);
     return () => clearTimeout(t);
   }, [r]);
   const set = (patch: Partial<RuleTemplate>) => setR((x) => ({ ...x, ...patch }));
-  const v = r.verification;
-  const overrides = store.data.companies.filter((c) => c.ruleOverrides?.[r.id]);
-  const [reminderText, setReminderText] = useState(r.reminders?.join(", ") ?? "");
+  const n = store.data.companies.filter((c) => r.enabled && r.jurisdictions.includes(c.jurisdiction) && !c.disabledRuleIDs.includes(r.id)).length;
   return (
-    <div className="col" style={{ gap: 20, paddingBottom: 8, minWidth: 400 }}>
-      <PaneHeader title={r.name || "未命名规则"} detail={store.scheduleText(r.schedule)}><Button size="small" onClick={onDelete}>删除规则</Button></PaneHeader>
-      <FormGroup title="基本信息" canvas>
-        <FieldRow label="名称"><TextField value={r.name} onChange={(name) => set({ name })} placeholder="名称" /></FieldRow>
-        <FieldRow label="当地名称"><TextField value={r.localName} onChange={(localName) => set({ localName })} placeholder="可选" /></FieldRow>
-        <FieldRow label="适用法域" hint="法域代码，用逗号分隔，例如 HK, SG。"><ListField values={r.jurisdictions} onChange={(jurisdictions) => set({ jurisdictions })} placeholder="HK, SG" /></FieldRow>
-        <FieldRow label="公司类型" hint="只适用于这些公司类型；留空则适用全部。"><ListField values={r.entityForms} onChange={(entityForms) => set({ entityForms })} placeholder="全部" /></FieldRow>
-        <Switch checked={r.enabled} onChange={(enabled) => set({ enabled })}>启用这条规则</Switch>
-      </FormGroup>
-      <FormGroup title="核对" canvas>
-        <FieldRow label="状态"><span className="row"><TrustBadge trust={v?.status === "confirmed" ? { kind: "confirmed", scope: "该法域通用", on: v.confirmedOn } as any : { kind: "draft" } as any} showConfirmed /></span></FieldRow>
-        {v?.status === "confirmed" && <>
-          <FieldRow label="依据"><span className="selectable">{v.source ? `${v.sourceKind}：${v.source}` : v.sourceKind}</span></FieldRow>
-          <FieldRow label="核对人"><span className="selectable">{v.confirmedBy}</span></FieldRow>
-          <FieldRow label="核对日期"><span>{v.confirmedOn ? D.long(v.confirmedOn) : "—"}</span></FieldRow>
-        </>}
-        {overrides.length > 0 && <FieldRow label="单独确认"><span>{overrides.map((c) => c.name).join("、")}</span></FieldRow>}
-        <div className="row gap12"><Button size="small" onClick={onConfirm}>{v?.status === "confirmed" ? "修改核对信息…" : "确认这条规则…"}</Button><span className="t-meta muted">修改下面的算法后，这条规则会退回“待核对”。</span></div>
-      </FormGroup>
+    <div className="col" style={{ gap: 14 }}>
+      <div className="s4-card">
+        <SRow title={<InlineText value={r.name} label="规则名称" onCommit={(name) => set({ name })} style={{ fontSize: 17, fontWeight: 700 }} />} detail={`${store.scheduleText(r.schedule)} · 适用 ${n} 家公司`}>
+          <Switch checked={r.enabled} onChange={(enabled) => set({ enabled })}>启用</Switch>
+        </SRow>
+      </div>
       <FormGroup title="截止日计算" canvas>
         <ScheduleEditor schedule={r.schedule} onChange={(schedule) => set({ schedule })} />
         <FieldRow label="遇周末"><SelectField options={(Object.keys(dateAdjustLabel) as DateAdjust[]).map((k) => [k, dateAdjustLabel[k]] as [DateAdjust, string])} value={r.adjust} onChange={(adjust) => set({ adjust })} minWidth={220} /></FieldRow>
-        <FieldRow label="提前提醒" hint="到期前几天提醒，用逗号分隔；留空则用通用设置。">
-          <span style={{ maxWidth: 220, display: "block" }}><TextField value={reminderText} placeholder="60, 30, 7" onChange={(t) => {
-            setReminderText(t);
-            const d = t.split(/[,，\s]+/).map((x) => parseInt(x, 10)).filter((n) => Number.isFinite(n));
-            set({ reminders: d.length ? d.sort((a, b) => b - a) : undefined });
-          }} /></span>
-        </FieldRow>
+      </FormGroup>
+      <FormGroup title="适用范围" canvas>
+        <FieldRow label="法域" hint="法域代码，用逗号分隔，例如 HK, SG。"><ListField values={r.jurisdictions} onChange={(jurisdictions) => set({ jurisdictions })} placeholder="HK, SG" /></FieldRow>
+        <FieldRow label="公司类型" hint="留空则适用全部。"><ListField values={r.entityForms} onChange={(entityForms) => set({ entityForms })} placeholder="全部" /></FieldRow>
       </FormGroup>
       <FormGroup title="说明" canvas>
+        <FieldRow label="当地名称"><TextField value={r.localName} onChange={(localName) => set({ localName })} placeholder="可选" /></FieldRow>
         <FieldRow label="通常办理方"><TextField value={r.responsibleHint} onChange={(responsibleHint) => set({ responsibleHint })} placeholder="例如公司秘书、税务代理" /></FieldRow>
         <FieldRow label="逾期后果"><TextField multiline rows={2} value={r.penalty} onChange={(penalty) => set({ penalty })} placeholder="可选" /></FieldRow>
         <FieldRow label="备注"><TextField multiline rows={3} value={r.notes} onChange={(notes) => set({ notes })} placeholder="可选" /></FieldRow>
       </FormGroup>
-      {!!r.revisions?.length && <FormGroup title="修改记录" canvas>
-        {[...r.revisions].reverse().map((x, i) => <FieldRow key={i} label={D.long(x.on)}><span>{x.summary}</span></FieldRow>)}
-      </FormGroup>}
+      <div className="row" style={{ justifyContent: "flex-end", padding: "0 4px" }}>
+        <button className="t-meta" style={{ color: "var(--danger)", fontWeight: 600 }} onClick={onDelete}>删除规则</button>
+      </div>
     </div>
   );
 }

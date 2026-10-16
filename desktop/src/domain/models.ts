@@ -61,7 +61,7 @@ export function newCompany(name: string, jurisdiction: string, trackingSince: Da
   };
 }
 
-export const companySearchText = (c: Company) =>
+const companySearchText = (c: Company) =>
   [c.name, ...c.formerNames, ...c.aliases, c.registrationNumber].join(" ").toLowerCase();
 
 // MARK: 人
@@ -83,7 +83,7 @@ export interface NodeRef { kind: NodeKind; id: string }
 export const ref = (kind: NodeKind, id: string): NodeRef => ({ kind, id });
 export const sameRef = (a?: NodeRef | null, b?: NodeRef | null) => !!a && !!b && a.kind === b.kind && a.id === b.id;
 export const refKey = (r: NodeRef) => `${r.kind}:${r.id}`;
-export const parseRefKey = (k: string): NodeRef => {
+const parseRefKey = (k: string): NodeRef => {
   const i = k.indexOf(":");
   return { kind: k.slice(0, i) as NodeKind, id: k.slice(i + 1) };
 };
@@ -113,7 +113,7 @@ export interface Appointment {
   to?: Day;
 }
 
-// MARK: 负责方
+// MARK: 中介
 
 export type PartyKind = "agent" | "department" | "person";
 export const partyKindLabel: Record<PartyKind, string> = { agent: "外部代理", department: "内部部门", person: "个人" };
@@ -127,6 +127,15 @@ export interface Party {
   phone: string;
   followUpDays: number;
   notes: string;
+  /** Charter 4：一家中介可有多位对接人。第一位视为主对接人。旧数据只有 contactName/email。 */
+  contacts?: Contact[];
+}
+export interface Contact { id: string; name: string; role: string; email: string; phone: string }
+export const newContact = (name = ""): Contact => ({ id: uuid(), name, role: "", email: "", phone: "" });
+/** 对接人列表：没有 contacts 时用旧的单一联系人补出一位。 */
+export function contactsOf(p: Party): Contact[] {
+  if (p.contacts?.length) return p.contacts;
+  return p.contactName || p.email ? [{ id: p.id + "-c", name: p.contactName || p.email, role: "", email: p.email, phone: p.phone }] : [];
 }
 export const newParty = (name: string): Party => ({
   id: uuid(), name, kind: "agent", contactName: "", email: "", phone: "", followUpDays: 14, notes: "",
@@ -149,7 +158,6 @@ export interface Document {
   notes: string;
 }
 
-export const documentForms = ["扫描件", "原件", "核证副本", "公证件", "海牙认证", "翻译件"];
 
 // MARK: 合规事项记录
 
@@ -157,7 +165,6 @@ export type ObligationStatus = "pending" | "drafted" | "handedOff" | "waiting" |
 export const obligationStatusLabel: Record<ObligationStatus, string> = {
   pending: "待交办", drafted: "待发送", handedOff: "已交办", waiting: "已交办", done: "已完成",
 };
-export const visibleStatuses: ObligationStatus[] = ["pending", "drafted", "handedOff", "done"];
 export const isHandedOff = (s: ObligationStatus) => s === "handedOff" || s === "waiting";
 export const normalizedStatus = (s: ObligationStatus): ObligationStatus => (s === "waiting" ? "handedOff" : s);
 
@@ -190,6 +197,8 @@ export interface ObligationRecord {
   changeID?: string;
   draftedOn?: Day;
   log?: HandoffEntry[];
+  /** Charter 4：你确认过这一条的日期。 */
+  dateConfirmed?: boolean;
 }
 export const obligationKey = (ruleID: string, companyID: string, due: Day) => `${ruleID}|${companyID}|${due}`;
 
@@ -229,7 +238,7 @@ export interface SharedSettings {
   complianceEnabled?: boolean;
 }
 export const defaultSettings = (): SharedSettings => ({
-  reminderDays: [60, 30, 7], calendarEnabled: true, calendarName: "Charter", notificationHour: 9,
+  reminderDays: [30, 7, 1], calendarEnabled: true, calendarName: "Charter", notificationHour: 9,
 });
 
 // MARK: 模板
@@ -310,7 +319,6 @@ export type RuleTrust =
   | { kind: "draft" }
   | { kind: "confirmed"; scope: string; on?: Day }
   | { kind: "needsReview"; on?: Day };
-export const trustLabel = (t: RuleTrust) => (t.kind === "draft" ? "待核对" : t.kind === "confirmed" ? "已确认" : "需复核");
 
 export interface RuleTemplate {
   id: string;
@@ -367,7 +375,7 @@ export const itemMarks: ItemMark[] = ["notObtained", "external", "restricted", "
 export const itemMarkLabel: Record<ItemMark, string> = {
   notObtained: "未取得", external: "外部保管", restricted: "权限受限", unverified: "待核对", notApplicable: "不适用",
 };
-export const itemMarkExplanation: Record<ItemMark, string> = {
+const itemMarkExplanation: Record<ItemMark, string> = {
   notObtained: "尚未取得材料，可在备注中记录跟进情况。",
   external: "材料由代理、同事或其他机构保管，本地没有副本。",
   restricted: "材料可能存在，但目前没有权限取得或查看。",
@@ -408,18 +416,6 @@ export const hasFile = (s: ArchiveState) =>
 export const stateNeedsAttention = (s: ArchiveState) =>
   s.kind === "expiring" || s.kind === "expired" || s.kind === "needsUpdate" || s.kind === "noDate";
 export const isNotApplicable = (s: ArchiveState) => s.kind === "marked" && s.mark === "notApplicable";
-export function stateRank(s: ArchiveState): number {
-  switch (s.kind) {
-    case "expired": return 0;
-    case "needsUpdate": return 1;
-    case "expiring": return 2;
-    case "missing": return 3;
-    case "marked":
-      return s.mark === "notObtained" ? 4 : s.mark === "notApplicable" ? 8 : 5;
-    case "noDate": return 6;
-    case "valid": return 7;
-  }
-}
 
 export interface ArchiveItem {
   typeID: string;
@@ -463,7 +459,10 @@ export interface CorporateGroup {
   excludedCompanyIDs?: string[];
   notes: string;
   iconFileName?: string;
+  /** Charter 4：品牌色标。 */
+  color?: string;
 }
+export const brandPalette = ["#4F7CF7", "#2BA889", "#E07A2E", "#B05CD6", "#D64F6E", "#3AA0C9"];
 
 export interface GroupRow {
   companyID: string;

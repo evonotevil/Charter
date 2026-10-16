@@ -229,7 +229,6 @@ function FileCard({ d, showOwner, selected, extraMenu, onClick }: { d: Document;
     item("打开", undefined, () => void store.openDocument(d)),
     item(platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示", undefined, () => void store.revealDocument(d)),
     item("归档新版…", undefined, () => void startStage({ typeID: d.typeID, owner: d.owner, replaces: d, form: d.form, onArchived: (n) => router.open({ kind: "document", id: n.id }) })),
-    item("请补发…", undefined, () => setReissue(true)),
     divider,
     item("从 Charter 移除记录", undefined, () => store.deleteDocument(d), { destructive: true }),
   ];

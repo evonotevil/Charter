@@ -18,7 +18,6 @@ export interface Recognition {
   typeFromContent: boolean;
   usedOCR: boolean;
 }
-export const needsReview = (r: Recognition) => r.confidence < 0.8 || !r.companyID || !r.typeID;
 
 export interface RecognitionContext {
   types: { id: string; name: string; localNames: string[]; hints: string[]; jurisdictions: string[] }[];

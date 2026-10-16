@@ -45,9 +45,9 @@ describe("store", () => {
     const { p, s } = await fresh();
     expect(s.data.library.jurisdictions.length).toBe(8);
     await installSampleData(s);
-    expect(s.data.companies.length).toBe(12);
+    expect(s.data.companies.length).toBe(17);
     expect(s.data.documents.length).toBe(33);
-    expect(s.data.groups.map((g) => g.name).sort()).toEqual(["Harbor Crest", "独立公司", "远澜集团"]);
+    expect(s.data.groups.map((g) => g.name).sort()).toEqual(["Harbor Crest", "明岸", "远澜集团"]);
     const yl = s.data.groups.find((g) => g.name === "远澜集团")!;
     expect(s.companyIDsIn(yl).size).toBe(8);
     // 档案文件已写入
@@ -57,7 +57,7 @@ describe("store", () => {
     // 重新载入一致
     const s2 = new Store("/Charter");
     await s2.load();
-    expect(s2.data.companies.length).toBe(12);
+    expect(s2.data.companies.length).toBe(17);
     expect(s2.data.holdings).toEqual(s.data.holdings);
     // 穿透：日本公司 张三 100%（含代持）
     const jp = s.data.companies.find((c) => c.jurisdiction === "JP")!;

@@ -27,7 +27,7 @@ describe("full backup", () => {
     const file = s.fileURL(s.data.documents[0]);
     const bytes = await p.readBytes(file);
     const info = await exportBackup(s, "/out/backup.zip");
-    expect(info.companies).toBe(11);
+    expect(info.companies).toBe(16);
     expect(info.files).toBeGreaterThan(0);
 
     await s.clearAllData();
@@ -50,7 +50,7 @@ describe("full backup", () => {
     await exportBackup(s, "/out/b.zip");
     const other = new Store("/Elsewhere"); await other.load();
     await restoreBackup(other, await readBackup("/out/b.zip"));
-    expect(other.data.companies.length).toBe(12);
+    expect(other.data.companies.length).toBe(17);
     expect((await p.stat(other.fileURL(other.data.documents[0]))).exists).toBe(true);
   });
 

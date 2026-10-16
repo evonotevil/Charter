@@ -6,13 +6,15 @@ import type { ChangeKind, NodeKind, NodeRef, ObligationStatus } from "../domain/
 import { platform } from "../platform/platform";
 import { ungrouped } from "./store";
 
-export type Section = "overview" | "companies" | "files" | "people" | "parties";
+export type Section = "structure" | "due" | "agents" | "overview" | "companies" | "files" | "people" | "parties";
+/** Charter 4 侧栏：上面三个是日常入口，下面三个是档案资料。 */
 export const sections: { id: Section; title: string; symbol: string }[] = [
-  { id: "overview", title: "总览", symbol: "square.grid.3x3" },
+  { id: "structure", title: "结构", symbol: "point.3.connected.trianglepath.dotted" },
+  { id: "due", title: "到期", symbol: "calendar.badge.clock" },
+  { id: "agents", title: "中介", symbol: "person.2" },
   { id: "companies", title: "公司", symbol: "building.2" },
   { id: "files", title: "文件", symbol: "doc.on.doc" },
   { id: "people", title: "人员", symbol: "person.crop.rectangle.stack" },
-  { id: "parties", title: "负责方", symbol: "person.2" },
 ];
 
 export type CompaniesMode = "list" | "matrix" | "structure";
@@ -27,34 +29,27 @@ export type Sheet =
   | { kind: "obligation"; key: string } | { kind: "document"; id: string } | { kind: "confirmRule"; ruleID: string; companyID?: string };
 
 export type CalendarRange = { kind: "all" } | { kind: "thisMonth" } | { kind: "nextMonth" } | { kind: "next3Months" } | { kind: "custom"; from: Day; to: Day };
-export const calendarRangeLabel = (r: CalendarRange) =>
+const calendarRangeLabel = (r: CalendarRange) =>
   ({ all: "未来 12 个月", thisMonth: "本月", nextMonth: "下月", next3Months: "未来 3 个月", custom: "自定义" })[r.kind];
-export function calendarBounds(r: CalendarRange, today: Day): { from?: Day; to: Day } {
-  const first = D.makeDay(D.year(today), D.month(today), 1);
-  switch (r.kind) {
-    case "all": return { to: D.addDays(today, 366) };
-    case "thisMonth": return { to: D.addDays(D.addMonths(first, 1), -1) };
-    case "nextMonth": return { from: D.addMonths(first, 1), to: D.addDays(D.addMonths(first, 2), -1) };
-    case "next3Months": return { from: today, to: D.addMonths(today, 3) };
-    case "custom": return { from: r.from, to: r.to };
-  }
-}
 export interface CalendarPreset { partyID?: string; range: CalendarRange; status?: ObligationStatus }
 
 export type ImportContext = { kind: "company"; id: string } | { kind: "group"; id: string };
 
-export type SettingsPane = "sync" | "reminders" | "archiveItems" | "purposes" | "rules" | "backup" | "modules";
-export const settingsPanes: SettingsPane[] = ["sync", "reminders", "archiveItems", "purposes", "rules", "backup", "modules"];
-export const settingsPaneTitle: Record<SettingsPane, string> = { sync: "数据与同步", reminders: "提醒", archiveItems: "档案清单", purposes: "文件包用途", rules: "合规规则", backup: "备份与配置", modules: "功能模块" };
-export const settingsPaneSymbol: Record<SettingsPane, string> = { sync: "icloud", reminders: "bell", archiveItems: "list.bullet.rectangle", purposes: "shippingbox", rules: "calendar.badge.clock", backup: "clock.arrow.circlepath", modules: "square.grid.2x2" };
-export const settingsGroups = (complianceOn: boolean): { title?: string; panes: SettingsPane[] }[] => [
+export type SettingsPane = "sync" | "reminders" | "groups" | "archiveItems" | "purposes" | "rules" | "backup";
+export const settingsPanes: SettingsPane[] = ["sync", "reminders", "groups", "archiveItems", "purposes", "rules", "backup"];
+export const settingsPaneTitle: Record<SettingsPane, string> = { sync: "数据与同步", reminders: "提醒", groups: "集团", archiveItems: "档案清单", purposes: "文件包用途", rules: "合规规则", backup: "备份与恢复" };
+export const settingsPaneSymbol: Record<SettingsPane, string> = { sync: "icloud", reminders: "bell", groups: "square.stack.3d.up", archiveItems: "list.bullet.rectangle", purposes: "shippingbox", rules: "calendar.badge.clock", backup: "clock.arrow.circlepath" };
+export const settingsGroups = (): { title: string; panes: SettingsPane[] }[] => [
   { title: "常规", panes: ["sync", "reminders"] },
-  { title: "模板库", panes: complianceOn ? ["archiveItems", "purposes", "rules"] : ["archiveItems", "purposes"] },
-  { title: "高级", panes: ["backup", "modules"] },
+  { title: "公司资料", panes: ["groups", "archiveItems", "purposes"] },
+  { title: "到期规则", panes: ["rules"] },
+  { title: "高级", panes: ["backup"] },
 ];
 
 export class Router {
-  section: Section = "overview";
+  section: Section = "structure";
+  selectedObligationKey: string | null = null;
+  selectedAgentID: string | null = null;
   newPersonRequest = 0;
   newPartyRequest = 0;
   calendarPreset: CalendarPreset | null = null;
@@ -73,6 +68,7 @@ export class Router {
   sheet: Sheet | null = null;
   importContext: ImportContext | null = null;
   settings: SettingsPane | null = null;
+  settingsGroupID: string | null = null;
   archiveScope: string | null = null;
   version = 0;
   private listeners = new Set<() => void>();
@@ -122,7 +118,7 @@ export class Router {
 
   resetSelection() {
     this.sheet = null; this.calendarPreset = null; this._selectedCompanyID = null; this.selectedPersonID = null; this.groupFilter = null;
-    this.filesOwnerKind = null; this.filesFilter = 0; this.companyTab = 0; this.companiesMode = "list"; this.showCalendar = false; this.section = "overview";
+    this.filesOwnerKind = null; this.filesFilter = 0; this.companyTab = 0; this.companiesMode = "list"; this.showCalendar = false; this.section = "structure";
     this.emit();
   }
 
@@ -132,10 +128,12 @@ export class Router {
     if (opts.group) this.groupFilter = opts.group;
     this.structureUpward = opts.upwardFrom ?? null;
     if (opts.check) this.structureCheck = true;
-    this.companiesMode = "structure"; this.showCalendar = false; this.section = "companies";
+    this.showCalendar = false; this.section = "structure";
     this.emit();
   }
   openPerson(id: string) { this.selectedPersonID = id; this.showCalendar = false; this.section = "people"; this.emit(); }
   openCompany(id: string) { this.selectedCompanyID = id; this.companiesMode = "list"; this.showCalendar = false; this.section = "companies"; this.emit(); }
-  openSettings(pane: SettingsPane = "sync") { this.settings = pane; this.emit(); }
+  openDue(key?: string) { if (key) this.selectedObligationKey = key; this.showCalendar = false; this.section = "due"; this.emit(); }
+  openAgent(id: string) { this.selectedAgentID = id; this.showCalendar = false; this.section = "agents"; this.emit(); }
+  openSettings(pane: SettingsPane = "sync", groupID?: string | null) { this.settings = pane; if (groupID !== undefined) this.settingsGroupID = groupID; this.emit(); }
 }

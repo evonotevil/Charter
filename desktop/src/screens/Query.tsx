@@ -28,7 +28,9 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
   const listRef = useRef<HTMLDivElement>(null);
   const q = query.trim();
 
-  const companyMatches = (c: Company, terms: Set<string>) => matchesSearch(terms, [[c.name, ...c.formerNames, ...c.aliases, c.registrationNumber].join(" "), store.jurisdictionName(c.jurisdiction), store.groupsContaining(c.id).map((g) => g.name).join(" ")]);
+  const companyMatches = (c: Company, terms: Set<string>) => matchesSearch(terms, [[c.name, ...c.formerNames, ...c.aliases, c.registrationNumber, c.jurisdiction].join(" "), store.jurisdictionName(c.jurisdiction), store.groupsContaining(c.id).map((g) => g.name).join(" "),
+    store.officers(c.id).map((a) => store.person(a.personID)?.name ?? "").join(" ")]);
+  const allTokens = (c: Company, q: string) => q.split(/\s+/).filter(Boolean).every((t) => companyMatches(c, searchForms(t)));
   const parse = (text: string) => {
     let rest = text.toLowerCase();
     const purposes: PacketTemplate[] = [];
@@ -51,14 +53,14 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
   const companyActions = (p: ReturnType<typeof parse>): Action[] => {
     const out: Action[] = [];
     for (const c of p.companies.slice(0, p.intent ? 2 : 1)) {
-      for (const v of p.verbs.length ? p.verbs : (["packet", "upload", "reissue", "change", "structure"] as Verb[])) {
+      for (const v of p.verbs.length ? p.verbs : (["structure", "packet", "upload", "change"] as Verb[])) {
         if (v === "packet") {
           if (!p.purposes.length) out.push({ act: { kind: "packet", companyID: c.id }, title: `为 ${c.name} 准备文件包`, symbol: "shippingbox" });
           else for (const t of p.purposes) out.push({ act: { kind: "packet", companyID: c.id, purposeID: t.id }, title: `为 ${c.name} 准备${latinPad(t.name)}文件包`, symbol: "shippingbox" });
         } else if (v === "upload") out.push({ act: { kind: "upload", companyID: c.id }, title: `上传材料到 ${c.name}`, symbol: "tray.and.arrow.down" });
-        else if (v === "reissue") { const gaps = gapTypeIDs(c); if (gaps.length) out.push({ act: { kind: "reissue", companyID: c.id, typeIDs: gaps }, title: `请 ${store.party(c.defaultPartyID)?.name ?? "负责方"} 补发 ${c.name} 缺少的文件`, symbol: "envelope" }); }
-        else if (v === "change") out.push({ act: { kind: "change", companyID: c.id }, title: `记录 ${c.name} 的变更`, symbol: "arrow.triangle.2.circlepath" });
-        else out.push({ act: { kind: "structure", companyID: c.id }, title: `打开 ${c.name} 的股权结构`, symbol: "point.3.connected.trianglepath.dotted" });
+        else if (v === "reissue" && false) { const gaps = gapTypeIDs(c); if (gaps.length) out.push({ act: { kind: "reissue", companyID: c.id, typeIDs: gaps }, title: `请 ${store.party(c.defaultPartyID)?.name ?? "中介"} 补发 ${c.name} 缺少的文件`, symbol: "envelope" }); }
+        else if (v === "change") out.push({ act: { kind: "change", companyID: c.id }, title: `修改 ${c.name} 的资料`, symbol: "arrow.triangle.2.circlepath" });
+        else out.push({ act: { kind: "structure", companyID: c.id }, title: `在结构图里看 ${c.name}`, symbol: "point.3.connected.trianglepath.dotted" });
       }
     }
     return out;
@@ -68,7 +70,7 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
       { act: { kind: "newCompany" }, title: "新建公司", symbol: "plus.square" },
       { act: { kind: "newGroup" }, title: "新建集团", symbol: "square.stack.3d.up" },
       { act: { kind: "uploadAny" }, title: "上传材料", symbol: "tray.and.arrow.down" },
-      ...(store.complianceOn ? [{ act: { kind: "calendar" } as Act, title: "查看全部日程", symbol: "calendar" }] : []),
+      { act: { kind: "calendar" } as Act, title: "查看全部到期", symbol: "calendar" },
       { act: { kind: "settings", pane: "sync" }, title: "设置", symbol: "gearshape" },
     ];
     if (text == null) return all;
@@ -86,7 +88,7 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
   } else {
     const parsed = parse(q);
     const terms = searchForms(q);
-    const cs = store.data.companies.filter((c) => companyMatches(c, terms)).sort((a, b) => a.name.localeCompare(b.name, "zh")).map((c): Hit => ({ kind: "company", c, id: `c-${c.id}` }));
+    const cs = store.data.companies.filter((c) => allTokens(c, q)).sort((a, b) => a.name.localeCompare(b.name, "zh")).map((c): Hit => ({ kind: "company", c, id: `c-${c.id}` }));
     const ps = store.data.people.filter((p) => matchesSearch(terms, [p.name, ...p.aliases])).sort((a, b) => a.name.localeCompare(b.name, "zh")).map((p): Hit => ({ kind: "person", p, id: `p-${p.id}` }));
     const found = [...cs, ...ps].slice(0, 30);
     const actions = { id: "actions", title: "动作", hits: [...companyActions(parsed), ...globalActions(q)].map(toHit).slice(0, 8) };
@@ -108,13 +110,13 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
       case "reissue": setReissue({ owner: ref("company", act.companyID), typeIDs: act.typeIDs }); break;
       case "upload": closeThen(() => void router.chooseFiles({ kind: "company", id: act.companyID })); break;
       case "uploadAny": closeThen(() => void router.chooseFiles(router.currentImportContext((id) => !!store.group(id)))); break;
-      case "structure": onClose(); router.selectedCompanyID = act.companyID; router.openStructure({ group: store.groupsContaining(act.companyID)[0]?.id ?? null }); break;
-      case "calendar": onClose(); router.openCalendar(); break;
+      case "structure": onClose(); router.update((r) => { r.section = "structure"; r.showCalendar = false; r.selectedCompanyID = act.companyID; }); break;
+      case "calendar": onClose(); router.go("due"); break;
       case "settings": onClose(); router.openSettings(act.pane); break;
     }
   };
   const run = (h: Hit) => {
-    if (h.kind === "company") { onClose(); router.companyTab = 0; router.openCompany(h.c.id); }
+    if (h.kind === "company") { onClose(); router.update((r) => { r.section = "structure"; r.showCalendar = false; r.selectedCompanyID = h.c.id; }); }
     else if (h.kind === "person") { onClose(); router.openPerson(h.p.id); }
     else perform(h.a.act);
   };

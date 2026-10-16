@@ -1,4 +1,4 @@
-// 一套虚构的示例数据（远澜集团等 12 家公司），用于试用。不含任何真实信息。
+// 一套虚构的示例数据（远澜、明岸等 17 家公司），用于试用。不含任何真实信息。
 
 import * as D from "../domain/day";
 import type { Day } from "../domain/day";
@@ -46,15 +46,24 @@ export async function installSampleData(s: Store) {
   const catalyst = party("St. Thomas Registered Agents", "agent", "", "filings@stthomas.example");
   const aoyama = party("青山税理士法人", "agent", "佐藤", "sato@aoyama.example");
   const hanbit = party("한빛세무회계", "agent", "김민지", "minji@hanbit.example");
-  const finance = party("财务部", "department", "李经理", "finance@yuanlan.example", 5);
-  const legal = party("法务部", "department", "周律师", "legal@yuanlan.example", 5);
-  const parties = [lime, mingde, tortola, lion, catalyst, aoyama, hanbit, finance, legal];
+  const finance = party("财务部", "agent", "李经理", "finance@yuanlan.example", 5);
+  const legal = party("法务部", "agent", "周律师", "legal@yuanlan.example", 5);
+  const kreston = party("Kreston Tax Advisory", "agent", "Melissa Ong", "melissa@kreston.example");
+  const C2 = (name: string, role: string, email: string, phone = "") => ({ id: uuid(), name, role, email, phone });
+  mingde.contacts = [C2("陈小姐", "公司秘书", "cs@mingde.example", "+852 2123 4567"), C2("Kelvin Ho", "税务", "kelvin@mingde.example")];
+  lion.contacts = [C2("Rachel Tan", "年审", "rachel@lioncity.example", "+65 6123 4567"), C2("Jason Lim", "秘书事务", "jason@lioncity.example")];
+  tortola.contacts = [C2("James Penn", "注册代理", "james@tortola.example")];
+  aoyama.contacts = [C2("佐藤 美咲", "税理士", "sato@aoyama.example")];
+  kreston.contacts = [C2("Melissa Ong", "税务经理", "melissa@kreston.example")];
+  mingde.notes = "香港 · 公司秘书、周年申报"; lion.notes = "新加坡 · 公司秘书、年报"; tortola.notes = "BVI · 注册代理"; kreston.notes = "新加坡 · 企业所得税";
+  const parties = [lime, mingde, tortola, lion, catalyst, aoyama, hanbit, kreston, finance, legal];
 
   const person = (name: string, aliases: string[], notes = ""): Person => ({ id: uuid(), name, aliases, email: "", notes });
   const zhang = person("张三", ["Zhang San"]);
   const wang = person("王五", ["Wang Wu"], "名义股东，代张三持有遠瀾テクノロジー 30%");
   const sato = person("佐藤健", ["Ken Sato"]);
-  const people = [zhang, wang, sato];
+  const tan = person("Tan Wei Ling", ["陈慧玲"]);
+  const people = [zhang, wang, sato, tan];
 
   const co = (name: string, j: string, form: string, inc: Day, group: string, p: Party, reg: string, aliases: string[] = [], fye = "12-31"): Company => ({
     id: uuid(), name, formerNames: [], aliases, jurisdiction: j, entityForm: form, registrationNumber: reg, incorporationDate: inc,
@@ -76,13 +85,26 @@ export async function installSampleData(s: Store) {
   const hcc = co("Harbor Crest Capital Ltd.", "KY", "豁免公司 (Exempted Company)", "2022-08-15", "Harbor Crest", lime, "CT-389921");
   const vi = co("Seawind Assets (USVI) LLC", "VI", "LLC", "2021-05-10", "独立公司", catalyst, "LLC-0021187");
   const cube = co("立方咨询有限公司", "HK", "私人股份有限公司", "2017-07-07", "独立公司", mingde, "2551270");
-  const companies = [ky, hk, hkt, sg, sgv, jp, kr, bvi, hc, hcc, vi, cube];
+  vi.group = ""; cube.group = "";
+  // 共用的顶层控股公司：在各品牌之上
+  const top = co("Northstar Holdings Ltd.", "KY", "豁免公司 (Exempted Company)", "2018-03-12", "", lime, "CT-350118");
+  const mab = co("Mingan Investments (BVI) Ltd.", "VG", "BVI Business Company", "2025-03-20", "明岸", tortola, "2045531");
+  const mah = co("明岸（香港）有限公司", "HK", "私人股份有限公司", "2025-04-15", "明岸", mingde, "3311208", ["Mingan (HK)"], "03-31");
+  const mas = co("Mingan Singapore Pte. Ltd.", "SG", "Private Limited (Pte. Ltd.)", "2025-05-02", "明岸", lion, "202518830D");
+  mas.rulePartyIDs["sg.form-c"] = kreston.id;
+  const maj = co("株式会社明岸ジャパン", "JP", "株式会社", "2025-06-18", "明岸", aoyama, "0104-01-198204", ["Mingan Japan"], "03-31");
+  const companies = [top, ky, hk, hkt, sg, sgv, jp, kr, bvi, hc, hcc, vi, cube, mab, mah, mas, maj];
 
   const P = (x: Person) => ref("person", x.id), C = (x: Company) => ref("company", x.id);
   const h = (holder: NodeRef, c: Company, percent: number, shares: string, from: Day, extra: Partial<Holding> = {}): Holding =>
     ({ id: uuid(), holder, companyID: c.id, percent, shares, shareClass: "", isNominee: false, from, ...extra });
   const holdings: Holding[] = [
-    h(P(zhang), ky, 100, "1", "2020-01-15"),
+    h(P(zhang), top, 100, "1", "2018-03-12"),
+    h(C(top), ky, 100, "1", "2020-01-15"),
+    h(C(top), mab, 100, "50,000", "2025-03-20"),
+    h(C(mab), mah, 100, "10,000", "2025-04-15"),
+    h(C(mab), mas, 100, "100,000", "2025-05-02"),
+    h(C(mab), maj, 100, "1,000", "2025-06-18"),
     h(P(zhang), hk, 100, "10,000", "2019-11-12", { to: "2020-06-30" }),
     h(C(ky), hk, 100, "10,000", "2020-06-30"),
     h(C(ky), sg, 100, "100,000", "2020-09-01"),
@@ -99,7 +121,7 @@ export async function installSampleData(s: Store) {
     h(P(zhang), cube, 100, "10,000", "2017-07-07"),
   ];
   const appt = (p: Person, c: Company, title: string, from?: Day): Appointment => ({ id: uuid(), personID: p.id, companyID: c.id, title, from });
-  const appointments = [...companies.map((c) => appt(zhang, c, "董事", c.incorporationDate)), appt(sato, jp, "董事", "2021-08-01"), appt(sato, jp, "代表取締役", "2021-08-01")];
+  const appointments = [...companies.map((c) => appt(zhang, c, "董事", c.incorporationDate)), appt(sato, jp, "董事", "2021-08-01"), appt(sato, jp, "代表取締役", "2021-08-01"), appt(tan, sg, "本地董事", "2020-09-01"), appt(tan, mas, "本地董事", "2025-05-02"), appt(sato, maj, "代表取締役", "2025-06-18")];
   const changes = [
     { id: uuid(), companyID: hk.id, kind: "shareholderChange" as const, effectiveOn: "2020-06-30", recordedOn: "2020-07-02", summary: "张三将远澜控股（香港）100% 股份转让给 Yuanlan Group Ltd." },
     { id: uuid(), companyID: jp.id, kind: "shareholderChange" as const, effectiveOn: "2021-08-01", recordedOn: "2021-08-03", summary: "设立，Yuanlan Group 持股 70%，王五代张三持股 30%" },
@@ -160,5 +182,5 @@ export async function installSampleData(s: Store) {
   try { await s.archiveBatch(reqs); } catch (e) { s.setError(`示例文件没有全部生成：${(e as Error).message}`); }
   try { await p.removeDir(tmp); } catch { /* 忽略 */ }
   s.onDataCleared?.();
-  s.showToast("示例数据已载入：12 家公司、3 个人、9 个负责方。");
+  s.showToast("示例数据已载入：17 家公司、4 个人、10 家中介。");
 }

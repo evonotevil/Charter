@@ -10,7 +10,7 @@ import {
   type Jurisdiction, type NodeRef, type ObligationRecord, type Party, type Person, type RuleTemplate, type RuleTrust,
   type RuleVerification, type Schedule, type SharedSettings, type TemplateLibrary,
   changeKindLabel, companyStatusLabel, emptyArchive, hasFile, isActiveOn, isHandedOff, isNotApplicable, itemMarkLabel,
-  latinPad, newPerson, normalizedStatus, pendingTypeIDs, ref, refKey, sameRef, typeAppliesTo, uuid, latinPadStart } from "../domain/models";
+  latinPad, newPerson, normalizedStatus, pendingTypeIDs, ref, refKey, sameRef, typeAppliesTo, uuid, latinPadStart, brandPalette } from "../domain/models";
 import {
   type Chain, type Freshness, type Obligation, type OwnershipBreakdown, adjustDay, breakdown, chainPaths, computeObligations,
   explainObligation, freshnessNeedsAttention, freshnessOf, freshnessRank, obligationStatus, openObligations as openOf,
@@ -50,7 +50,7 @@ const fileOf: Record<Exclude<Part, "library">, string> = {
 
 const emptyData = (): Data => ({
   companies: [], people: [], holdings: [], appointments: [], parties: [], documents: [], records: [], changes: [], groups: [],
-  settings: { reminderDays: [60, 30, 7], calendarEnabled: true, calendarName: "Charter", notificationHour: 9 },
+  settings: { reminderDays: [30, 7, 1], calendarEnabled: true, calendarName: "Charter", notificationHour: 9 },
   library: { version: 1, jurisdictions: [], documentTypes: [], rules: [], packets: [] }, requests: [],
 });
 
@@ -141,7 +141,8 @@ export class Store {
     return id;
   }
   get isPrimaryDevice() { return !this.data.settings.primaryDeviceID || this.data.settings.primaryDeviceID === this.deviceID; }
-  get complianceOn() { return this.data.settings.complianceEnabled ?? false; }
+  /** Charter 4：到期永远开着。 */
+  get complianceOn() { return true; }
 
   // MARK: 读写
 
@@ -628,7 +629,7 @@ export class Store {
 
   nudge(o: Obligation, channel: string) {
     this.commit((d) => this.upsertRecord(d, o, (r) => this.log(r, "nudged", undefined, channel)));
-    this.showToast("催办文字已复制，粘贴发给负责方即可。");
+    this.showToast("催办文字已复制，粘贴发给中介即可。");
   }
 
   revertToPending(o: Obligation) {
@@ -972,6 +973,166 @@ export class Store {
     return c;
   }
 
+  // MARK: Charter 4
+
+  /** 公司所属品牌（第一个包含它的集团）；共用公司返回 undefined。 */
+  brandOf = (companyID: string): CorporateGroup | undefined => this.groupsContaining(companyID)[0];
+  brandColor = (g?: CorporateGroup | null): string => {
+    if (!g) return "#9A9AA3";
+    if (g.color) return g.color;
+    const i = [...this.data.groups].sort((a, b) => a.name.localeCompare(b.name)).findIndex((x) => x.id === g.id);
+    return brandPalette[(i < 0 ? 0 : i) % brandPalette.length];
+  };
+
+  /** 一张表新建公司：股东（已有或新建）、董事（已有的人自动关联）、品牌、默认中介，一次提交、一次撤销。 */
+  createCompanyFull(args: {
+    name: string; jurisdiction: string; groupID?: string; partyID?: string; percent: number;
+    holder: { kind: "existing"; ref: NodeRef } | { kind: "newCompany"; name: string; jurisdiction: string } | { kind: "newPerson"; name: string } | null;
+    directors: string[]; incorporationDate?: Day; registrationNumber?: string;
+  }): Company {
+    const c: Company = { ...this.newCompanyDraft(args.name.trim(), args.jurisdiction), defaultPartyID: args.partyID,
+      incorporationDate: args.incorporationDate, registrationNumber: args.registrationNumber ?? "" };
+    this.commit((d) => {
+      d.companies.push(c as any);
+      let holder: NodeRef | null = null;
+      const h = args.holder;
+      if (h?.kind === "existing") holder = h.ref;
+      else if (h?.kind === "newCompany") {
+        const pc: Company = this.newCompanyDraft(h.name.trim(), h.jurisdiction);
+        d.companies.push(pc as any); holder = ref("company", pc.id);
+      } else if (h?.kind === "newPerson") {
+        const pp = newPerson(h.name.trim()); d.people.push(pp as any); holder = ref("person", pp.id);
+      }
+      if (holder) d.holdings.push({ id: uuid(), holder, companyID: c.id, percent: args.percent, shares: "", shareClass: "", isNominee: false, from: args.incorporationDate ?? this.today } as any);
+      for (const raw of args.directors) {
+        const name = raw.trim(); if (!name) continue;
+        let p = d.people.find((x) => x.name === name || x.aliases.includes(name));
+        if (!p) { const np = newPerson(name); d.people.push(np as any); p = d.people[d.people.length - 1]; }
+        d.appointments.push({ id: uuid(), personID: p.id, companyID: c.id, title: "董事", from: args.incorporationDate ?? this.today } as any);
+      }
+      if (args.groupID) {
+        const g = d.groups.find((x) => x.id === args.groupID);
+        if (g) {
+          const reach = groupRows(g as CorporateGroup, d.holdings as Holding[], d.companies as Company[], this.today).map((r) => r.companyID);
+          if (!reach.includes(c.id)) g.extraCompanyIDs.push(c.id);
+        }
+      }
+      d.changes.push({ id: uuid(), companyID: c.id, kind: "other", effectiveOn: args.incorporationDate ?? this.today, recordedOn: this.today, summary: "在 Charter 中建立" } as any);
+    }, { label: `新建 ${c.name}` });
+    return c;
+  }
+
+  // MARK: Charter 4 就地编辑：直接改，自动记入变更历史（事件型申报会按变更自动出现在到期里）
+
+  private editWithHistory(label: string, companyID: string, kind: ChangeKind, summary: string, fn: (d: Draft<Data>) => void) {
+    const change: ChangeRecord = { id: uuid(), companyID, kind, effectiveOn: this.today, recordedOn: this.today, summary };
+    const { undoID } = this.commit((d) => {
+      fn(d);
+      d.changes.push(change as any);
+      const affected = this.affectedCategories(kind);
+      for (const doc of d.documents) {
+        if (sameRef(doc.owner, ref("company", companyID)) && !doc.supersededBy) {
+          const t = this.docType(doc.typeID);
+          if (t && affected.includes(t.category)) doc.needsUpdate = true;
+        }
+      }
+    }, { label });
+    const events = this.company(companyID) ? this.eventRules(kind, this.company(companyID)!, this.today) : [];
+    this.showToast(`${summary}。已记入变更历史${events.length ? `，并加入到期：${events.map(([r]) => r.name).join("、")}` : ""}。`, undoID ? () => this.undoID(undoID) : undefined);
+    return change.id;
+  }
+
+  /** 改基本信息。只有名称、地址、编号、状态等有法律意义的字段记入历史。 */
+  editCompanyField<K extends keyof Company>(c: Company, key: K, value: Company[K], label: string) {
+    const old = c[key];
+    if (old === value) return;
+    const kind: ChangeKind = key === "registeredAddress" ? "addressChange" : key === "name" ? "nameChange" : key === "status" ? "statusChange" : "other";
+    const show = (v: unknown) => (v === undefined || v === "" ? "空" : key === "status" ? companyStatusLabel[v as keyof typeof companyStatusLabel] : String(v));
+    this.editWithHistory(`修改${label}`, c.id, kind, (old === undefined || old === "" ? `${label}填写为“${show(value)}”` : `${label}由“${show(old)}”改为“${show(value)}”`), (d) => {
+      const x = d.companies.find((y) => y.id === c.id);
+      if (!x) return;
+      if (key === "name" && old) x.formerNames = [...x.formerNames, old as string];
+      (x as any)[key] = value;
+    });
+  }
+
+  addShareholderInline(companyID: string, holder: { kind: "existing"; ref: NodeRef } | { kind: "newPerson"; name: string } | { kind: "newCompany"; name: string; jurisdiction: string }, percent: number) {
+    let r: NodeRef | null = holder.kind === "existing" ? holder.ref : null;
+    const created: { person?: Person; company?: Company } = {};
+    if (holder.kind === "newPerson") { created.person = newPerson(holder.name.trim()); r = ref("person", created.person.id); }
+    if (holder.kind === "newCompany") { created.company = this.newCompanyDraft(holder.name.trim(), holder.jurisdiction); r = ref("company", created.company.id); }
+    const h: Holding = { id: uuid(), holder: r!, companyID, percent, shares: "", shareClass: "", isNominee: false, from: this.today };
+    try {
+      validateHoldings([...this.data.holdings, h], new Set([...this.data.companies.map((c) => c.id), ...(created.company ? [created.company.id] : [])]),
+        new Set([...this.data.people.map((p) => p.id), ...(created.person ? [created.person.id] : [])]), new Set([companyID]));
+    } catch (e) { this.setError(`无法添加股东：${(e as Error).message}`); return; }
+    const name = created.person?.name ?? created.company?.name ?? this.nameOf(r!);
+    this.editWithHistory("添加股东", companyID, "shareholderChange", `新增股东 ${name} ${percentLabel(percent)}`, (d) => {
+      if (created.person) d.people.push(created.person as any);
+      if (created.company) d.companies.push(created.company as any);
+      d.holdings.push(h as any);
+      this.tidyGroups(d);
+    });
+  }
+
+  endHolding(h: Holding) {
+    this.editWithHistory("移除股东", h.companyID, "shareholderChange", `${this.nameOf(h.holder)} 不再持股（原 ${percentLabel(h.percent)}）`, (d) => {
+      const x = d.holdings.find((y) => y.id === h.id);
+      if (!x) return;
+      if (x.from && x.from >= this.today) d.holdings = d.holdings.filter((y) => y.id !== h.id); else x.to = this.today;
+      this.tidyGroups(d);
+    });
+  }
+
+  setHoldingPercent(h: Holding, percent: number) {
+    if (percent === h.percent || !(percent > 0 && percent <= 100)) return;
+    this.editWithHistory("修改持股比例", h.companyID, "shareholderChange", `${this.nameOf(h.holder)} 持股由 ${percentLabel(h.percent)} 改为 ${percentLabel(percent)}`, (d) => {
+      const x = d.holdings.find((y) => y.id === h.id);
+      if (x) x.percent = percent;
+    });
+  }
+
+  addOfficer(companyID: string, name: string, title: string) {
+    const n = name.trim();
+    if (!n) return;
+    const existing = this.data.people.find((p) => p.name === n || p.aliases.includes(n));
+    const person = existing ?? newPerson(n);
+    this.editWithHistory("添加董事或高管", companyID, "directorChange", `${n} 就任${title}`, (d) => {
+      if (!existing) d.people.push(person as any);
+      d.appointments.push({ id: uuid(), personID: person.id, companyID, title, from: this.today } as any);
+    });
+  }
+
+  endAppointment(a: Appointment) {
+    this.editWithHistory("移除董事或高管", a.companyID, "directorChange", `${this.person(a.personID)?.name ?? ""} 卸任${a.title}`, (d) => {
+      const x = d.appointments.find((y) => y.id === a.id);
+      if (!x) return;
+      if (x.from && x.from >= this.today) d.appointments = d.appointments.filter((y) => y.id !== a.id); else x.to = this.today;
+    });
+  }
+
+  /** 补生效日期：变更记录与对应的持股、任职一起改。 */
+  setChangeDate(changeID: string, day: Day) {
+    const c = this.data.changes.find((x) => x.id === changeID);
+    if (!c || c.effectiveOn === day) return;
+    const old = c.effectiveOn;
+    this.commit((d) => {
+      const x = d.changes.find((y) => y.id === changeID);
+      if (x) x.effectiveOn = day;
+      if (!c.companyID) return;
+      for (const h of d.holdings) if (h.companyID === c.companyID) { if (h.from === old && c.recordedOn === old) h.from = day; if (h.to === old && c.recordedOn === old) h.to = day; }
+      for (const a of d.appointments) if (a.companyID === c.companyID) { if (a.from === old && c.recordedOn === old) a.from = day; if (a.to === old && c.recordedOn === old) a.to = day; }
+    }, { label: "修改生效日期" });
+  }
+
+  // MARK: Charter 4 到期：确认或修改日期
+
+  confirmDue(o: Obligation, day?: Day) {
+    const before = o.record;
+    this.commit((d) => this.upsertRecord(d, o, (r) => { if (day && day !== o.originalDue) r.overrideDue = day; else if (day === o.originalDue) r.overrideDue = undefined; r.dateConfirmed = true; }));
+    this.showToast(day && day !== o.due ? `已改为 ${D.long(day)}，并标为已确认。` : "日期已确认。", () => this.restoreRecord(o, before));
+  }
+
   createPerson(name: string): Person {
     const p = newPerson(name);
     this.commit((d) => { d.people.push(p as any); });
@@ -1036,6 +1197,15 @@ export class Store {
       }
     }
     return seen;
+  }
+
+  /** 品牌视图的范围：品牌内的公司，加上它们上面的共用控股公司。 */
+  brandScope(groupID: string | null, day?: Day): Set<string> | null {
+    const base = this.companyIDsForFilter(groupID, day);
+    if (!base || !groupID || !this.group(groupID)) return base;
+    const out = new Set(base);
+    for (const id of base) for (const up of this.upwardScope(id, day)) out.add(up);
+    return out;
   }
 
   // MARK: 人员
@@ -1391,7 +1561,7 @@ export class Store {
     this.performUndoable("取消等回件", "已不再等这份补发", (d) => { const x = d.requests.find((y) => y.id === id); if (x) x.status = "cancelled"; });
   }
   reassignRequest(id: string, partyID?: string) {
-    this.performUndoable("改负责方", `已改由${latinPad(this.party(partyID)?.name ?? "未指定负责方")}补发`, (d) => { const x = d.requests.find((y) => y.id === id); if (x) x.partyID = partyID; });
+    this.performUndoable("改中介", `已改由${latinPad(this.party(partyID)?.name ?? "未指定中介")}补发`, (d) => { const x = d.requests.find((y) => y.id === id); if (x) x.partyID = partyID; });
   }
   /** 归档之后：把正在等这些文件的请求标为已收到。在同一个修改里调用。 */
   closeRequests(d: Draft<Data>, archived: Document[]): string {
@@ -1404,7 +1574,7 @@ export class Store {
       r.receivedTypeIDs = [...(r.receivedTypeIDs ?? []), doc.typeID];
       r.receivedDocumentIDs.push(doc.id);
       if (!pendingTypeIDs(r as DocumentRequest).length) r.status = "received";
-      phrases.push(`${this.party(r.partyID)?.name ?? "负责方"} 补发的${latinPadStart(this.docType(doc.typeID)?.name ?? "文件")}`);
+      phrases.push(`${this.party(r.partyID)?.name ?? "中介"} 补发的${latinPadStart(this.docType(doc.typeID)?.name ?? "文件")}`);
     }
     if (!phrases.length) return "";
     if (phrases.length > 2) return `，已收到 ${phrases.length} 份补发的文件`;
@@ -1513,7 +1683,7 @@ export class Store {
     this.showToast(`已从 Charter 移除 ${removed} 份文件的记录，文件夹里的文件仍保留。`, undoID ? () => this.undoID(undoID) : undefined);
   }
 
-  // MARK: 负责方
+  // MARK: 中介
 
   partyReferences(id: string) {
     const d = this.data;
@@ -1521,9 +1691,9 @@ export class Store {
     const ruleAssignments = d.companies.reduce((a, c) => a + Object.values(c.rulePartyIDs).filter((x) => x === id).length, 0);
     const records = d.records.filter((r) => r.partyID === id).length;
     const lines: string[] = [];
-    if (defaultCompanies) lines.push(`${defaultCompanies} 家公司的默认负责方将改为未指定`);
-    if (ruleAssignments) lines.push(`${ruleAssignments} 条按规则指定的负责方将改为跟随公司默认`);
-    if (records) lines.push(`${records} 条事项记录将改为未指定负责方，交办历史保留`);
+    if (defaultCompanies) lines.push(`${defaultCompanies} 家公司的默认中介将改为未指定`);
+    if (ruleAssignments) lines.push(`${ruleAssignments} 条按规则指定的中介将改为跟随公司默认`);
+    if (records) lines.push(`${records} 条事项记录将改为未指定中介，交办历史保留`);
     return { isEmpty: !defaultCompanies && !ruleAssignments && !records, lines };
   }
 
@@ -1536,8 +1706,8 @@ export class Store {
       }
       for (const r of d.records) if (r.partyID === p.id) r.partyID = undefined;
       for (const r of d.requests) if (r.partyID === p.id) r.partyID = undefined;
-    }, { label: "删除负责方" });
-    this.showToast(`已删除负责方“${p.name}”。`, undoID ? () => this.undoID(undoID) : undefined);
+    }, { label: "删除中介" });
+    this.showToast(`已删除中介“${p.name}”。`, undoID ? () => this.undoID(undoID) : undefined);
   }
 
   // MARK: 备份
@@ -1598,7 +1768,7 @@ export class Store {
   get clearSummaryLines(): string[] {
     const d = this.data;
     return [["公司", d.companies.length, "家"], ["集团", d.groups.length, "个"], ["人员", d.people.length, "人"], ["任职记录", d.appointments.length, "条"],
-      ["持股记录", d.holdings.length, "条"], ["文件（记录和已归档的文件本身）", d.documents.length, "份"], ["负责方", d.parties.length, "个"],
+      ["持股记录", d.holdings.length, "条"], ["文件（记录和已归档的文件本身）", d.documents.length, "份"], ["中介", d.parties.length, "个"],
       ["合规事项和交办记录", d.records.length, "条"], ["变更记录", d.changes.length, "条"]].map(([a, b, c]) => `${a}：${b} ${c}`);
   }
 
