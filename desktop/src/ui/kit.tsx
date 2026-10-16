@@ -545,9 +545,9 @@ export function useMemoOnce<T>(f: () => T) { return useMemo(f, []); }
 export function PageHeader({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children?: ReactNode }) {
   return (
     <div className="col gap4">
-      <div className="row gap16" style={{ minHeight: 40 }}>
-        <h1 className="t-page ellipsis">{title}</h1>
-        <span className="spacer" />
+      <div className="row gap16" style={{ minHeight: 40 }} data-tauri-drag-region>
+        <h1 className="t-page ellipsis" data-tauri-drag-region>{title}</h1>
+        <span className="spacer" data-tauri-drag-region />
         {children}
       </div>
       {subtitle && <span className="t-body muted">{subtitle}</span>}

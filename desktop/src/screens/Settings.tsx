@@ -30,7 +30,7 @@ export function SettingsView() {
   return (
     <div className="settings-window row" role="dialog" aria-label="设置">
       <nav className="col" style={{ width: 210, flex: "none", padding: "16px 12px 12px", gap: 16, background: "var(--band)" }}>
-        <div className="drag-region" style={{ height: platform().os === "mac" ? 18 : 0, margin: "-16px -12px 0" }} />
+        <div className="drag-region" data-tauri-drag-region style={{ height: platform().os === "mac" ? 18 : 0, margin: "-16px -12px 0" }} />
         {settingsGroups(store.complianceOn).map((g, i) => (
           <div key={i} className="col" style={{ gap: 2 }}>
             {g.title && <span className="t-micro muted" style={{ padding: "0 0 4px 12px" }}>{g.title}</span>}

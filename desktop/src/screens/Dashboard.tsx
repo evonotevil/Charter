@@ -123,9 +123,9 @@ function Header() {
   const h = new Date().getHours();
   const mod = navigator.platform.toLowerCase().includes("mac") ? "⌘K" : "Ctrl K";
   return (
-    <div className="row gap16" style={{ minHeight: 40 }}>
-      <h1 className="t-page ellipsis">{h < 12 ? "早上好" : h < 18 ? "下午好" : "晚上好"}</h1>
-      <span className="spacer" />
+    <div className="row gap16" style={{ minHeight: 40 }} data-tauri-drag-region>
+      <h1 className="t-page ellipsis" data-tauri-drag-region>{h < 12 ? "早上好" : h < 18 ? "下午好" : "晚上好"}</h1>
+      <span className="spacer" data-tauri-drag-region />
       <button className="row gap8" onClick={() => router.open({ kind: "quickSearch" })} aria-label="查找公司或人员"
         style={{ width: 260, height: 38, padding: "0 6px 0 16px", borderRadius: 999, background: "var(--surface)", boxShadow: "inset 0 0 0 1px var(--hairline)" }}>
         <Icon name="magnifyingglass" className="muted" /><span className="muted grow" style={{ textAlign: "left" }}>查找公司或人员</span>

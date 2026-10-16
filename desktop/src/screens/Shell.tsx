@@ -116,7 +116,7 @@ function Sidebar() {
   const groupExists = (id: string) => !!store.group(id);
   return (
     <aside className="col" style={{ width: 250, flex: "none", padding: "8px 12px 12px", background: "var(--canvas)", borderRight: "1px solid var(--hairline)" }}>
-      <div className="drag-region" style={{ height: platform().os === "mac" ? 34 : 6, flex: "none" }} />
+      <div className="drag-region" data-tauri-drag-region style={{ height: platform().os === "mac" ? 34 : 6, flex: "none" }} />
       <div className="row gap8" style={{ paddingBottom: 16 }}>
         <GroupSwitcher />
         <ActionMenu icon="plus" ariaLabel="新建" entries={[
@@ -168,7 +168,7 @@ export function Shell() {
     <div className="row" style={{ height: "100%", alignItems: "stretch" }}>
       <Sidebar />
       <main className="col grow" style={{ position: "relative", minWidth: 0, background: "var(--canvas)" }} {...(blocked && !store.isImporting ? { inert: "" } as any : {})}>
-        <div className="drag-region" style={{ height: platform().os === "mac" ? 28 : 6, flex: "none" }} />
+        <div className="drag-region" data-tauri-drag-region style={{ height: platform().os === "mac" ? 28 : 6, flex: "none" }} />
         <div className="col grow" style={{ minHeight: 0 }}><Page /></div>
       </main>
       <SheetHost />
