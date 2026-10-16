@@ -86,7 +86,7 @@ export class MemoryPlatform implements Platform {
     return out;
   }
   async pickFolder() { return null; }
-  async saveDialog() { return null; }
+  async saveDialog(opts?: { defaultName: string }) { return typeof document === "undefined" ? null : this.join("/exports", opts?.defaultName ?? "export"); }
   async notify(title: string, body: string) { this.notes.push({ title, body }); }
   async copyText(t: string) { this.clipboard = t; try { await navigator.clipboard?.writeText(t); } catch { /* 忽略 */ } }
   fileURL(p: string) {

@@ -251,7 +251,7 @@ function merged<T>(cur: T[], inc: T[], key: (x: T) => string): T[] {
 export async function applyConfig(s: Store, b: ConfigBundle, mode: "merge" | "replace") {
   if (s.loadFailed || s.isLoading) { s.setError("数据还没有正常载入，暂不能导入配置。请检查数据文件夹后重新载入。"); return; }
   const { changes } = configImportDiff(s, b, mode);
-  if (!changes) { s.showToast("这份配置和当前的完全一样，没有需要导入的内容。"); return; }
+  if (!changes) { s.showToast("这份配置和当前的完全一样，没有需要导入的内容。配置只含设置和模板库，公司和文件请用“从备份恢复”。"); return; }
   s.errorMessage = null;
   await s.snapshotBeforeChange("导入配置前");
   s.undoStack = []; s.redoStack = [];

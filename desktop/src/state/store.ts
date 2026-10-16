@@ -247,6 +247,9 @@ export class Store {
     return this.writeQueue;
   }
 
+  /** 等排队中的保存全部写完。备份、快照读的是磁盘上的文件，先调用它，免得漏掉刚做的修改。 */
+  async flushWrites() { try { await this.writeQueue; } catch { /* 错误已在保存时报告 */ } }
+
   /** 多个集合作为一次事务写入：失败时回滚已写的集合，并保持内存里的旧数据。 */
   async persistCollections(next: Partial<Data>) {
     if (this.loadFailed || this.isLoading) throw unavailableError();
@@ -1541,6 +1544,7 @@ export class Store {
   async snapshotBeforeChange(reason: string): Promise<DataSnapshot | null> {
     if (this.loadFailed || this.isLoading) return null;
     try {
+      await this.flushWrites();
       const snap = await makeSnapshot(this.folder, reason);
       this.snapshots = await listSnapshots(this.folder);
       return snap;
@@ -1555,6 +1559,7 @@ export class Store {
   async backUpNow() {
     if (this.loadFailed || this.isLoading) { this.setError("数据还没有正常载入，暂不能备份。"); return; }
     try {
+      await this.flushWrites();
       await makeSnapshot(this.folder, "手动备份");
       await this.refreshSnapshots();
       this.showToast("已备份当前数据。");
@@ -1567,6 +1572,7 @@ export class Store {
     if (this.isImporting) { this.setError("文件正在归档，请完成后再恢复。"); return; }
     if (this.isLoading) return;
     try {
+      await this.flushWrites();
       if (!this.loadFailed) await makeSnapshot(this.folder, `恢复到 ${snapshotTitle(s.date)} 之前`);
       await restoreSnapshot(s, this.folder);
     } catch (e) {
@@ -1600,7 +1606,7 @@ export class Store {
     if (this.loadFailed || this.isLoading) { this.setError("数据还没有正常载入，暂不能清空。请检查数据文件夹后重新载入。"); return; }
     // 清空前的快照连同归档文件一起保存，恢复这份快照就能完整找回。快照写不成就不清空。
     let snap: DataSnapshot;
-    try { snap = await makeSnapshot(this.folder, "清空所有数据前"); }
+    try { await this.flushWrites(); snap = await makeSnapshot(this.folder, "清空所有数据前"); }
     catch (e) { this.setError(`清空前的备份没有写成，数据没有改动：${(e as Error).message}。请确认数据文件夹可写入后重试。`); return; }
     this.undoStack = []; this.redoStack = [];
     const files = this.data.documents.map((d) => this.fileURL(d));

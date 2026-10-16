@@ -8,6 +8,7 @@ import { useApp } from "../state/hooks";
 import { type SettingsPane, settingsGroups, settingsPaneSymbol, settingsPaneTitle } from "../state/router";
 import { syncDetail, syncNeedsAttention, syncSymbol, syncTitle } from "../state/sync";
 import { type ConfigBundle, applyConfig, configImportDiff, exportConfig, readConfig } from "../state/actions";
+import { type OpenedBackup, exportBackup, readBackup, restoreBackup } from "../services/backup";
 import { installSampleData } from "../state/sample";
 import { nonArchiveTypeIDs } from "../state/store";
 import { platform } from "../platform/platform";
@@ -125,6 +126,8 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
   const [confirmClear, setConfirmClear] = useState(false);
   const [restoring, setRestoring] = useState<DataSnapshot | null>(null);
   const [pendingConfig, setPendingConfig] = useState<{ bundle: ConfigBundle; fileName: string } | null>(null);
+  const [pendingBackup, setPendingBackup] = useState<{ opened: OpenedBackup; fileName: string } | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
   const [newDay, setNewDay] = useState("");
   useEffect(() => { if (pane === "backup") void store.refreshSnapshots(); }, [pane]);
   const p = platform();
@@ -200,8 +203,27 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
         </Row>
       </Section>}
       {pane === "backup" && <>
+        <Section title="档案备份">
+          <Row icon="archivebox" title="导出备份" detail="把全部档案打包成一个 ZIP：公司、集团、人员、关系、负责方、事项记录、归档的 PDF，以及设置和模板库。可以存到别处，或在另一台电脑上恢复。">
+            <Button size="small" disabled={store.isLoading || store.loadFailed || backupBusy} onClick={async () => {
+              const t = await p.saveDialog({ defaultName: `Charter 备份 ${store.today}.zip`, extensions: ["zip"], title: "导出备份" });
+              if (!t) return;
+              setBackupBusy(true);
+              try { const i = await exportBackup(store, t); store.showToast(`备份已导出：${i.companies} 家公司、${i.groups} 个集团、${i.documents} 份文件记录、${i.files} 个归档文件。`); }
+              catch (e) { store.setError(`导出备份失败：${(e as Error).message}。请换一个可写入的位置再试。`); }
+              finally { setBackupBusy(false); }
+            }}>{backupBusy ? "正在导出…" : "导出备份…"}</Button>
+          </Row>
+          <Row icon="arrow.counterclockwise" title="从备份恢复" detail="用备份替换当前的全部档案。恢复前会自动给当前状态做一份快照，随时可以退回。">
+            <Button size="small" disabled={store.isLoading || store.isImporting || backupBusy} onClick={async () => {
+              const f = (await p.pickFiles({ multiple: false, extensions: ["zip"], title: "选择备份" }))[0];
+              if (!f) return;
+              try { setPendingBackup({ opened: await readBackup(f), fileName: f.split(/[\\/]/).pop()! }); } catch (e) { store.setError((e as Error).message); }
+            }}>从备份恢复…</Button>
+          </Row>
+        </Section>
         <Section title="配置">
-          <Row icon="square.and.arrow.up" title="导出配置" detail="把提醒设置和模板库（法域、文件类型、档案条目、规则、用途）存成一个文件，可在另一套数据里导入。不含公司、文件等档案数据。">
+          <Row icon="square.and.arrow.up" title="导出配置" detail="只含提醒设置和模板库（法域、文件类型、档案条目、规则、用途），用来让另一套数据沿用同样的规则。不含公司、集团、文件等档案；要搬迁档案请用上面的“导出备份”。">
             <Button size="small" onClick={async () => { const t = await p.saveDialog({ defaultName: `Charter 配置 ${store.today}.json`, extensions: ["json"], title: "导出" }); if (t) await exportConfig(store, t); }}>导出配置…</Button>
           </Row>
           <Row icon="square.and.arrow.down" title="导入配置" detail="读取导出的配置文件，确认变化后再应用。">
@@ -246,6 +268,15 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
       {restoring && <ConfirmSheet title={`恢复到 ${snapshotTitle(restoring.date)} 的状态？`} message={"当前状态会先自动保存一份快照，之后也可以再恢复回来。" + (restoring.reason === "清空所有数据前" ? "这份快照连同当时的归档文件一起保存，恢复时会一起放回。" : "快照只包含档案记录，不包含 PDF 文件本身。")}
         details={[`快照原因：${restoring.reason}`, ...counts(restoring).map((c) => `快照里有 ${c}`), `当前：${store.data.companies.length} 家公司、${store.data.documents.length} 份文件`]}
         confirmTitle="恢复" onClose={() => setRestoring(null)} onConfirm={() => { const x = restoring; setRestoring(null); void store.restoreFromSnapshot(x); }} />}
+      {pendingBackup && (() => {
+        const i = pendingBackup.opened.info, d = store.data;
+        const when = new Date(i.exportedAt);
+        return <ConfirmSheet title="用这份备份替换当前档案？" message={`来自“${pendingBackup.fileName}”，导出于 ${isNaN(+when) ? i.exportedAt : when.toLocaleString("zh-CN")}。当前档案会先自动保存一份快照，之后可在这里恢复回来。`}
+          details={[`备份里：${i.companies} 家公司、${i.groups} 个集团、${i.people} 个人员、${i.documents} 份文件记录、${i.files} 个归档文件`,
+            `当前：${d.companies.length} 家公司、${d.groups.length} 个集团、${d.people.length} 个人员、${d.documents.length} 份文件记录`]}
+          confirmTitle="恢复" onClose={() => setPendingBackup(null)}
+          onConfirm={() => { const x = pendingBackup.opened; setPendingBackup(null); void restoreBackup(store, x); }} />;
+      })()}
       {pendingConfig && <ConfigImportSheet bundle={pendingConfig.bundle} fileName={pendingConfig.fileName} onClose={() => setPendingConfig(null)} />}
     </Scroll>
   );
@@ -262,7 +293,7 @@ function ConfigImportSheet({ bundle, fileName, onClose }: { bundle: ConfigBundle
         trailing={<><Button onClick={onClose}>取消</Button><Button kind={mode === "replace" ? "danger" : "primary"} disabled={!diff.changes} onClick={() => { void applyConfig(store, bundle, mode); onClose(); }}>{mode === "merge" ? "合并导入" : "全部替换"}</Button></>}>
         <div className="col" style={{ gap: 18 }}>
           <FormGroup title="导入方式"><RadioGroup options={[["merge", "合并（同名覆盖）"], ["replace", "全部替换"]]} value={mode} onChange={setMode} /></FormGroup>
-          <FormGroup title="将会改变">{diff.changes ? diff.lines.map((l, i) => <span key={i}>{l}</span>) : <span className="muted">这份配置和当前的完全一样，导入后不会有任何变化。</span>}</FormGroup>
+          <FormGroup title="将会改变">{diff.changes ? diff.lines.map((l, i) => <span key={i}>{l}</span>) : <span className="muted">这份配置和当前的完全一样，导入后不会有任何变化。配置只包含设置和模板库；要找回公司、集团和文件，请用“从备份恢复”。</span>}</FormGroup>
           {mode === "replace" && <span className="t-meta amber-text">全部替换会移除这里有、配置里没有的规则、用途和未使用的文件类型。</span>}
         </div>
       </SheetScaffold>

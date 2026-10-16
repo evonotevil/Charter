@@ -1,6 +1,6 @@
 // SF Symbols 名称到 Lucide 图标的映射：沿用 Swift 版的图标命名，界面代码可以逐行对照移植。
 
-import {
+import { ArchiveRestore,
   AlertCircle, AlertOctagon, AlertTriangle, Archive, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight,
   BadgeCheck, Bell, BellRing, Building2, Calendar, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight,
   ChevronsUpDown, ChevronUp, Circle, CircleDashed, Clock, ClockAlert, Cloud, CloudAlert, CloudOff, Copy, Ellipsis,
@@ -20,7 +20,7 @@ const map: Record<string, LucideIcon> = {
   "square.stack.3d.up": Layers, paperplane: Send, minus: Minus, hourglass: Hourglass, "chevron.right": ChevronRight,
   calendar: Calendar, "arrow.uturn.backward": RotateCcw, "tray.and.arrow.down": Inbox, "square.and.arrow.up": Upload,
   "point.3.connected.trianglepath.dotted": Network, "person.2": Users, "minus.circle": MinusCircle, folder: Folder,
-  "doc.text.magnifyingglass": FileSearch, "clock.arrow.circlepath": History, "chevron.left": ChevronLeft, checklist: ListChecks,
+  "doc.text.magnifyingglass": FileSearch, "clock.arrow.circlepath": History, "arrow.counterclockwise": ArchiveRestore, "chevron.left": ChevronLeft, checklist: ListChecks,
   "arrow.up.forward.app": ExternalLink, "xmark.circle": XCircle, "square.and.pencil": PencilLine, "questionmark.circle": HelpCircle,
   paperclip: Paperclip, "info.circle": Info, gearshape: Settings, clock: Clock, "chevron.up.chevron.down": ChevronsUpDown,
   "chevron.down": ChevronDown, "chevron.up": ChevronUp, "checkmark.seal": BadgeCheck, "building.columns": Landmark,
