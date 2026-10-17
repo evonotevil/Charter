@@ -23,14 +23,15 @@ import { InlineText } from "./Agents";
 export function SettingsView() {
   const { router } = useApp();
   const pane: SettingsPane = router.settings ?? "sync";
-  const close = () => router.set("settings", null);
+  const [leaving, setLeaving] = useState(false);
+  const close = () => { setLeaving(true); setTimeout(() => router.set("settings", null), 120); };
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !router.sheet && !document.querySelector(".overlay .sheet, .popover")) { e.preventDefault(); close(); } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
   return (
-    <div className="s4-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+    <div className={`s4-backdrop ${leaving ? "out" : ""}`} onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div className="s4-window appear" role="dialog" aria-label="设置">
         <nav className="s4-nav">
           <div style={{ fontSize: 18, fontWeight: 800, padding: "4px 12px 6px" }}>设置</div>
@@ -75,11 +76,11 @@ export function SGroup({ children, footer }: { children: ReactNode; footer?: Rea
 export function SRow({ title, detail, children, danger }: { title: ReactNode; detail?: ReactNode; children?: ReactNode; danger?: boolean }) {
   return (
     <div className="s4-row">
-      <span className="col grow" style={{ gap: 3, minWidth: 0 }}>
+      <span className="col" style={{ gap: 3, flex: "1 1 160px", minWidth: 96 }}>
         <span style={{ fontSize: 14, fontWeight: 600, color: danger ? "var(--danger)" : undefined }}>{title}</span>
         {detail && <span className="t-meta muted">{detail}</span>}
       </span>
-      {children && <span className="row gap8" style={{ flex: "none" }}>{children}</span>}
+      {children && <span className="row gap8" style={{ flex: "0 1 auto", minWidth: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>{children}</span>}
     </div>
   );
 }
@@ -329,10 +330,10 @@ function GroupDetail({ g }: { g: CorporateGroup }) {
         <SRow title={<span className="muted" style={{ fontWeight: 500, fontSize: 13 }} title="从这里沿持股往下，自动算出成员">顶层</span>}>
           <span className="row gap6 wrap" style={{ justifyContent: "flex-end", maxWidth: 380 }}>
             {g.tops.map((t) => (
-              <span key={refKey(t)} className="v4-chip">{t.kind === "company" ? store.company(t.id)?.jurisdiction + " " : ""}{store.nameOf(t)}
+              <span key={refKey(t)} className="v4-chip" style={{ maxWidth: 320 }}>{t.kind === "company" ? store.company(t.id)?.jurisdiction + " " : ""}{store.nameOf(t)}
                 <button aria-label={`移除顶层 ${store.nameOf(t)}`} onClick={() => save((x) => { x.tops = x.tops.filter((y) => refKey(y) !== refKey(t)); }, "移除集团顶层")}><Icon name="xmark" size={8} /></button></span>
             ))}
-            <button className="link t-meta" onClick={() => { setPick(pick === "top" ? null : "top"); setQ(""); }}>+ 添加</button>
+            <button className="link t-meta" style={{ whiteSpace: "nowrap" }} onClick={() => { setPick(pick === "top" ? null : "top"); setQ(""); }}>+ 添加</button>
           </span>
         </SRow>
       </div>

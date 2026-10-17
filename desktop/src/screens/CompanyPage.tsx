@@ -1,7 +1,7 @@
 // Charter 4 公司页：一页两栏。左：基本信息、股东、董事和高管、变更历史；右：到期事项、档案清单、默认中介。
 // 字段直接改，改动自动记入变更历史；涉及申报义务的变更会自动出现在到期里。拖入文件直接归档。
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
 import { type ArchiveItem, type Company, type NodeRef, archiveItemName, archiveStateLabel, companyStatusLabel, companyStatuses, contactsOf, hasFile, isNotApplicable, ref } from "../domain/models";
 import { percentLabel } from "../domain/engine";
@@ -15,12 +15,24 @@ import { InlineText } from "./Agents";
 import { leftText } from "./InfoCard";
 import { useStageFile } from "./common";
 
+/** 新出现的行（新增或撤销恢复）返回 true，用来做 1 秒浅色高亮。首次渲染时的行不算。 */
+function useNewIDs(ids: string[]) {
+  const seen = useRef<Set<string> | null>(null);
+  const marks = useRef(new Set<string>());
+  if (!seen.current) seen.current = new Set(ids);
+  for (const id of ids) if (!seen.current.has(id)) { seen.current.add(id); marks.current.add(id); }
+  return (id: string) => marks.current.has(id);
+}
+
 export function CompanyPage({ company: c }: { company: Company }) {
   const { store, router } = useApp();
   const [startStage, stageNode] = useStageFile();
   const g = store.brandOf(c.id);
+  const [busy, setBusy] = useState(false);
   const onDrop = async (paths: string[]) => {
-    const left = await quickArchive(store, paths, c.id);
+    const t = setTimeout(() => setBusy(true), 300);
+    let left: string[] = [];
+    try { left = await quickArchive(store, paths, c.id); } finally { clearTimeout(t); setBusy(false); }
     if (left.length === 1) void startStage({ owner: ref("company", c.id), path: left[0] });
     else if (left.length > 1) router.startImport(left, { kind: "company", id: c.id });
   };
@@ -38,6 +50,7 @@ export function CompanyPage({ company: c }: { company: Company }) {
               {c.status !== "active" && <span className="v4-chip warn">{companyStatusLabel[c.status]}</span>}
             </div>
           </div>
+          {busy && <span className="busy-chip" role="status"><span className="ring" />正在识别…</span>}
           <Button onClick={() => { void platform().copyText(store.companySummary(c)); store.showToast("公司资料摘要已复制。"); }}>复制摘要</Button>
           <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" showsChevron={false} entries={[
             item("准备文件包…", "shippingbox", () => router.open({ kind: "packet", companyID: c.id })),
@@ -102,12 +115,13 @@ function Basics({ c }: { c: Company }) {
 function Shareholders({ c }: { c: Company }) {
   const { store, router } = useApp();
   const hs = store.directShareholders(c.id);
+  const isNew = useNewIDs(hs.map((h) => h.id));
   const total = hs.reduce((a, h) => a + h.percent, 0);
   const [adding, setAdding] = useState(false);
   return (
     <Card title="股东" aside={<span className="t-meta muted">合计 <b className="num" style={{ color: total > 0 && Math.abs(total - 100) > 0.01 ? "var(--amber-text)" : "var(--ink)" }}>{percentLabel(total)}</b></span>}>
       {hs.map((h) => (
-        <div key={h.id} className="cp-line">
+        <div key={h.id} className={`cp-line ${isNew(h.id) ? "cp-new" : ""}`}>
           <span className="v4-code" style={h.holder.kind === "person" ? { borderRadius: "50%" } : undefined}>{h.holder.kind === "company" ? store.company(h.holder.id)?.jurisdiction : [...store.nameOf(h.holder)][0]}</span>
           <button className="v4-link ellipsis grow" style={{ textAlign: "left" }} onClick={() => h.holder.kind === "company" ? router.openCompany(h.holder.id) : router.openPerson(h.holder.id)}>{store.nameOf(h.holder)}{h.isNominee ? <span className="muted" style={{ fontWeight: 400 }}>（名义）</span> : null}</button>
           <InlineText value={String(h.percent)} label="持股比例" className="num" style={{ width: 64, textAlign: "right", fontWeight: 600 }} onCommit={(v) => store.setHoldingPercent(h, parseFloat(v))} />
@@ -150,6 +164,7 @@ function HolderPicker({ c, onDone }: { c: Company; onDone: () => void }) {
 function Officers({ c }: { c: Company }) {
   const { store, router } = useApp();
   const os = store.officers(c.id);
+  const isNew = useNewIDs(os.map((a) => a.id));
   const [name, setName] = useState("");
   const [title, setTitle] = useState("董事");
   const [adding, setAdding] = useState(false);
@@ -159,7 +174,7 @@ function Officers({ c }: { c: Company }) {
       {os.map((a) => {
         const p = store.person(a.personID);
         return (
-          <div key={a.id} className="cp-line">
+          <div key={a.id} className={`cp-line ${isNew(a.id) ? "cp-new" : ""}`}>
             <span className="v4-code" style={{ borderRadius: "50%" }}>{[...(p?.name ?? "?")][0]}</span>
             <button className="v4-link ellipsis grow" style={{ textAlign: "left" }} onClick={() => router.openPerson(a.personID)}>{p?.name}</button>
             <span className="t-meta muted">{a.title}{a.from ? ` · ${D.long(a.from)}起` : ""}</span>
@@ -184,10 +199,11 @@ function Officers({ c }: { c: Company }) {
 function History({ c }: { c: Company }) {
   const { store } = useApp();
   const list = store.data.changes.filter((x) => x.companyID === c.id).sort((a, b) => (a.effectiveOn < b.effectiveOn ? 1 : a.effectiveOn > b.effectiveOn ? -1 : 0));
+  const isNew = useNewIDs(list.map((x) => x.id));
   return (
     <Card title="变更历史" aside={<span className="t-meta muted">生效日期可改</span>}>
       {list.slice(0, 30).map((x) => (
-        <div key={x.id} className="cp-line" style={{ alignItems: "flex-start", paddingTop: 8, paddingBottom: 8 }}>
+        <div key={x.id} className={`cp-line ${isNew(x.id) ? "cp-new" : ""}`} style={{ alignItems: "flex-start", paddingTop: 8, paddingBottom: 8 }}>
           <span className="grow" style={{ fontSize: 13.5, lineHeight: 1.5, minWidth: 0 }}>{x.summary}</span>
           <DateField value={x.effectiveOn} onChange={(d) => d && store.setChangeDate(x.id, d)} allowsClear={false} minWidth={140} />
         </div>

@@ -95,7 +95,15 @@ export class Router {
   }
 
   open(sheet: Sheet) { this.sheet = sheet; this.emit(); }
-  close() { this.sheet = null; this.emit(); }
+  /** 关闭弹窗：先淡出（fast），再卸载。 */
+  close() {
+    const sheet = this.sheet;
+    if (!sheet) return;
+    const root = typeof document !== "undefined" ? document.documentElement : null;
+    if (!root) { this.sheet = null; this.emit(); return; }
+    root.classList.add("closing-sheet");
+    setTimeout(() => { root.classList.remove("closing-sheet"); if (this.sheet === sheet) { this.sheet = null; this.emit(); } }, 120);
+  }
 
   startImport(paths: string[], context: ImportContext | null) {
     if (!paths.length) return;

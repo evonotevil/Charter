@@ -148,12 +148,13 @@ export function Shell() {
       <SheetHost />
       {router.settings && <SettingsView />}
       {store.toast && (
-        <div className={`toast ${store.toast.action ? "with-action" : ""}`} key={store.toast.id} role="status">
+        <div className={`toast ${store.toast.action ? "with-action" : ""} ${store.toast.leaving ? "out" : ""}`} key={store.toast.id} role="status"
+          onMouseEnter={() => store.pauseToast()} onMouseLeave={() => store.resumeToast()}>
           <span className="dot" style={{ background: store.toast.kind === "success" ? "var(--lime)" : "var(--danger)", color: store.toast.kind === "success" ? "var(--on-lime)" : "#fff" }}>
             <Icon name={store.toast.kind === "success" ? "checkmark" : "exclamationmark.circle.fill"} size={10} strokeWidth={3.5} />
           </span>
           <span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{store.toast.text}</span>
-          {store.toast.action && <button onClick={() => { const a = store.toast!.action!; store.toast = null; store.emit(); a(); }}>{store.toast.actionTitle}</button>}
+          {store.toast.action && <button onClick={() => { const a = store.toast!.action!; store.dismissToast(); a(); }}>{store.toast.actionTitle}</button>}
         </div>
       )}
       {store.isLoading && (

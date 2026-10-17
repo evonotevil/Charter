@@ -209,3 +209,23 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("Charter 启动失败");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atomic_write_replaces_existing_unicode_path() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("数据").join("公司.json");
+        write_atomic(&path, br#"{"version":1}"#).unwrap();
+        write_atomic(&path, br#"{"version":2}"#).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), br#"{"version":2}"#);
+        assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn encoded_file_header_preserves_unicode_and_windows_separator() {
+        assert_eq!(urlencoding_decode("C%3A%5C%E8%B5%84%E6%96%99%5C100%25.pdf"), "C:\\资料\\100%.pdf");
+    }
+}

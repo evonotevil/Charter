@@ -1,0 +1,108 @@
+name: Desktop release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x64
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+          - os: macos-latest
+            platform: macos-universal
+            target: universal-apple-darwin
+            bundles: app,dmg
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Install macOS architectures
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - run: npm ci
+      - name: Check versions
+        shell: bash
+        run: node scripts/check-version.mjs "${GITHUB_REF_NAME}"
+      - run: npm test
+      - run: npm run build
+      - name: Rust regression tests
+        run: cargo test --locked --release --manifest-path src-tauri/Cargo.toml
+      - name: Build installers
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Windows installer smoke test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/smoke-windows.ps1
+      - name: Verify macOS app and DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/Charter.app
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          lipo -archs "$APP/Contents/MacOS/charter" | tee macos-architectures.txt
+          python3 -c 'from pathlib import Path; a=set(Path("macos-architectures.txt").read_text().split()); assert a == {"arm64", "x86_64"}, a'
+          test -f "$APP/Contents/Resources/charter-templates.json"
+          hdiutil verify src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          ditto -c -k --sequesterRsrc --keepParent "$APP" src-tauri/target/universal-apple-darwin/release/bundle/Charter-macOS-universal.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.platform }}
+          if-no-files-found: error
+          path: |
+            desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
+            desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
+            desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            desktop/src-tauri/target/${{ matrix.target }}/release/bundle/*.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-${{ matrix.platform }}
+          if-no-files-found: ignore
+          path: |
+            desktop/windows-smoke.json
+            desktop/macos-architectures.txt
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          path: artifacts
+      - name: Collect installers and checksums
+        run: python3 desktop/scripts/collect-release.py artifacts release
+      - name: Publish verified installers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "Charter ${RELEASE_TAG#v}" --notes-file desktop/docs/RELEASE.md
+          gh release upload "$RELEASE_TAG" release/*
+          gh release edit "$RELEASE_TAG" --draft=false --latest

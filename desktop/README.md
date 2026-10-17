@@ -1,6 +1,18 @@
 # Charter 桌面版
 
-Tauri 2 + React + TypeScript。目前只出 Mac 安装包；代码本身也能在 Windows 和 Linux 上编译。
+Tauri 2 + React + TypeScript。Windows 与 macOS 安装包从 [GitHub Releases](https://github.com/evonotevil/Charter/releases/latest) 下载。
+
+## 在 Windows 上编译安装包
+
+安装 Node.js 22、Rust MSVC 工具链，以及带“使用 C++ 的桌面开发”工作负载的 Visual Studio Build Tools；随后运行：
+
+```powershell
+npm ci
+npm test
+npm run tauri build -- --bundles nsis,msi
+```
+
+产物位于 `src-tauri/target/release/bundle/nsis/` 和 `msi/`。安装器在需要时联网安装 WebView2。GitHub Actions 会在原生 Windows runner 上编译、测试、静默安装并检查应用能否创建窗口。
 
 ## 在 Mac 上编译安装包
 
@@ -15,7 +27,7 @@ brew install node                                        # Node.js 18 以上
 然后在这个文件夹里：
 
 ```bash
-npm install
+npm ci
 npm run tauri build -- --bundles dmg
 ```
 
@@ -33,4 +45,4 @@ npm test             # 单元测试
 
 ## 数据
 
-用户在设置里选数据文件夹（建议放在 iCloud 云盘或 OneDrive 里，多台电脑共用）。结构见 `../handoff/BUILD-PLAN.md`。
+用户在设置里选数据文件夹；跨 Windows 和 Mac 共用时可选择双方都能访问的 OneDrive 文件夹。旧版 Swift 数据请先备份再尝试连接。完整文件夹结构与设计见 `docs/CHARTER4-PLAN.md`。

@@ -54,7 +54,7 @@ const emptyData = (): Data => ({
   library: { version: 1, jurisdictions: [], documentTypes: [], rules: [], packets: [] }, requests: [],
 });
 
-export interface Toast { id: string; text: string; action?: () => void; kind: "success" | "failure"; actionTitle: string }
+export interface Toast { id: string; text: string; action?: () => void; kind: "success" | "failure"; actionTitle: string; leaving?: boolean }
 export interface UndoEntry { id: string; label: string; before: Data; after: Data; parts: Part[]; createdFiles: string[] }
 
 export const ungrouped = "__ungrouped__";
@@ -447,9 +447,28 @@ export class Store {
   showToast(text: string, action?: () => void, actionTitle = "撤销", kind: "success" | "failure" = "success") {
     const t: Toast = { id: uuid(), text, action, kind, actionTitle };
     this.toast = t;
-    if (this.toastTimer) clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => { if (this.toast?.id === t.id) { this.toast = null; this.emit(); } }, action ? 10000 : 3000);
+    this.toastRemaining = action ? 6000 : 4000;
+    this.startToastTimer();
     this.emit();
+  }
+  private toastRemaining = 0;
+  private toastStarted = 0;
+  private startToastTimer() {
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    const id = this.toast?.id;
+    this.toastStarted = Date.now();
+    this.toastTimer = setTimeout(() => { if (this.toast?.id === id) this.dismissToast(); }, this.toastRemaining);
+  }
+  /** 鼠标停在提示条上时暂停计时。 */
+  pauseToast() { if (this.toastTimer) { clearTimeout(this.toastTimer); this.toastTimer = null; this.toastRemaining = Math.max(1200, this.toastRemaining - (Date.now() - this.toastStarted)); } }
+  resumeToast() { if (this.toast && !this.toastTimer && !this.toast.leaving) this.startToastTimer(); }
+  /** 提示条退场：下沉淡出（fast），再移除。 */
+  dismissToast() {
+    const t = this.toast;
+    if (!t || t.leaving) return;
+    this.toast = { ...t, leaving: true };
+    this.emit();
+    setTimeout(() => { if (this.toast?.id === t.id) { this.toast = null; this.emit(); } }, 120);
   }
 
   // MARK: 查询

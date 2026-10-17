@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Charter",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "identifier": "app.charter.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -36,6 +36,6 @@
     "category": "Business",
     "shortDescription": "海外子公司档案管理",
     "windows": { "nsis": { "languages": ["SimpChinese", "English"], "installMode": "currentUser" } },
-    "macOS": { "minimumSystemVersion": "12.0" }
+    "macOS": { "minimumSystemVersion": "12.0", "signingIdentity": "-" }
   }
 }
