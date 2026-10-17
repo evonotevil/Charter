@@ -155,7 +155,8 @@ mod imp {
             let r = CfGetPlaceholderInfo(h, CF_PLACEHOLDER_INFO_BASIC, info.as_mut_ptr() as *mut _, info.len() as u32, None);
             let _ = CloseHandle(h);
             r.ok()?;
-            let basic = &*(info.as_ptr() as *const CF_PLACEHOLDER_BASIC_INFO);
+            // The API writes into a byte buffer, which need not be aligned for this struct.
+            let basic = std::ptr::read_unaligned(info.as_ptr() as *const CF_PLACEHOLDER_BASIC_INFO);
             Some(basic.InSyncState == CF_IN_SYNC_STATE_IN_SYNC)
         }
     }

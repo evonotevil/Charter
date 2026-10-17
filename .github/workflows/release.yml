@@ -47,7 +47,13 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Rust regression tests
-        run: cargo test --locked --release --manifest-path src-tauri/Cargo.toml
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            cargo test --locked --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml
+          else
+            cargo test --locked --release --manifest-path src-tauri/Cargo.toml
+          fi
       - name: Build installers
         run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
       - name: Windows installer smoke test
