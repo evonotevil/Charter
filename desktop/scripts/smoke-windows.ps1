@@ -16,6 +16,18 @@ try {
   $result = @{ installerExitCode = $setup.ExitCode; running = !$app.HasExited; windowTitle = $app.MainWindowTitle; productVersion = $info.ProductVersion; executable = $exe }
   $result | ConvertTo-Json | Set-Content windows-smoke.json
   $result | ConvertTo-Json | Write-Output
+  Add-Type -AssemblyName System.Windows.Forms
+  Add-Type -AssemblyName System.Drawing
+  $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+  $bitmap = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height)
+  $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+  try {
+    $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+    $bitmap.Save((Join-Path $PWD 'windows-smoke.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+  } finally {
+    $graphics.Dispose()
+    $bitmap.Dispose()
+  }
 } finally {
   if (!$app.HasExited) { Stop-Process -Id $app.Id -Force }
 }

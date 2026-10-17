@@ -87,6 +87,7 @@ jobs:
           if-no-files-found: ignore
           path: |
             desktop/windows-smoke.json
+            desktop/windows-smoke.png
             desktop/macos-architectures.txt
 
   publish:
