@@ -8,13 +8,15 @@ import { dueDates } from "../domain/engine";
 import { Icon } from "../ui/Icon";
 import { Button, DateField, Modal, SelectField } from "../ui/kit";
 
-type Holder = { kind: "existing"; ref: NodeRef } | { kind: "newCompany"; name: string; jurisdiction: string } | { kind: "newPerson"; name: string } | null;
+type Holder = { kind: "existing"; ref: NodeRef } | { kind: "newCompany"; name: string; jurisdiction: string; entityForm?: string } | { kind: "newPerson"; name: string } | null;
 
 export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; groupID?: string }) {
   const { store, router } = useApp();
   const jurs = store.data.library.jurisdictions;
   const [name, setName] = useState("");
-  const [jur, setJur] = useState(jurs.find((j) => j.code === "HK")?.code ?? jurs[0]?.code ?? "HK");
+  // 4.4：法域没有默认值，必须明确选；名称后缀只给建议。
+  const [jur, setJur] = useState("");
+  const [form, setForm] = useState("");
   const [brand, setBrand] = useState<string | undefined>(groupID ?? (store.data.groups.length === 1 ? store.data.groups[0].id : undefined));
   const [holder, setHolder] = useState<Holder>(null);
   const [percent, setPercent] = useState("100");
@@ -48,13 +50,18 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
   }, [jur, inc, store.data.library.rules]);
 
   const nameError = tried && !name.trim() ? "填写注册名" : null;
+  const jurError = tried && !jur ? "选择法域" : null;
+  const holderJurError = tried && holder?.kind === "newCompany" && !holder.jurisdiction ? "选择股东公司的法域" : null;
+  const suggest = store.suggestJurisdiction(name);
+  const hSuggest = holder?.kind === "newCompany" ? store.suggestJurisdiction(holder.name) : null;
   const pct = Number(percent);
   const submit = () => {
     setTried(true);
-    if (!name.trim()) return;
+    if (!name.trim() || !jur) return;
+    if (holder?.kind === "newCompany" && !holder.jurisdiction) return;
     if (holder && !(pct > 0 && pct <= 100)) return;
     const allDirs = [...dirs, ...(dq.trim() ? [dq.trim()] : [])];
-    const c = store.createCompanyFull({ name, jurisdiction: jur, groupID: brand, partyID: partyID || undefined, percent: pct || 100, holder, directors: allDirs, incorporationDate: inc, registrationNumber: reg.trim() });
+    const c = store.createCompanyFull({ name, jurisdiction: jur, entityForm: form || undefined, groupID: brand, partyID: partyID || undefined, percent: pct || 100, holder, directors: allDirs, incorporationDate: inc, registrationNumber: reg.trim() });
     onClose();
     router.update((r) => { r.section = "structure"; r.selectedCompanyID = c.id; r.showCalendar = false; });
     store.showToast(`已建立 ${c.name}${dues.length ? "，年审日期已排好" : ""}。`, () => store.undo());
@@ -74,11 +81,18 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
               <input className="v4-input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="例如 Mingan Vietnam Co., Ltd." aria-invalid={!!nameError} />
               {nameError && <span className="danger-text t-meta">{nameError}</span>}
             </label>
-            <div className="v4-field">法域
+            <div className="v4-field">法域 · 必选
               <div className="row gap6" style={{ flexWrap: "wrap" }}>
-                {jurs.map((j) => <button key={j.code} className={`v4-seg ${jur === j.code ? "on" : ""}`} onClick={() => setJur(j.code)}>{j.code} {j.name}</button>)}
+                {jurs.map((j) => <button key={j.code} className={`v4-seg ${jur === j.code ? "on" : ""}`} onClick={() => { setJur(j.code); setForm(""); }}>{j.code} {j.name}</button>)}
               </div>
+              {!jur && suggest && <span className="row gap6 t-meta muted">建议：<button className="v4-chip btnlike" onClick={() => setJur(suggest.code)}>{store.jurisdictionName(suggest.code)}</button>（{suggest.why}）</span>}
+              {jurError && <span className="danger-text t-meta">{jurError}</span>}
             </div>
+            {jur && (store.jurisdiction(jur)?.entityForms?.length ?? 0) > 0 && (
+              <div className="v4-field">实体类型
+                <SelectField<string> minWidth={300} placeholder="可以之后再填" value={form} onChange={setForm} options={(store.jurisdiction(jur)?.entityForms ?? []).map((f) => [f, f] as [string, string])} />
+              </div>
+            )}
             {store.data.groups.length > 0 && (
               <div className="v4-field">集团
                 <div className="row gap6" style={{ flexWrap: "wrap" }}>
@@ -87,14 +101,15 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
                       <span className="v4-dot" style={{ background: store.brandColor(g) }} />{g.name}
                     </button>
                   ))}
-                  <span className="t-meta muted" style={{ alignSelf: "center" }}>{brand ? "" : "不选则按股东推断"}</span>
+                  <button className={`v4-seg ${brand ? "" : "on"}`} onClick={() => setBrand(undefined)}>暂不分组</button>
+                  <span className="t-meta muted" style={{ alignSelf: "center" }}>{brand ? "" : "有股东在某个集团里时会自动归入"}</span>
                 </div>
               </div>
             )}
             <div className="v4-field" style={{ position: "relative" }}>股东
               {holder ? (
                 <div className="v4-line">
-                  <span className="v4-code">{holder.kind === "existing" && holder.ref.kind === "company" ? store.company(holder.ref.id)?.jurisdiction : holder.kind === "newCompany" ? holder.jurisdiction : [...holderName][0]}</span>
+                  <span className="v4-code">{holder.kind === "existing" && holder.ref.kind === "company" ? store.company(holder.ref.id)?.jurisdiction : holder.kind === "newCompany" ? (holder.jurisdiction || "?") : [...holderName][0]}</span>
                   <span className="grow ellipsis" style={{ fontWeight: 600 }}>{holderName}{holder.kind !== "existing" ? "（新建）" : ""}</span>
                   <input className="v4-input num" style={{ width: 70, height: 30, textAlign: "right" }} value={percent} onChange={(e) => setPercent(e.target.value.replace(/[^\d.]/g, ""))} aria-label="持股比例" />
                   <span className="muted">%</span>
@@ -111,8 +126,8 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
                           <span className="grow ellipsis">{o.title}</span><span className="t-meta muted">{o.sub}</span>
                         </button>
                       ))}
-                      <button className="v4-opt" onClick={() => setHolder({ kind: "newCompany", name: q.trim(), jurisdiction: "VG" })}>
-                        <span className="v4-code dark">+</span><span className="grow ellipsis" style={{ fontWeight: 600 }}>新建公司“{q.trim()}”</span><span className="t-meta muted">之后在结构图里补全资料</span>
+                      <button className="v4-opt" onClick={() => setHolder({ kind: "newCompany", name: q.trim(), jurisdiction: "" })}>
+                        <span className="v4-code dark">+</span><span className="grow ellipsis" style={{ fontWeight: 600 }}>新建公司“{q.trim()}”</span><span className="t-meta muted">要选法域</span>
                       </button>
                       <button className="v4-opt" onClick={() => setHolder({ kind: "newPerson", name: q.trim() })}>
                         <span className="v4-code dark" style={{ borderRadius: "50%" }}>+</span><span className="grow ellipsis" style={{ fontWeight: 600 }}>新建个人“{q.trim()}”</span>
@@ -120,6 +135,23 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
                     </div>
                   )}
                 </>
+              )}
+              {holder?.kind === "newCompany" && (
+                <div className="newco" style={{ marginTop: 8 }}>
+                  <div className="newco-grid">
+                    <div className="col gap6"><span className="entry-mini">股东公司的法域 · 必选</span>
+                      <div className={holder.jurisdiction ? "" : "req-wrap"}><SelectField<string> minWidth={220} placeholder="选择法域" value={holder.jurisdiction}
+                        onChange={(v) => setHolder({ ...holder, jurisdiction: v, entityForm: undefined })} options={jurs.map((j) => [j.code, `${j.code} ${j.name}`] as [string, string])} /></div>
+                      {!holder.jurisdiction && hSuggest && <span className="row gap6 t-meta muted">建议：<button className="v4-chip btnlike" onClick={() => setHolder({ ...holder, jurisdiction: hSuggest.code })}>{store.jurisdictionName(hSuggest.code)}</button></span>}
+                      {holderJurError && <span className="danger-text t-meta">{holderJurError}</span>}
+                    </div>
+                    <div className="col gap6"><span className="entry-mini">实体类型</span>
+                      <SelectField<string> minWidth={220} placeholder={holder.jurisdiction ? "可以之后再填" : "先选法域"} disabled={!holder.jurisdiction} value={holder.entityForm ?? ""}
+                        onChange={(v) => setHolder({ ...holder, entityForm: v })} options={(store.jurisdiction(holder.jurisdiction)?.entityForms ?? []).map((f) => [f, f] as [string, string])} />
+                    </div>
+                  </div>
+                  <span className="t-meta muted">股东公司不分组、它自己的股东暂不填，会显示“股东待补”。</span>
+                </div>
               )}
             </div>
             <div className="v4-field">董事
@@ -157,7 +189,7 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
           </div>
         </div>
         <div className="sheet-foot">
-          <span className="t-meta muted">{holder ? `建好后接在 ${holderName} 下面。` : "先选一个股东，结构图才知道把它接在哪里。"}</span>
+          <span className="t-meta muted">{holder ? `建好后接在 ${holderName} 下面。` : "股东可以先空着，会显示“股东待补”。"}</span>
           <span className="spacer" />
           <Button onClick={onClose}>取消</Button>
           <Button kind="primary" onClick={submit}>建立公司</Button>

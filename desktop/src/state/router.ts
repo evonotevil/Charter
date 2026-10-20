@@ -6,7 +6,7 @@ import type { ChangeKind, NodeKind, NodeRef, ObligationStatus } from "../domain/
 import { platform } from "../platform/platform";
 import { ungrouped } from "./store";
 
-export type Section = "structure" | "due" | "agents" | "overview" | "companies" | "files" | "people" | "parties";
+export type Section = "structure" | "due" | "agents" | "overview" | "companies" | "files" | "people" | "parties" | "verify";
 /** Charter 4 侧栏：上面三个是日常入口，下面三个是档案资料。 */
 export const sections: { id: Section; title: string; symbol: string }[] = [
   { id: "structure", title: "结构", symbol: "point.3.connected.trianglepath.dotted" },
@@ -102,7 +102,7 @@ export class Router {
     const root = typeof document !== "undefined" ? document.documentElement : null;
     if (!root) { this.sheet = null; this.emit(); return; }
     root.classList.add("closing-sheet");
-    setTimeout(() => { root.classList.remove("closing-sheet"); if (this.sheet === sheet) { this.sheet = null; this.emit(); } }, 120);
+    setTimeout(() => { if (this.sheet === sheet) { this.sheet = null; this.emit(); } setTimeout(() => root.classList.remove("closing-sheet"), 60); }, 120);
   }
 
   startImport(paths: string[], context: ImportContext | null) {

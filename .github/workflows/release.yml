@@ -110,6 +110,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" --verify-tag --draft --title "Charter ${RELEASE_TAG#v}" --notes-file desktop/docs/RELEASE.md
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "Charter ${RELEASE_TAG#v}" --notes-file desktop/RELEASE.md
           gh release upload "$RELEASE_TAG" release/*
           gh release edit "$RELEASE_TAG" --draft=false --latest

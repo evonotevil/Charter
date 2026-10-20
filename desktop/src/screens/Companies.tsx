@@ -1,5 +1,6 @@
 // 公司页：列表 + 详情；矩阵与结构在单独文件。移植自 CompaniesView.swift / CompanyArchiveView.swift。
 
+import { companyTint } from "../ui/uistyle";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
 import {
@@ -26,11 +27,25 @@ import { CompanyPage } from "./CompanyPage";
 const isForming = (c: Company) => c.status === "forming";
 const searchText = (c: Company) => [c.name, ...c.formerNames, ...c.aliases, c.registrationNumber].join(" ").toLowerCase();
 
+function CompaniesHeader() {
+  const { store, router } = useApp();
+  const live = store.data.companies.filter((c) => c.status !== "dissolved" && c.status !== "redomiciled");
+  const missing = store.attentionCompanyCount(null);
+  return (
+    <PageHeader title="公司" stats={[
+      { label: "在管公司", value: live.length, unit: "家" },
+      { label: "集团", value: store.data.groups.length, unit: "个" },
+      { label: "档案待补", value: missing, unit: "家", tone: missing ? "warn" : undefined, onClick: missing ? () => router.go("files") : undefined },
+      { label: "待核实", value: store.unverified.length, unit: "条", tone: store.unverified.length ? "accent" : undefined, onClick: () => router.go("verify") },
+    ]}><BrandPills /></PageHeader>
+  );
+}
+
 export function CompaniesView() {
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <div style={{ padding: "var(--page-edge) var(--page-edge) 24px" }}>
-        <PageHeader title="公司"><BrandPills /></PageHeader>
+        <CompaniesHeader />
       </div>
       <div className="col grow" style={{ minHeight: 0 }}><CompanyList /></div>
     </div>
@@ -182,7 +197,7 @@ function CompanyRailRow({ c, r, alsoIn }: { c: Company; r: GroupRow; alsoIn?: st
       style={{ minHeight: 48, padding: `8px 8px 8px ${8 + Math.min(r.depth, 4) * 12}px`, borderRadius: "var(--r-row)", textAlign: "left", width: "100%",
         background: on ? "var(--selection)" : undefined, color: on ? "var(--on-selection)" : "var(--ink)", opacity: dup ? 0.55 : 1, transition: "background .15s" }}>
       <span style={{ width: 28, height: 28, borderRadius: 8, flex: "none", display: "grid", placeItems: "center", fontSize: 10.5, fontWeight: 700,
-        background: on ? "color-mix(in srgb, var(--on-selection) 16%, transparent)" : "var(--band)" }}>{c.jurisdiction}</span>
+        background: on ? "color-mix(in srgb, var(--on-selection) 16%, transparent)" : "var(--band)", ...(on ? null : companyTint(store, c.id)) }}>{c.jurisdiction}</span>
       <span className="col grow" style={{ gap: 1, minWidth: 0 }}>
         <span style={{ fontSize: 13.5, fontWeight: 600, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.name}</span>
         <span className="ellipsis" style={{ fontSize: 11.5, opacity: on ? 0.72 : 1, color: on ? undefined : "var(--muted)" }}>{sub}</span>

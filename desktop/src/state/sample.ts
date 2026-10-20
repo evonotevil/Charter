@@ -97,7 +97,7 @@ export async function installSampleData(s: Store) {
 
   const P = (x: Person) => ref("person", x.id), C = (x: Company) => ref("company", x.id);
   const h = (holder: NodeRef, c: Company, percent: number, shares: string, from: Day, extra: Partial<Holding> = {}): Holding =>
-    ({ id: uuid(), holder, companyID: c.id, percent, shares, shareClass: "", isNominee: false, from, ...extra });
+    ({ id: uuid(), holder, companyID: c.id, percent, shares, shareClass: "", isNominee: false, from, asOf: from, verified: false, ...extra });
   const holdings: Holding[] = [
     h(P(zhang), top, 100, "1", "2018-03-12"),
     h(C(top), ky, 100, "1", "2020-01-15"),
@@ -120,7 +120,7 @@ export async function installSampleData(s: Store) {
     h(P(zhang), vi, 100, "", "2021-05-10"),
     h(P(zhang), cube, 100, "10,000", "2017-07-07"),
   ];
-  const appt = (p: Person, c: Company, title: string, from?: Day): Appointment => ({ id: uuid(), personID: p.id, companyID: c.id, title, from });
+  const appt = (p: Person, c: Company, title: string, from?: Day): Appointment => ({ id: uuid(), personID: p.id, companyID: c.id, title, from, asOf: from, verified: false });
   const appointments = [...companies.map((c) => appt(zhang, c, "董事", c.incorporationDate)), appt(sato, jp, "董事", "2021-08-01"), appt(sato, jp, "代表取締役", "2021-08-01"), appt(tan, sg, "本地董事", "2020-09-01"), appt(tan, mas, "本地董事", "2025-05-02"), appt(sato, maj, "代表取締役", "2025-06-18")];
   const changes = [
     { id: uuid(), companyID: hk.id, kind: "shareholderChange" as const, effectiveOn: "2020-06-30", recordedOn: "2020-07-02", summary: "张三将远澜控股（香港）100% 股份转让给 Yuanlan Group Ltd." },

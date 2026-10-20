@@ -1,5 +1,6 @@
 // 人员：任职、直接持股、代持、穿透后持有；新建、编辑、合并、删除。移植自 PeopleView.swift。
 
+import { companyTint } from "../ui/uistyle";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { type Appointment, type Person, isActiveOn, newPerson, ref, sameRef } from "../domain/models";
 import { percentLabel, portfolio } from "../domain/engine";
@@ -36,7 +37,11 @@ export function PeopleView() {
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <div style={{ padding: "var(--page-edge) var(--page-edge) 24px" }}>
-        <PageHeader title="人员" subtitle="董事、股东和其他相关人员，以及他们在各公司的任职和持股。">
+        <PageHeader title="人员" stats={[
+          { label: "人员", value: store.data.people.length, unit: "人" },
+          { label: "在任董事和高管", value: new Set(store.data.appointments.filter((a) => !a.to || a.to >= store.today).map((a) => a.personID)).size, unit: "人" },
+          { label: "任职", value: store.data.appointments.filter((a) => !a.to || a.to >= store.today).length, unit: "项" },
+        ]} subtitle="董事、股东和其他相关人员，以及他们在各公司的任职和持股。">
           <Button kind="primary" icon="plus" onClick={() => setCreating(true)}>新建人员</Button>
         </PageHeader>
       </div>
@@ -153,7 +158,7 @@ function PersonDetail({ person }: { person: Person }) {
   const line = (id: string, trailing: string, detail?: string, warn = false, numeric = false, extra?: ReactNode) => (
     <div key={id + trailing + (detail ?? "")} className="row gap12">
       <button className="row gap10 hover-band grow" style={{ padding: "8px", margin: "0 -8px", borderRadius: "var(--r-row)", textAlign: "left", minWidth: 0 }} onClick={() => { router.companyTab = 0; router.openCompany(id); }}>
-        <JurisdictionBadge code={store.company(id)?.jurisdiction ?? "?"} size={30} />
+        <JurisdictionBadge code={store.company(id)?.jurisdiction ?? "?"} size={30} tint={companyTint(store, id)} />
         <span className="col grow" style={{ gap: 1, minWidth: 0 }}>
           <span className="ellipsis" style={{ fontSize: 13.5, fontWeight: 500 }}>{store.company(id)?.name ?? "未知公司"}</span>
           {detail && <span className="num" style={{ fontSize: 11.5, color: warn ? "var(--amber-text)" : "var(--muted)" }}>{detail}</span>}

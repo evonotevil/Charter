@@ -96,7 +96,7 @@ export function computeObligations(args: {
       }
     }
     for (const change of changes) {
-      if (change.companyID !== company.id || change.effectiveOn < company.trackingSince) continue;
+      if (change.companyID !== company.id || change.backfill || change.effectiveUnknown || change.effectiveOn < company.trackingSince) continue;
       for (const base of rules) {
         if (!ruleApplies(base, company)) continue;
         const rule = effectiveRule(base, company);

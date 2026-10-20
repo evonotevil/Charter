@@ -1,6 +1,6 @@
 # Charter 桌面版
 
-Tauri 2 + React + TypeScript。Windows 与 macOS 安装包从 [GitHub Releases](https://github.com/evonotevil/Charter/releases/latest) 下载。
+Tauri 2 + React + TypeScript。正式发布同时提供 Windows x64 与 macOS Universal 安装包，从 [GitHub Releases](https://github.com/evonotevil/Charter/releases/latest) 下载。
 
 ## 在 Windows 上编译安装包
 
@@ -33,7 +33,7 @@ npm run tauri build -- --bundles dmg
 
 装好的安装包在 `src-tauri/target/release/bundle/dmg/Charter_<版本号>_aarch64.dmg`。
 
-应用没有签名。第一次打开时 macOS 会提示“无法验证开发者”：在“访达”里右键 Charter →“打开”，确认一次即可。
+应用没有开发者签名或公证。第一次打开时 macOS 可能会提示“无法验证开发者”：在“访达”里右键 Charter →“打开”，确认一次即可。正式 Universal 包由 GitHub Actions 构建并验证双架构。
 
 ## 开发
 
@@ -45,4 +45,4 @@ npm test             # 单元测试
 
 ## 数据
 
-用户在设置里选数据文件夹；跨 Windows 和 Mac 共用时可选择双方都能访问的 OneDrive 文件夹。旧版 Swift 数据请先备份再尝试连接。完整文件夹结构与设计见 `docs/CHARTER4-PLAN.md`。
+用户在设置里选择数据文件夹。跨 Mac 和 Windows 使用时，请放在两端都能访问的同步服务中，例如 OneDrive。连接旧版资料前请先备份。设计与数据结构见 [规范/DESIGN.md](../规范/DESIGN.md)。

@@ -1,6 +1,9 @@
 // 股权结构图：按层排列、正交连线、点选高亮控制链、时间回放、核对股东、向上穿透。移植自 StructureView.swift。
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { SlideBg, reducedMotion } from "../ui/motion";
+import { CompanyChips } from "./PropChips";
+import { isSoft, softBg, softInk, companyTint } from "../ui/uistyle";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Day } from "../domain/day";
 import * as D from "../domain/day";
 import { type Company, type Holding, type NodeRef, companyStatusLabel, isActiveOn, ref, refKey, latinPad, latinPadStart } from "../domain/models";
@@ -60,13 +63,38 @@ export function StructureView() {
   }, [asOf, group, upward, ...dataVersion]);
 
   // 拖动中的位置
+  // #11 历史回放：换年份时节点位置在 panel 档内逐帧补间，连线按中间位置一起重画。
+  const [tweenPos, setTweenPos] = useState<Map<string, Pt> | null>(null);
+  const shown = useRef(snapshot.positions);
+  const lastAsOf = useRef(asOf);
+  const tweenRaf = useRef(0);
+  useLayoutEffect(() => {
+    if (lastAsOf.current === asOf) return;
+    lastAsOf.current = asOf;
+    cancelAnimationFrame(tweenRaf.current);
+    const from = shown.current, to = snapshot.positions;
+    if (reducedMotion() || from === to) { setTweenPos(null); return; }
+    const t0 = performance.now(), ms = 280;
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - k, 3);
+      if (k >= 1) { setTweenPos(null); return; }
+      const m = new Map(to);
+      for (const [key, b] of to) { const a = from.get(key); if (a) m.set(key, { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e }); }
+      setTweenPos(m);
+      tweenRaf.current = requestAnimationFrame(step);
+    };
+    step(t0);
+  }, [snapshot]);
+  useEffect(() => () => cancelAnimationFrame(tweenRaf.current), []);
   const positions = useMemo(() => {
-    if (!drag) return snapshot.positions;
-    const m = new Map(snapshot.positions);
+    const base = tweenPos ?? snapshot.positions;
+    if (!drag) return base;
+    const m = new Map(base);
     const b = m.get(drag.key);
     if (b) m.set(drag.key, { x: b.x + drag.dx, y: b.y + drag.dy });
     return m;
-  }, [snapshot, drag]);
+  }, [snapshot, drag, tweenPos]);
+  shown.current = positions;
   const routes = useMemo(() => routeEdges(snapshot.activeHoldings, positions), [snapshot, positions]);
   const nodeKeys = new Set(snapshot.nodes.map(refKey));
   const selected: NodeRef | null = personSel ?? (router.selectedCompanyID && nodeKeys.has("company:" + router.selectedCompanyID) ? ref("company", router.selectedCompanyID) : null);
@@ -131,7 +159,25 @@ export function StructureView() {
     if (f.x >= v.x && f.y >= v.y && f.x + f.w <= v.x + v.w && f.y + f.h <= v.y + v.h) return;
     el.scrollTo({ left: Math.max(0, f.x + f.w / 2 - el.clientWidth / 2), top: Math.max(0, f.y + f.h / 2 - el.clientHeight / 2), behavior: "smooth" });
   };
-  useEffect(() => { if (selected) { const t = setTimeout(() => reveal(selected), 320); return () => clearTimeout(t); } }, [selected?.id]);
+  useEffect(() => { if (selected) { const r = requestAnimationFrame(() => reveal(selected)); return () => cancelAnimationFrame(r); } }, [selected?.id]);
+
+  // #9 用按钮缩放：比例与滚动位置一起过渡（standard），以视口中心为锚点。
+  const zoomAnim = useRef(0);
+  const animateZoom = (to: number) => {
+    const el = scroller.current;
+    cancelAnimationFrame(zoomAnim.current);
+    if (!el || reducedMotion()) { setSavedZoom(to); return; }
+    const from = z, ax = el.clientWidth / 2, ay = el.clientHeight / 2;
+    const gx = (el.scrollLeft + ax) / from, gy = (el.scrollTop + ay) / from;
+    const t0 = performance.now(), ms = 200;
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - k, 3), v = from + (to - from) * e;
+      setSavedZoom(k < 1 ? v : to);
+      requestAnimationFrame(() => { el.scrollLeft = gx * v - ax; el.scrollTop = gy * v - ay; });
+      if (k < 1) zoomAnim.current = requestAnimationFrame(step);
+    };
+    zoomAnim.current = requestAnimationFrame(step);
+  };
 
   const saveNode = (n: NodeRef, p: Pt) => store.commit((d) => {
     const list = n.kind === "company" ? d.companies : d.people;
@@ -187,7 +233,18 @@ export function StructureView() {
     <div className="row grow" style={{ alignItems: "stretch", minHeight: 0 }}>
       <div className="col grow" style={{ minWidth: 0, position: "relative" }}>
         <div className="col gap8" style={{ padding: "var(--page-edge) var(--page-edge) 8px" }}>
-          <PageHeader title="结构">
+          <PageHeader title="结构" stats={isToday ? (() => {
+            const ids = new Set(snapshot.companies.map((c) => c.id));
+            const mine = store.openObligations.filter((o) => ids.has(o.company.id));
+            const over = mine.filter((o) => o.due < store.today).length, soon = mine.filter((o) => o.due >= store.today && D.daysBetween(store.today, o.due) <= 30).length;
+            const unv = store.unverified.filter((x) => ids.has(x.item.companyID)).length;
+            return [
+              { label: "已逾期", value: over, unit: "件", tone: over ? "bad" as const : undefined, onClick: over ? () => router.go("due") : undefined },
+              { label: "30 天内", value: soon, unit: "件", tone: soon ? "warn" as const : undefined, onClick: soon ? () => router.go("due") : undefined },
+              { label: "在管公司", value: snapshot.companies.length, unit: "家" },
+              { label: "待核实", value: unv, unit: "条", tone: unv ? "accent" as const : undefined, onClick: () => router.go("verify") },
+            ];
+          })() : undefined}>
             <Button kind="primary" icon="plus" onClick={() => router.open({ kind: "newCompany" })}>新建公司</Button>
           </PageHeader>
           <div className="row gap8 wrap">
@@ -196,9 +253,9 @@ export function StructureView() {
             <span className="spacer" />
             <button className={`v4-toggle ${checkOn ? "on" : ""}`} aria-pressed={checkOn} title="按股东录入情况给公司标色，并列出需要补充的公司" onClick={() => router.set("structureCheck", !checkOn)}>核对股东</button>
             <span className="seg-group row">
-              <Button kind="quiet" size="small" icon="minus" title="缩小" onClick={() => setSavedZoom(clampZoom(z - 0.1))} />
-              <Button kind="quiet" size="small" title="适合窗口" onClick={() => { setSavedZoom(0); scroller.current?.scrollTo({ left: 0, top: 0 }); }}><span className="num">{savedZoom === 0 ? "适合窗口" : `${Math.round(z * 100)}%`}</span></Button>
-              <Button kind="quiet" size="small" icon="plus" title="放大" onClick={() => setSavedZoom(clampZoom(z + 0.1))} />
+              <Button kind="quiet" size="small" icon="minus" title="缩小" onClick={() => animateZoom(clampZoom(z - 0.1))} />
+              <Button kind="quiet" size="small" title="适合窗口" onClick={() => { scroller.current?.scrollTo({ left: 0, top: 0, behavior: reducedMotion() ? "auto" : "smooth" }); setSavedZoom(0); }}><span className="num">{savedZoom === 0 ? "适合窗口" : `${Math.round(z * 100)}%`}</span></Button>
+              <Button kind="quiet" size="small" icon="plus" title="放大" onClick={() => animateZoom(clampZoom(z + 0.1))} />
             </span>
             <button className={`v4-toggle ${showHistory ? "on" : ""}`} aria-pressed={showHistory} title="显示时间轴，回看历年的持股结构" onClick={() => setShowHistory(!showHistory)}>历史</button>
             <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" entries={[
@@ -208,26 +265,26 @@ export function StructureView() {
               item("导出图片（PNG）…", "square.and.arrow.up", () => void exportStructurePNG(store, snapshot, positions, routes, store.filterName(group))),
             ]} />
           </div>
-          {isToday ? <span className="t-body muted">按住 {platform().os === "mac" ? "⌘" : "Ctrl"} 滚动或双指捏合缩放。点选固定链路，拖动调整位置。</span>
-            : <span className="t-body amber-text" style={{ fontWeight: 500 }}>历史视图：{D.year(asOf)} 年末的持股。不显示当前的截止日和文件提醒。</span>}
+          {isToday ? <span className="t-body muted">按住 {platform().os === "mac" ? "⌘" : "Ctrl"} 滚动或双指捏合缩放。点选固定链路，拖动调整位置。虚线是待核实的持股。</span>
+            : <span className="t-body amber-text" style={{ fontWeight: 500 }}>历史视图：{D.year(asOf)} 年末的持股。不显示当前的截止日和文件提醒。{(() => { const n = snapshot.activeHoldings.filter((h) => !h.from).length; return n ? `其中 ${n} 条生效日期未知，按资料截至日期显示为“最晚自”。` : ""; })()}</span>}
         </div>
-        <div ref={scroller} className="grow dotgrid" style={{ overflow: "auto", minHeight: 0, position: "relative" }} onClick={(e) => { if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.bg) setSelected(null); }}>
+        <div ref={scroller} className={`grow dotgrid ${isToday ? "" : "tween"}`} style={{ overflow: "auto", minHeight: 0, position: "relative" }} onClick={(e) => { if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.bg) setSelected(null); }}>
           <div data-bg="1" style={{ width: Math.max(snapshot.canvas.width * z, viewport.width), height: Math.max(snapshot.canvas.height * z, viewport.height), position: "relative" }}>
-            <div data-bg="1" style={{ position: "absolute", left: 0, top: 0, width: snapshot.canvas.width, height: snapshot.canvas.height, transform: `scale(${z})`, transformOrigin: "0 0" }}>
+            <div data-bg="1" key={group ?? "all"} className="swap-in" style={{ position: "absolute", left: 0, top: 0, width: snapshot.canvas.width, height: snapshot.canvas.height, transform: `scale(${z})`, transformOrigin: "0 0" }}>
               <svg width={snapshot.canvas.width} height={snapshot.canvas.height} style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }} aria-hidden>
                 {snapshot.activeHoldings.filter((h) => !chain.edges.has(h.id)).map((h) => { const r = routes.get(h.id); return r && (
                   <path key={h.id} d={routePath(r)} fill="none" stroke={h.isNominee ? "var(--amber)" : "var(--edge)"} strokeOpacity={focused ? 0.22 : 1}
-                    strokeWidth={1.4 / z} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={h.isNominee ? `${6 / z} ${4 / z}` : undefined} />); })}
-                {snapshot.activeHoldings.filter((h) => chain.edges.has(h.id)).map((h) => { const r = routes.get(h.id); return r && <path key={h.id + "u"} d={routePath(r)} fill="none" stroke="var(--lime)" strokeOpacity={0.85} strokeWidth={8 / z} strokeLinecap="round" strokeLinejoin="round" />; })}
+                    strokeWidth={1.4 / z} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={h.isNominee ? `${6 / z} ${4 / z}` : !h.verified ? `${4 / z} ${4 / z}` : undefined} />); })}
+                {!isSoft() && snapshot.activeHoldings.filter((h) => chain.edges.has(h.id)).map((h) => { const r = routes.get(h.id); return r && <path key={h.id + "u"} d={routePath(r)} fill="none" stroke="var(--lime)" strokeOpacity={0.85} strokeWidth={8 / z} strokeLinecap="round" strokeLinejoin="round" />; })}
                 {snapshot.activeHoldings.filter((h) => chain.edges.has(h.id)).map((h) => { const r = routes.get(h.id); return r && (
-                  <path key={h.id + "h"} d={routePath(r)} fill="none" stroke={h.isNominee ? "var(--amber-text)" : "var(--on-lime)"} strokeWidth={2 / z} strokeLinecap="round" strokeLinejoin="round"
-                    strokeDasharray={h.isNominee ? `${6 / z} ${4 / z}` : undefined} />); })}
+                  <path key={h.id + "h"} d={routePath(r)} fill="none" stroke={h.isNominee ? "var(--amber-text)" : isSoft() ? "var(--ink)" : "var(--on-lime)"} strokeWidth={2 / z} strokeLinecap="round" strokeLinejoin="round"
+                    strokeDasharray={h.isNominee ? `${6 / z} ${4 / z}` : !h.verified ? `${4 / z} ${4 / z}` : undefined} />); })}
               </svg>
               {labels.map((l) => (
                 <span key={l.id} className="t-micro num ellipsis" title={l.text} aria-label={l.text}
                   style={{ position: "absolute", left: l.x - l.width / 2, top: l.y - 11, width: l.width, height: 22, lineHeight: "20px", padding: "0 9px", borderRadius: 999, fontWeight: 600, textAlign: "center", pointerEvents: "none",
-                    background: l.hot ? (l.nominee ? "var(--amber)" : "var(--lime)") : l.nominee ? "var(--amber-soft)" : "var(--surface)",
-                    color: l.hot ? "var(--on-lime)" : l.nominee ? "var(--amber-text)" : "var(--ink)",
+                    background: l.hot ? (l.nominee ? "var(--amber)" : isSoft() ? "var(--ink)" : "var(--lime)") : l.nominee ? "var(--amber-soft)" : "var(--surface)",
+                    color: l.hot ? (isSoft() && !l.nominee ? "var(--on-ink)" : "var(--on-lime)") : l.nominee ? "var(--amber-text)" : "var(--ink)",
                     border: `1px solid ${l.hot ? "color-mix(in srgb, var(--on-lime) 25%, transparent)" : "var(--hairline)"}`, opacity: focused && !l.hot ? 0.3 : 1 }}>{l.text}</span>
               ))}
               {snapshot.companies.filter((c) => (snapshot.totalsByCompany.get(c.id) ?? 0) < 99.5).map((c) => {
@@ -243,7 +300,7 @@ export function StructureView() {
                 if (!p) return null;
                 const hot = chain.nodes.has(k) && focused;
                 return (
-                  <div key={k} role="button" tabIndex={0} aria-label={store.nameOf(n)} aria-pressed={selected ? refKey(selected) === k : false}
+                  <div key={k} className="v4-node-wrap" role="button" tabIndex={0} aria-label={store.nameOf(n)} aria-pressed={selected ? refKey(selected) === k : false}
                     onPointerDown={(e) => startDrag(e, n)} onPointerEnter={() => setHover(n)} onPointerLeave={() => setHover((h) => (h && refKey(h) === k ? null : h))}
                     onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) setSelected(n); }}
                     onDoubleClick={() => (n.kind === "company" ? router.openCompany(n.id) : router.openPerson(n.id))}
@@ -269,7 +326,8 @@ export function StructureView() {
         </div>
         {checkOn && <CheckList snapshot={snapshot} onPick={(c) => { const r = ref("company", c.id); setSelected(r); reveal(r); }} />}
         {showHistory && <div className="row" style={{ justifyContent: "center", padding: "12px 0" }}>
-          <div className="row gap4 floating" style={{ padding: 6, borderRadius: 26, overflowX: "auto", maxWidth: "calc(100% - 24px)" }}>
+          <div className="slide-host row gap4 floating" style={{ padding: 6, borderRadius: 26, overflowX: "auto", maxWidth: "calc(100% - 24px)" }}>
+            <SlideBg />
             <button onClick={() => setPlaying(!playing)} title={playing ? "暂停" : "回放结构变化"} aria-label={playing ? "暂停结构回放" : "回放结构变化"}
               style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--ink)", color: "var(--on-ink)", display: "grid", placeItems: "center", flex: "none" }}>
               <Icon name={playing ? "pause.fill" : "play.fill"} size={12} />
@@ -277,7 +335,7 @@ export function StructureView() {
             {stops.map((d, i) => {
               const on = d === asOf;
               return <button key={d} onClick={() => { setPlaying(false); setStopIndex(i); }} aria-pressed={on} aria-label={d === store.today ? "今天" : `${D.year(d)} 年末`}
-                className="num" style={{ width: 62, height: 36, borderRadius: 999, flex: "none", fontWeight: on ? 700 : 500, background: on ? "var(--selection)" : undefined, color: on ? "var(--on-selection)" : "var(--muted)", transition: "background .2s" }}>
+                className={`num ${on ? "on" : ""}`} style={{ width: 62, height: 36, borderRadius: 999, flex: "none", fontWeight: on ? 700 : 500, color: on ? "var(--on-selection)" : "var(--muted)" }}>
                 {d === store.today ? "今天" : D.year(d)}</button>;
             })}
           </div>
@@ -336,16 +394,20 @@ function CheckList({ snapshot, onPick }: { snapshot: StructureSnapshot; onPick: 
 
 function NodeView({ n, highlighted, selected, dimmed, showNext, showAlerts }: { n: NodeRef; highlighted: boolean; selected: boolean; dimmed: boolean; showNext: boolean; showAlerts: boolean }) {
   const { store } = useApp();
+  const soft = isSoft();
+  // 柔和风格：链路上的节点不加描边和 lime 光晕（靠其余节点变淡来突出），选中的节点用 2px 墨色描边 + 抬起阴影。
+  if (soft) highlighted = false;
   const ring = selected ? "2px solid var(--ink)" : highlighted ? "2px solid color-mix(in srgb, var(--on-lime) 70%, transparent)" : "1px solid var(--hairline)";
   const halo = highlighted || selected ? "0 0 0 4px var(--lime)" : "none";
   const base: React.CSSProperties = { width: "100%", height: "100%", background: "var(--surface)", border: ring, opacity: dimmed ? 0.4 : 1, filter: dimmed ? "saturate(.2)" : undefined,
-    transition: "opacity .16s, box-shadow .16s", display: "flex", alignItems: "center" };
+    transition: "opacity var(--fast) var(--ease), box-shadow var(--fast) var(--ease), border-color var(--fast) var(--ease)", display: "flex", alignItems: "center" };
   if (n.kind === "company") {
     const c = store.company(n.id);
     const next = store.complianceOn ? store.openObligations.find((o) => o.company.id === n.id) : undefined;
     const alert = showAlerts && store.ownedDocuments(n).some((d) => { const f = store.freshness(d); return f.kind === "expired" || f.kind === "expiring" || f.kind === "needsUpdate" || f.kind === "unknown"; });
     let detail: string, warn = false;
     if (showNext && next) { const left = Math.round(D.daysBetween(store.today, next.due)); detail = left < 0 ? `逾期 ${-left} 天：${next.rule.name}` : `${left} 天后：${next.rule.name}`; }
+    else if (showAlerts && !store.directShareholders(n.id).length) { detail = "股东待补"; warn = true; }
     else if (alert) { detail = "有文件需要更新"; warn = true; }
     else {
       const dirs = [...new Set(store.officers(n.id).map((a) => store.person(a.personID)?.name ?? ""))].filter(Boolean);
@@ -353,15 +415,16 @@ function NodeView({ n, highlighted, selected, dimmed, showNext, showAlerts }: { 
     }
     const brand = store.brandOf(n.id);
     const soon = showAlerts && !!next && D.daysBetween(store.today, next.due) <= 30;
+    const tint = soft && brand ? store.brandColor(brand) : null;
     return (
-      <div style={{ ...base, gap: 12, padding: "0 14px", borderRadius: 22, boxShadow: `${halo}, 0 ${selected ? 8 : 3}px ${selected ? 16 : 8}px rgba(0,0,0,${selected ? 0.16 : 0.06})` }}>
+      <div className={tint ? "tinted" : undefined} style={{ ...base, ...(soft ? { background: tint ? softBg(tint) : "var(--surface)", border: selected ? ring : `1px solid ${tint ? "transparent" : "var(--hairline)"}` } : null), gap: 12, padding: "0 14px", borderRadius: 22, boxShadow: `${halo}, 0 ${selected ? 8 : 3}px ${selected ? 16 : 8}px rgba(0,0,0,${selected ? 0.16 : 0.06})` }}>
         <JurisdictionBadge code={c?.jurisdiction ?? "?"} size={42} highlighted={highlighted} />
         <span className="col grow" style={{ minWidth: 0 }}>
           <span className="t-row" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c?.name ?? ""}</span>
-          <span className="t-meta num ellipsis" style={{ color: warn ? "var(--amber-text)" : "var(--muted)", fontWeight: warn ? 600 : 400 }}>{detail}</span>
+          <span className="t-meta num ellipsis" style={{ color: warn ? "var(--amber-text)" : tint ? softInk(tint) : "var(--muted)", fontWeight: warn ? 600 : 400 }}>{detail}</span>
         </span>
         <span className="col" style={{ gap: 6, alignItems: "center", flex: "none" }}>
-          <span className="v4-dot" title={brand ? brand.name : "各集团共用"} style={{ background: brand ? store.brandColor(brand) : "transparent", boxShadow: brand ? undefined : "inset 0 0 0 1.5px var(--muted)" }} />
+          {!tint && <span className="v4-dot" title={brand ? brand.name : "各集团共用"} style={{ background: brand ? store.brandColor(brand) : "transparent", boxShadow: brand ? undefined : "inset 0 0 0 1.5px var(--muted)" }} />}
           {soon && <span className="v4-dot" title="30 天内有事项到期" style={{ background: next && next.due < store.today ? "var(--danger)" : "var(--amber)" }} />}
         </span>
       </div>
@@ -457,11 +520,7 @@ function CompanyInspector({ id, asOf }: { id: string; asOf: Day }) {
         <JurisdictionBadge code={c?.jurisdiction ?? "?"} size={48} highlighted />
         <div className="col gap6">
           <span className="t-title selectable" style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c?.name}</span>
-          <div className="row gap6 wrap">
-            <Pill text={store.jurisdictionName(c?.jurisdiction ?? "")} />
-            {c?.entityForm && <Pill text={c.entityForm} />}
-            {c && c.status !== "active" && <Pill text={companyStatusLabel[c.status]} kind="strong" />}
-          </div>
+          <div className="row gap6 wrap">{c && <CompanyChips c={c} />}</div>
         </div>
       </div>
       <div className="hairline" />
@@ -574,7 +633,7 @@ function PersonInspector({ id, asOf }: { id: string; asOf: Day }) {
         {!owned.length && <span className="muted">没有持股</span>}
         {owned.map((x) => (
           <button key={x.company.id} className="row gap10" style={{ textAlign: "left" }} onClick={() => router.openCompany(x.company.id)}>
-            <JurisdictionBadge code={x.company.jurisdiction} size={30} /><span className="ellipsis">{x.company.name}</span>
+            <JurisdictionBadge code={x.company.jurisdiction} size={30} tint={companyTint(store, x.company.id)} /><span className="ellipsis">{x.company.name}</span>
             {x.viaNominee && <Pill text="含代持" kind="warn" />}<span className="spacer" /><b className="num">{percentLabel(x.percent)}</b>
           </button>
         ))}
@@ -670,7 +729,8 @@ export function BrandPills() {
   const { store, router } = useApp();
   const group = router.groupFilter;
   return (
-    <div className="v4-pills" role="tablist" aria-label="集团">
+    <div className="v4-pills slide-host" role="tablist" aria-label="集团">
+      <SlideBg />
       <button role="tab" aria-selected={!group} className={!group ? "on" : ""} onClick={() => router.set("groupFilter", null)}>全部</button>
       {[...store.data.groups].sort((a, b) => a.name.localeCompare(b.name)).map((x) => (
         <button key={x.id} role="tab" aria-selected={group === x.id} className={group === x.id ? "on" : ""} onClick={() => router.set("groupFilter", x.id)}>

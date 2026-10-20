@@ -8,7 +8,7 @@ import {
   type Appointment, type ArchiveItem, type ArchiveState, type ChangeKind, type ChangeRecord, type Company, type CorporateGroup,
   type Document, type DocumentRequest, type DocumentType, type GroupRow, type HandoffAction, type Holding, type ItemMark,
   type Jurisdiction, type NodeRef, type ObligationRecord, type Party, type Person, type RuleTemplate, type RuleTrust,
-  type RuleVerification, type Schedule, type SharedSettings, type TemplateLibrary,
+  type RuleVerification, type Schedule, type Evidence, type Provenance, type SharedSettings, type TemplateLibrary,
   changeKindLabel, companyStatusLabel, emptyArchive, hasFile, isActiveOn, isHandedOff, isNotApplicable, itemMarkLabel,
   latinPad, newPerson, normalizedStatus, pendingTypeIDs, ref, refKey, sameRef, typeAppliesTo, uuid, latinPadStart, brandPalette } from "../domain/models";
 import {
@@ -24,6 +24,7 @@ import {
   normAppointment, normChange, normCompany, normDocument, normGroup, normHolding, normParty, normPerson, normRecord, normRequest, normSettings,
 } from "../domain/normalize";
 import { platform } from "../platform/platform";
+import { roleByID } from "../domain/roles";
 
 // MARK: - 数据
 
@@ -677,6 +678,8 @@ export class Store {
   }
 
   setObligationParty(o: Obligation, partyID: string) { this.commit((d) => this.upsertRecord(d, o, (r) => { r.partyID = partyID; })); }
+  /** 改回公司默认中介（去掉单独指定），可撤销。 */
+  resetObligationParty(o: Obligation) { this.commit((d) => this.upsertRecord(d, o, (r) => { delete (r as any).partyID; }), { label: "改回默认中介", toast: "已改回公司默认中介。" }); }
   reschedule(o: Obligation, day?: Day) { this.commit((d) => this.upsertRecord(d, o, (r) => { r.overrideDue = day; })); }
   setObligationNote(o: Obligation, note: string) { this.commit((d) => this.upsertRecord(d, o, (r) => { r.note = note; })); }
 
@@ -1006,10 +1009,11 @@ export class Store {
   /** 一张表新建公司：股东（已有或新建）、董事（已有的人自动关联）、品牌、默认中介，一次提交、一次撤销。 */
   createCompanyFull(args: {
     name: string; jurisdiction: string; groupID?: string; partyID?: string; percent: number;
-    holder: { kind: "existing"; ref: NodeRef } | { kind: "newCompany"; name: string; jurisdiction: string } | { kind: "newPerson"; name: string } | null;
-    directors: string[]; incorporationDate?: Day; registrationNumber?: string;
+    holder: { kind: "existing"; ref: NodeRef } | { kind: "newCompany"; name: string; jurisdiction: string; entityForm?: string } | { kind: "newPerson"; name: string } | null;
+    directors: string[]; incorporationDate?: Day; registrationNumber?: string; entityForm?: string;
   }): Company {
-    const c: Company = { ...this.newCompanyDraft(args.name.trim(), args.jurisdiction), defaultPartyID: args.partyID,
+    const draft = this.newCompanyDraft(args.name.trim(), args.jurisdiction);
+    const c: Company = { ...draft, entityForm: args.entityForm ?? draft.entityForm, defaultPartyID: args.partyID,
       incorporationDate: args.incorporationDate, registrationNumber: args.registrationNumber ?? "" };
     this.commit((d) => {
       d.companies.push(c as any);
@@ -1017,17 +1021,17 @@ export class Store {
       const h = args.holder;
       if (h?.kind === "existing") holder = h.ref;
       else if (h?.kind === "newCompany") {
-        const pc: Company = this.newCompanyDraft(h.name.trim(), h.jurisdiction);
+        const pc: Company = { ...this.newCompanyDraft(h.name.trim(), h.jurisdiction), ...(h.entityForm !== undefined ? { entityForm: h.entityForm } : {}) };
         d.companies.push(pc as any); holder = ref("company", pc.id);
       } else if (h?.kind === "newPerson") {
         const pp = newPerson(h.name.trim()); d.people.push(pp as any); holder = ref("person", pp.id);
       }
-      if (holder) d.holdings.push({ id: uuid(), holder, companyID: c.id, percent: args.percent, shares: "", shareClass: "", isNominee: false, from: args.incorporationDate ?? this.today } as any);
+      if (holder) d.holdings.push({ id: uuid(), holder, companyID: c.id, percent: args.percent, shares: "", shareClass: "", isNominee: false, from: args.incorporationDate, recordedOn: this.today, verified: false } as any);
       for (const raw of args.directors) {
         const name = raw.trim(); if (!name) continue;
         let p = d.people.find((x) => x.name === name || x.aliases.includes(name));
         if (!p) { const np = newPerson(name); d.people.push(np as any); p = d.people[d.people.length - 1]; }
-        d.appointments.push({ id: uuid(), personID: p.id, companyID: c.id, title: "董事", from: args.incorporationDate ?? this.today } as any);
+        d.appointments.push({ id: uuid(), personID: p.id, companyID: c.id, title: "董事", roleID: "common.director", from: args.incorporationDate, recordedOn: this.today, verified: false } as any);
       }
       if (args.groupID) {
         const g = d.groups.find((x) => x.id === args.groupID);
@@ -1043,12 +1047,15 @@ export class Store {
 
   // MARK: Charter 4 就地编辑：直接改，自动记入变更历史（事件型申报会按变更自动出现在到期里）
 
-  private editWithHistory(label: string, companyID: string, kind: ChangeKind, summary: string, fn: (d: Draft<Data>) => void) {
-    const change: ChangeRecord = { id: uuid(), companyID, kind, effectiveOn: this.today, recordedOn: this.today, summary };
+  private editWithHistory(label: string, companyID: string, kind: ChangeKind, summary: string, fn: (d: Draft<Data>) => void, opts: EntryNature = {}) {
+    const effectiveOn = opts.effectiveOn ?? (opts.effectiveUnknown ? (opts.asOf ?? this.today) : this.today);
+    const change: ChangeRecord = { id: uuid(), companyID, kind, effectiveOn, recordedOn: this.today, summary,
+      ...(opts.backfill ? { backfill: true } : {}), ...(opts.effectiveUnknown ? { effectiveUnknown: true } : {}), ...(opts.asOf ? { asOf: opts.asOf } : {}),
+      ...(opts.evidence ? { evidenceDocumentID: opts.evidence.documentID } : {}) };
     const { undoID } = this.commit((d) => {
       fn(d);
       d.changes.push(change as any);
-      const affected = this.affectedCategories(kind);
+      const affected = opts.backfill ? [] : this.affectedCategories(kind);
       for (const doc of d.documents) {
         if (sameRef(doc.owner, ref("company", companyID)) && !doc.supersededBy) {
           const t = this.docType(doc.typeID);
@@ -1056,8 +1063,9 @@ export class Store {
         }
       }
     }, { label });
-    const events = this.company(companyID) ? this.eventRules(kind, this.company(companyID)!, this.today) : [];
-    this.showToast(`${summary}。已记入变更历史${events.length ? `，并加入到期：${events.map(([r]) => r.name).join("、")}` : ""}。`, undoID ? () => this.undoID(undoID) : undefined);
+    const events = this.company(companyID) && !opts.backfill && !opts.effectiveUnknown ? this.eventRules(kind, this.company(companyID)!, effectiveOn) : [];
+    const tail = opts.backfill ? "，按补录处理，不生成提醒" : events.length ? `，并加入到期：${events.map(([r]) => r.name).join("、")}` : "";
+    this.showToast(`${summary}。已记入变更历史${tail}。`, undoID ? () => this.undoID(undoID) : undefined);
     return change.id;
   }
 
@@ -1143,6 +1151,138 @@ export class Store {
       for (const a of d.appointments) if (a.companyID === c.companyID) { if (a.from === old && c.recordedOn === old) a.from = day; if (a.to === old && c.recordedOn === old) a.to = day; }
     }, { label: "修改生效日期" });
   }
+
+  // MARK: 4.4 可信台账：带出处的录入、核实、依据
+
+  /** 默认的录入性质：生效日期早于 30 天或未知 → 补录。 */
+  defaultBackfill = (effectiveOn?: Day) => !effectiveOn || D.daysBetween(effectiveOn, this.today) > 30;
+
+  /** 新建公司（内联或表单）：法域必须明确给出；可指定实体类型和集团（空 = 不分组）。 */
+  private draftCompany(n: NewEntity): Company {
+    const c = this.newCompanyDraft(n.name.trim(), n.jurisdiction);
+    if (n.entityForm !== undefined) c.entityForm = n.entityForm;
+    return c;
+  }
+  private placeInGroup(d: Draft<Data>, companyID: string, groupID?: string) {
+    if (!groupID) return;
+    const g = d.groups.find((x) => x.id === groupID);
+    if (g && !g.extraCompanyIDs.includes(companyID)) g.extraCompanyIDs.push(companyID);
+  }
+
+  /** 录入一条股权（新发生的变更或补录）。返回是否成功。 */
+  recordHolding(a: HoldingEntry): boolean {
+    let r: NodeRef | null = a.holder.kind === "existing" ? a.holder.ref : null;
+    const created: { person?: Person; company?: Company } = {};
+    if (a.holder.kind === "newPerson") { created.person = newPerson(a.holder.name.trim()); r = ref("person", created.person.id); }
+    if (a.holder.kind === "newCompany") { created.company = this.draftCompany(a.holder.entity); r = ref("company", created.company.id); }
+    const verified = !!a.evidence && a.verified;
+    const h: Holding = { id: uuid(), holder: r!, companyID: a.companyID, percent: a.percent, shares: "", shareClass: "", isNominee: !!a.isNominee,
+      from: a.effectiveOn, asOf: a.asOf, recordedOn: this.today, verified, ...(a.evidence ? { evidence: a.evidence } : {}), ...(a.roleID ? { roleID: a.roleID } : {}) };
+    try {
+      validateHoldings([...this.data.holdings, h], new Set([...this.data.companies.map((c) => c.id), ...(created.company ? [created.company.id] : [])]),
+        new Set([...this.data.people.map((p) => p.id), ...(created.person ? [created.person.id] : [])]), new Set([a.companyID]));
+    } catch (e) { this.setError(`无法添加股东：${(e as Error).message}`); return false; }
+    const name = created.person?.name ?? created.company?.name ?? this.nameOf(r!);
+    const role = roleByID(a.roleID);
+    this.editWithHistory("添加股东", a.companyID, "shareholderChange", `${a.backfill ? "补录" : "新增"}${role ? role.name : "股东"} ${name} ${percentLabel(a.percent)}`, (d) => {
+      if (created.person) d.people.push(created.person as any);
+      if (created.company) { d.companies.push(created.company as any); if (a.holder.kind === "newCompany") this.placeInGroup(d, created.company.id, a.holder.entity.groupID); }
+      d.holdings.push(h as any);
+      this.tidyGroups(d);
+    }, { backfill: a.backfill, effectiveOn: a.effectiveOn, effectiveUnknown: !a.effectiveOn, asOf: a.asOf, evidence: a.evidence });
+    return true;
+  }
+
+  /** 录入一条任职（新发生的变更或补录）。 */
+  recordAppointment(a: AppointmentEntry): boolean {
+    const n = a.personName.trim();
+    if (!n) return false;
+    const existing = a.personID ? this.person(a.personID) : this.data.people.find((p) => p.name === n || p.aliases.includes(n));
+    const person = existing ?? newPerson(n);
+    const role = roleByID(a.roleID);
+    const title = a.title.trim() || role?.name || "董事";
+    const appt: Appointment = { id: uuid(), personID: person.id, companyID: a.companyID, title, from: a.effectiveOn, asOf: a.asOf, recordedOn: this.today,
+      verified: !!a.evidence && a.verified, ...(a.evidence ? { evidence: a.evidence } : {}), ...(a.roleID ? { roleID: a.roleID } : {}) };
+    this.editWithHistory("添加董事或高管", a.companyID, "directorChange", `${a.backfill ? "补录" : ""}${person.name} ${a.backfill ? "任" : "就任"}${title}`, (d) => {
+      if (!existing) d.people.push(person as any);
+      d.appointments.push(appt as any);
+    }, { backfill: a.backfill, effectiveOn: a.effectiveOn, effectiveUnknown: !a.effectiveOn, asOf: a.asOf, evidence: a.evidence });
+    return true;
+  }
+
+  /** 改一条股权或任职的出处：核实状态、依据、资料截至日期、生效日期、角色。可撤销，不进变更历史。 */
+  setProvenance(kind: "holding" | "appointment", id: string, patch: Partial<Provenance> & { from?: Day | null; roleID?: string | null }, label = "修改依据") {
+    const list = kind === "holding" ? this.data.holdings : this.data.appointments;
+    const cur = list.find((x) => x.id === id);
+    if (!cur) return;
+    if (patch.verified && !(patch.evidence ?? cur.evidence)) { this.showToast("先关联依据文件，才能标为已核实。", undefined, "", "failure"); return; }
+    this.commit((d) => {
+      const x = (kind === "holding" ? d.holdings : d.appointments).find((y) => y.id === id) as any;
+      if (!x) return;
+      for (const [k, v] of Object.entries(patch)) { if (v === null) delete x[k]; else if (v !== undefined) x[k] = v; }
+      if (patch.evidence === null) x.verified = false;
+      if (patch.verified !== undefined || patch.evidence !== undefined) delete x.migrated;
+    }, { label, toast: patch.verified ? "已标为已核实。" : patch.verified === false ? "已标为待核实。" : `${label}。` });
+  }
+
+  /** 改职务的角色（法域角色表）。职务名跟着变，可撤销。 */
+  setAppointmentRole(a: Appointment, roleID: string) {
+    const r = roleByID(roleID);
+    if (!r || a.roleID === roleID) return;
+    this.commit((d) => { const x = d.appointments.find((y) => y.id === a.id); if (x) { x.roleID = roleID; x.title = r.name; } }, { label: "修改职务", toast: `职务改为${r.name}。` });
+  }
+
+  /** 待核实的股权和任职（当前有效的）。 */
+  get unverified(): { kind: "holding" | "appointment"; item: Holding | Appointment }[] {
+    return this.cached("unverified", [this.data.holdings, this.data.appointments, this.today], () => [
+      ...this.data.holdings.filter((h) => !h.verified && isActiveOn(h, this.today)).map((item) => ({ kind: "holding" as const, item })),
+      ...this.data.appointments.filter((a) => !a.verified && isActiveOn(a, this.today)).map((item) => ({ kind: "appointment" as const, item })),
+    ]);
+  }
+
+  /** 公司所属集团的增减（点标签就地改）。 */
+  toggleCompanyGroup(companyID: string, groupID: string | null) {
+    const name = this.company(companyID)?.name ?? "";
+    if (groupID === null) {
+      const gs = this.groupsContaining(companyID);
+      if (!gs.length) return;
+      const u = this.undoable("移出所有集团", () => { for (const g of gs) this.moveOut(companyID, g.id); });
+      this.showToast(`${name} 现在不属于任何集团。`, u ? () => this.undoID(u) : undefined);
+      return;
+    }
+    const g = this.group(groupID);
+    if (!g) return;
+    const inside = this.companyIDsIn(g).has(companyID);
+    let msg = "";
+    const u = this.undoable(inside ? "移出集团" : "加入集团", () => { if (inside) msg = this.moveOut(companyID, groupID); else { this.addToGroup(companyID, groupID); msg = `已加入${latinPad(g.name)}`; } });
+    this.showToast(msg + "。", u ? () => this.undoID(u) : undefined);
+  }
+
+  /** 按名称后缀建议法域（只做建议，不自动填）。 */
+  suggestJurisdiction(name: string): { code: string; why: string } | null {
+    const n = name.trim();
+    const rules: [RegExp, string, string][] = [
+      [/(株式会社|合同会社|有限会社)/, "JP", "名称含“株式会社/合同会社”"],
+      [/(股份有限公司|有限公司)$/, "", ""],
+      [/Pte\.? ?Ltd\.?$/i, "SG", "名称以“Pte. Ltd.”结尾"],
+      [/\(USVI\)|USVI/i, "VI", "名称含“USVI”"],
+      [/\(BVI\)|BVI/i, "VG", "名称含“BVI”"],
+      [/(유한회사|주식회사)|Korea/i, "KR", "名称含韩国公司形式"],
+      [/(香港)/, "HK", "名称含“香港”"],
+      [/(台灣|台湾)/, "TW", "名称含“台湾”"],
+    ];
+    for (const [re, code, why] of rules) {
+      if (!re.test(n)) continue;
+      if (code) return { code, why };
+      if (/香港/.test(n)) return { code: "HK", why: "名称含“香港”和“有限公司”" };
+      if (/(台灣|台湾|股份有限公司)/.test(n)) return { code: "TW", why: "名称是台湾公司形式" };
+      return { code: "HK", why: "名称以“有限公司”结尾，常见于香港" };
+    }
+    return null;
+  }
+
+  /** 这家中介经手的未完成事项（到期详情“这家中介手上还有”）。 */
+  openForParty = (partyID?: string) => (partyID ? this.openObligations.filter((o) => this.responsibleParty(o)?.id === partyID) : []);
 
   // MARK: Charter 4 到期：确认或修改日期
 
@@ -1841,3 +1981,17 @@ export class Store {
 }
 
 export { snapshotTitle, refKey, hasFile, isMember, excludedSet, percentLabel };
+
+
+/** 4.4 录入性质与出处。 */
+export interface EntryNature { backfill?: boolean; effectiveOn?: Day; effectiveUnknown?: boolean; asOf?: Day; evidence?: Evidence }
+export interface NewEntity { name: string; jurisdiction: string; entityForm?: string; groupID?: string }
+export interface HoldingEntry {
+  companyID: string; percent: number; isNominee?: boolean; roleID?: string;
+  holder: { kind: "existing"; ref: NodeRef } | { kind: "newPerson"; name: string } | { kind: "newCompany"; entity: NewEntity };
+  backfill: boolean; effectiveOn?: Day; asOf?: Day; evidence?: Evidence; verified: boolean;
+}
+export interface AppointmentEntry {
+  companyID: string; personID?: string; personName: string; title: string; roleID?: string;
+  backfill: boolean; effectiveOn?: Day; asOf?: Day; evidence?: Evidence; verified: boolean;
+}

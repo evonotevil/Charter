@@ -4,6 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { createPortal } from "react-dom";
 import * as D from "../domain/day";
 import type { Day } from "../domain/day";
+import { SlideBg, TweenNumber, reducedMotion } from "./motion";
+import { isSoft } from "./uistyle";
 import { Icon } from "./Icon";
 import { platform } from "../platform/platform";
 
@@ -40,8 +42,8 @@ export function Avatar({ name, size = 30, dashed, highlighted }: { name: string;
   );
 }
 
-export const JurisdictionBadge = ({ code, size = 36, highlighted }: { code: string; size?: number; highlighted?: boolean }) =>
-  <span className={`jbadge ${highlighted ? "hl" : ""}`} style={{ width: size, height: size, borderRadius: size * 0.3, fontSize: size * 0.32 }}>{code}</span>;
+export const JurisdictionBadge = ({ code, size = 36, highlighted, tint }: { code: string; size?: number; highlighted?: boolean; tint?: CSSProperties }) =>
+  <span className={`jbadge ${highlighted ? "hl" : ""}`} style={{ width: size, height: size, borderRadius: size * 0.3, fontSize: size * 0.32, ...(highlighted ? null : tint) }}>{code}</span>;
 
 export const ProgressCapsule = ({ value, style }: { value: number; style?: CSSProperties }) =>
   <div className="progress" style={style}><div style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }} /></div>;
@@ -91,6 +93,7 @@ export function Popover({ anchor, open, onClose, children, placement = "bottom",
     document.addEventListener("keydown", key, true);
     return () => { document.removeEventListener("mousedown", down, true); document.removeEventListener("keydown", key, true); };
   }, [open, onClose, anchor]);
+  useExitGhost(ref, open);
   if (!open) return null;
   return createPortal(
     <div ref={ref} className="popover" style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, minWidth, ...style }} role="dialog">{children}</div>,
@@ -306,12 +309,13 @@ export function CalendarPanel({ value, onPick, relativeTo, relativeLabel = "签�
 
 // MARK: - 复选、单选、开关、分段
 
-export const ChoiceMark = ({ on }: { on: boolean }) => <span className={`mark ${on ? "on" : ""}`}>{on && <Icon name="checkmark" size={10} strokeWidth={3.5} />}</span>;
+/** 复选（Checkbox）是方角，单选（RadioGroup）是圆形：外观和行为一致。 */
+export const ChoiceMark = ({ on, square }: { on: boolean; square?: boolean }) => <span className={`mark ${square ? "sq" : ""} ${on ? "on" : ""}`}>{on && <Icon name="checkmark" size={10} strokeWidth={3.5} />}</span>;
 
 export function Checkbox({ checked, onChange, children, disabled, title }: { checked: boolean; onChange: (v: boolean) => void; children?: ReactNode; disabled?: boolean; title?: string }) {
   return (
     <button className="row gap8" onClick={(e) => { e.stopPropagation(); onChange(!checked); }} disabled={disabled} role="checkbox" aria-checked={checked} title={title} style={{ opacity: disabled ? .5 : 1, textAlign: "left" }}>
-      <ChoiceMark on={checked} />{children && <span>{children}</span>}
+      <ChoiceMark on={checked} square />{children && <span>{children}</span>}
     </button>
   );
 }
@@ -339,7 +343,8 @@ export function RadioGroup<V>({ options, value, onChange, horizontal }: { option
 
 export function Segmented<V extends string | number | boolean>({ options, value, onChange }: { options: [V, string][]; value: V; onChange: (v: V) => void }) {
   return (
-    <div className="seg" role="tablist">
+    <div className="seg slide-host" role="tablist">
+      <SlideBg />
       {options.map(([v, l]) => <button key={String(v)} className={v === value ? "on" : ""} onClick={() => onChange(v)} role="tab" aria-selected={v === value}>{l}</button>)}
     </div>
   );
@@ -391,10 +396,47 @@ export function ListField({ values, onChange, placeholder }: { values: string[];
 
 // MARK: - 弹窗
 
+/**
+ * 离场淡出（#5 #6）：元素被卸载时，在 body 上留一个复制品 fixed 在原位淡出。
+ * 经 router 关闭的弹窗已经由 html.closing-sheet 播过淡出，这里跳过。
+ */
+function useExitGhost(ref: React.RefObject<HTMLElement>, active: boolean) {
+  const last = useRef<{ el: HTMLElement; rect: DOMRect } | null>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (active && el) last.current = { el, rect: el.getBoundingClientRect() };
+  });
+  useLayoutEffect(() => {
+    if (active) return;
+    const l = last.current; last.current = null;
+    if (!l || reducedMotion() || document.documentElement.classList.contains("closing-sheet")) return;
+    const g = l.el.cloneNode(true) as HTMLElement;
+    g.setAttribute("aria-hidden", "true");
+    g.classList.add("ghost-out");
+    Object.assign(g.style, { position: "fixed", left: `${l.rect.left}px`, top: `${l.rect.top}px`, width: `${l.rect.width}px`, height: `${l.rect.height}px`, pointerEvents: "none", margin: "0", animationDelay: "0s" });
+    document.body.appendChild(g);
+    setTimeout(() => g.remove(), 160);
+  }, [active]);
+  useLayoutEffect(() => () => {
+    const l = last.current;
+    if (!activeRef.current || !l || reducedMotion() || document.documentElement.classList.contains("closing-sheet")) return;
+    const g = l.el.cloneNode(true) as HTMLElement;
+    g.setAttribute("aria-hidden", "true");
+    g.classList.add("ghost-out");
+    Object.assign(g.style, { position: "fixed", left: `${l.rect.left}px`, top: `${l.rect.top}px`, width: `${l.rect.width}px`, height: `${l.rect.height}px`, pointerEvents: "none", margin: "0" });
+    document.body.appendChild(g);
+    setTimeout(() => g.remove(), 160);
+  }, []);
+}
+
 const SheetDepth = createContext(0);
 
 export function Modal({ onClose, children, dismissOnEscape = true }: { onClose: () => void; children: ReactNode; dismissOnEscape?: boolean }) {
   const depth = useContext(SheetDepth);
+  const overlay = useRef<HTMLDivElement>(null);
+  useExitGhost(overlay, true);
   useEffect(() => {
     if (!dismissOnEscape) return;
     const k = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(".popover")) { e.stopPropagation(); onClose(); } };
@@ -403,7 +445,7 @@ export function Modal({ onClose, children, dismissOnEscape = true }: { onClose: 
   }, [onClose, dismissOnEscape]);
   return createPortal(
     <SheetDepth.Provider value={depth + 1}>
-      <div className="overlay" style={{ zIndex: 900 + depth * 10 }}
+      <div ref={overlay} className="overlay" style={{ zIndex: 900 + depth * 10 }}
         // 弹窗经 portal 渲染，React 事件仍会沿组件树冒泡到触发它的行；在这里截住点击类事件。键盘事件不截，Esc 等快捷键挂在 window 上。
         onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()} onMouseDown={(e) => { if (e.target === e.currentTarget) { /* 与 Mac 一致：点背景不关闭 */ } }}>{children}</div>
     </SheetDepth.Provider>,
@@ -511,7 +553,12 @@ export const Skeleton = ({ width, height = 12 }: { width?: number | string; heig
 
 
 /** 页头：标题与右侧操作在同一行垂直居中，说明文字放在下一行。所有页面共用，保证位置一致。 */
-export function PageHeader({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children?: ReactNode }) {
+export type PageStat = { label: string; value: number; unit?: string; tone?: "bad" | "warn" | "accent"; onClick?: () => void };
+
+/** 页面标题。柔和风格下，subtitle 换成一排大数字卡（stats）；经典风格显示 subtitle。 */
+export function PageHeader({ title, subtitle, children, stats }: { title: string; subtitle?: ReactNode; children?: ReactNode; stats?: PageStat[] }) {
+  const soft = !!stats?.length;
+  const compact = !isSoft();
   return (
     <div className="col gap4">
       <div className="row gap16" style={{ minHeight: 40 }} data-tauri-drag-region>
@@ -519,7 +566,19 @@ export function PageHeader({ title, subtitle, children }: { title: string; subti
         <span className="spacer" data-tauri-drag-region />
         {children}
       </div>
-      {subtitle && <span className="t-body muted">{subtitle}</span>}
+      {soft ? (
+        <div className={`stat-row ${compact ? "classic" : ""}`}>
+          {stats!.map((st) => {
+            const body = <>
+              <span className="stat-label">{st.label}</span>
+              <span className="row" style={{ alignItems: "flex-end", gap: 3 }}><span className="big-num" style={compact ? undefined : { fontSize: 34 }}><TweenNumber value={st.value} /></span>{st.unit && <span className="big-unit" style={{ fontSize: 12.5, paddingBottom: 3 }}>{st.unit}</span>}</span>
+            </>;
+            return st.onClick
+              ? <button key={st.label} className={`stat-tile ${st.tone ?? ""}`} onClick={st.onClick}>{body}</button>
+              : <div key={st.label} className={`stat-tile ${st.tone ?? ""}`}>{body}</div>;
+          })}
+        </div>
+      ) : subtitle && <span className="t-body muted">{subtitle}</span>}
     </div>
   );
 }

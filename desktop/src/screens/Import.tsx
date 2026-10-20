@@ -306,7 +306,7 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
         <div className="col" style={{ gap: 18 }}>
           {commitError && <div className="row gap6 amber-text selectable"><Icon name="exclamationmark.triangle.fill" />{commitError}</div>}
           {working && <div style={{ height: 6, borderRadius: 3, background: "var(--hairline)", overflow: "hidden" }} role="progressbar" aria-label="识别进度" aria-valuenow={Math.round(progress / Math.max(items.length, 1) * 100)}>
-            <div style={{ height: "100%", width: `${(progress / Math.max(items.length, 1)) * 100}%`, background: "var(--ink)", transition: "width .3s" }} />
+            <div style={{ height: "100%", width: `${(progress / Math.max(items.length, 1)) * 100}%`, background: "var(--ink)", transition: "width var(--standard) var(--ease)" }} />
           </div>}
           {drafts.length > 0 && <FormGroup title="新公司（归档时新建档案）">
             {drafts.map((d, k) => {

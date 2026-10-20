@@ -88,8 +88,22 @@ const parseRefKey = (k: string): NodeRef => {
   return { kind: k.slice(0, i) as NodeKind, id: k.slice(i + 1) };
 };
 
-export interface Holding {
+/** 一条治理事实的依据：档案里的某份文件、第几页、备注（4.4）。 */
+export interface Evidence { documentID: string; page?: string; note?: string }
+
+/**
+ * 4.4 可信台账：股权、任职共用的出处字段。
+ * - from：生效日期（法律上自哪天起），未知时为空
+ * - asOf：资料截至日期（依据文件反映的是哪天的状态）
+ * - recordedOn：录入日期（自动）
+ * - verified：已核实（必须有 evidence）；false = 待核实
+ */
+export interface Provenance { asOf?: Day; recordedOn?: Day; verified?: boolean; evidence?: Evidence; migrated?: boolean }
+
+export interface Holding extends Provenance {
   id: string;
+  /** 所有者角色（法域角色表 id，如 jp.shain、llc.member）；空 = 普通股东。 */
+  roleID?: string;
   holder: NodeRef;
   companyID: string;
   percent: number;
@@ -104,8 +118,10 @@ export interface Holding {
 export const isActiveOn = (x: { from?: Day; to?: Day }, day: Day) =>
   !(x.from && x.from > day) && !(x.to && x.to <= day);
 
-export interface Appointment {
+export interface Appointment extends Provenance {
   id: string;
+  /** 法域角色表 id（如 common.director、jp.shokumu）；空 = 只有自定义职务 title。 */
+  roleID?: string;
   personID: string;
   companyID: string;
   title: string;
@@ -224,6 +240,11 @@ export interface ChangeRecord {
   summary: string;
   details?: string[];
   evidenceDocumentID?: string;
+  /** 4.4：补录已有事实（不生成任何变更类提醒）。 */
+  backfill?: boolean;
+  /** 4.4：生效日期未知时为 true，effectiveOn 退回资料截至日期或录入日期，只用于排序。 */
+  effectiveUnknown?: boolean;
+  asOf?: Day;
 }
 
 // MARK: 共享设置
@@ -462,7 +483,13 @@ export interface CorporateGroup {
   /** Charter 4：品牌色标。 */
   color?: string;
 }
-export const brandPalette = ["#4F7CF7", "#2BA889", "#E07A2E", "#B05CD6", "#D64F6E", "#3AA0C9"];
+/** 集团颜色：前 6 个保持原顺序（未设颜色的老集团按此推算），其后按色相补齐，共 18 个。 */
+export const brandPalette = [
+  "#4F7CF7", "#2BA889", "#E07A2E", "#B05CD6", "#D64F6E", "#3AA0C9",
+  "#2F4FB5", "#5E9E3A", "#C99A1E", "#7A5AF0", "#E0559C", "#178F8F",
+  "#B5452B", "#8A6D4E", "#5C6B80", "#9C8F2A", "#C2417A", "#4B4B57",
+];
+export const isHexColor = (s: string) => /^#[0-9a-fA-F]{6}$/.test(s);
 
 export interface GroupRow {
   companyID: string;

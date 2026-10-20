@@ -1,5 +1,7 @@
 // 多个页面共用的组件：事项行与下一步、文件行与缩略图、等回件、请补发、规则核对、待确认归档。
 
+import { TicketStub } from "../ui/TicketStub";
+import { companyTint } from "../ui/uistyle";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
 import type { Day } from "../domain/day";
@@ -332,9 +334,10 @@ export function ObligationRow({ o, detail, emphasize, onTap }: { o: Obligation; 
   const ctx = useContextMenu();
   const left = daysLeft(o, store.today);
   return (
-    <button className="row gap12 hover-band" onClick={onTap} onContextMenu={(e) => ctx.open(e, obligationMenu(store, router, o))}
+    <button className="row gap12 hover-band tk" onClick={onTap} onContextMenu={(e) => ctx.open(e, obligationMenu(store, router, o))}
       style={{ padding: "0 12px", height: 62, borderRadius: "var(--r-row)", width: "100%", textAlign: "left" }}>
-      <JurisdictionBadge code={o.company.jurisdiction} size={38} />
+      <TicketStub due={o.due} today={store.today} />
+      <JurisdictionBadge code={o.company.jurisdiction} size={38} tint={companyTint(store, o.company.id)} />
       <span className="col grow" style={{ gap: 2 }}>
         <span className="row gap6"><span className="t-row ellipsis">{o.rule.name}</span><TrustBadge trust={store.trust(o)} /></span>
         <span className="t-meta ellipsis" style={{ color: emphasize ? "var(--amber-text)" : "var(--muted)" }}>{detail}</span>
@@ -391,7 +394,6 @@ export function FileHeaderRow() {
 export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect }: { d: Document; showOwner?: boolean; extraMenu?: MenuEntry[]; selected?: boolean; onSelect?: (e: React.MouseEvent) => void }) {
   const { store, router } = useApp();
   const [startStage, stageNode, busy] = useStageFile();
-  const [reissue, setReissue] = useState(false);
   const ctx = useContextMenu();
   const t = store.docType(d.typeID);
   const f = store.freshness(d);
@@ -405,7 +407,6 @@ export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect
     item("打开", "arrow.up.forward.app", () => void store.openDocument(d)),
     item(platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示", "folder", () => void store.revealDocument(d)),
     item("归档新版…", "square.and.arrow.up", upload),
-    item("请补发…", "text.bubble", () => setReissue(true)),
     item(d.needsUpdate ? "取消“需要更新”" : "标为需要更新", "exclamationmark.triangle", () => store.commit((x) => { const doc = x.documents.find((y) => y.id === d.id); if (doc) doc.needsUpdate = !doc.needsUpdate; })),
     divider,
     item("从 Charter 移除记录", "trash", () => store.deleteDocument(d), { destructive: true }),
@@ -435,12 +436,10 @@ export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect
       <span className="row gap6" style={{ width: FileColumns.actions, flex: "none", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
         {busy ? <Spinner /> : f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补充日期</Button>
           : freshnessNeedsAttention(f) ? <>
-            <Button size="small" onClick={() => setReissue(true)} title="生成请中介补发新版的文字，可先修改再复制">请补发</Button>
             <Button size="small" onClick={upload} title="类型和归属沿用这份，旧版保留">归档新版</Button>
           </> : <Button size="small" kind="quiet" onClick={() => void store.openDocument(d)}>打开</Button>}
       </span>
       {stageNode}
-      {reissue && <ReissueRequestSheet owner={d.owner} typeIDs={[d.typeID]} onClose={() => setReissue(false)} />}
       {ctx.node}
     </div>
   );

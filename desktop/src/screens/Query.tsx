@@ -100,7 +100,7 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
   useEffect(() => { if (!selectedID || !flat.some((h) => h.id === selectedID)) setSelectedID(flat[0]?.id ?? null); }, [flat.map((h) => h.id).join("|")]);
   useEffect(() => { listRef.current?.querySelector(`[data-hit="${CSS.escape(selectedID ?? "")}"]`)?.scrollIntoView({ block: "nearest" }); }, [selectedID]);
 
-  const closeThen = (fn: () => void) => { onClose(); setTimeout(fn, 200); };
+  const closeThen = (fn: () => void) => { onClose(); setTimeout(fn, 120); };
   const perform = (act: Act) => {
     switch (act.kind) {
       case "packet": router.open(act.purposeID ? { kind: "packetFor", companyID: act.companyID, purposeID: act.purposeID } : { kind: "packet", companyID: act.companyID }); break;

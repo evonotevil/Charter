@@ -1,5 +1,6 @@
 // 文件页：按归属分组的现行文件，筛选、多选、导出 ZIP、继续未完成的导入。移植自 FilesView.swift。
 
+import { companyTint } from "../ui/uistyle";
 import { useEffect, useRef, useState } from "react";
 import * as D from "../domain/day";
 import { type Document, type NodeRef } from "../domain/models";
@@ -125,7 +126,7 @@ export function FilesView() {
       <div key={owner ? `${owner.kind}:${owner.id}` : title} className="col gap12">
         <div className="row gap10">
           {owner ? <>
-            {c ? <JurisdictionBadge code={c.jurisdiction} size={26} /> : <Avatar name={title} size={26} />}
+            {c ? <JurisdictionBadge code={c.jurisdiction} size={26} tint={companyTint(store, c.id)} /> : <Avatar name={title} size={26} />}
             <button className="row gap4" onClick={() => (owner.kind === "company" ? router.openCompany(owner.id) : router.openPerson(owner.id))}>
               <span className="t-section">{title}</span><Icon name="arrow.up.right" size={10} className="muted" />
             </button>
@@ -167,7 +168,10 @@ export function FilesView() {
       <div className="scroll grow">
         <div className="col appear" style={{ gap: 40, padding: "var(--page-edge)", paddingBottom: selectedDocs.length ? 96 : undefined }}>
           <div className="col gap24">
-            <PageHeader title="文件" subtitle={(docs.length === scoped.length ? `${scoped.length} 份现行文件` : `显示 ${docs.length} / ${scoped.length} 份`) + (attention ? `，${attention} 份需处理` : "，都在有效期内") + "。把 PDF、照片或文件夹拖进窗口即可导入。"}>
+            <PageHeader title="文件" stats={[
+              { label: "现行文件", value: scoped.length, unit: "份" },
+              { label: "需处理", value: attention, unit: "份", tone: attention ? "warn" : undefined, onClick: attention ? () => router.set("filesFilter", 2) : undefined },
+            ]} subtitle={(docs.length === scoped.length ? `${scoped.length} 份现行文件` : `显示 ${docs.length} / ${scoped.length} 份`) + (attention ? `，${attention} 份需处理` : "，都在有效期内") + "。把 PDF、照片或文件夹拖进窗口即可导入。"}>
               <Button kind="primary" icon="square.and.arrow.down" title="选择 PDF、照片或文件夹；也可以直接拖进窗口" onClick={() => void router.chooseFiles(null)}>导入文件</Button>
             </PageHeader>
             <div className="row gap10 wrap">

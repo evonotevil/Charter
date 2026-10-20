@@ -1,5 +1,8 @@
 // Charter 4 中介库：每家中介可有多位对接人；右侧列出它负责的公司和事项。
 
+import { TicketStub } from "../ui/TicketStub";
+import { companyTint } from "../ui/uistyle";
+import { useListMotion } from "../ui/motion";
 import { useEffect, useState } from "react";
 import { useApp } from "../state/hooks";
 import * as D from "../domain/day";
@@ -25,7 +28,11 @@ export function AgentsView() {
 
   return (
     <div className="col grow" style={{ minHeight: 0, padding: "0 var(--page-edge)" }}>
-      <PageHeader title="中介" subtitle={`${parties.length} 家 · ${store.data.companies.filter((c) => c.defaultPartyID).length} 家公司指定了默认中介`}>
+      <PageHeader title="中介" stats={[
+        { label: "中介", value: parties.length, unit: "家" },
+        { label: "指定了默认中介的公司", value: store.data.companies.filter((c) => c.defaultPartyID).length, unit: "家" },
+        { label: "经手的待办事项", value: store.openObligations.filter((o) => !!store.responsibleParty(o)).length, unit: "件", tone: "accent" },
+      ]} subtitle={`${parties.length} 家 · ${store.data.companies.filter((c) => c.defaultPartyID).length} 家公司指定了默认中介`}>
         <Button kind="primary" icon="plus" onClick={add}>添加中介</Button>
       </PageHeader>
       {!sel ? <EmptyStateView symbol="person.2" title="还没有中介" message="把公司秘书、注册代理、税务师加进来，到期提醒会自动带上对接人。" actionTitle="添加中介" action={add} /> : (
@@ -63,6 +70,7 @@ function AgentDetail({ p }: { p: Party }) {
     x.contactName = cs[0]?.name ?? ""; x.email = cs[0]?.email ?? ""; x.phone = cs[0]?.phone ?? "";
   });
   const dues = openFor(p).sort((a, b) => (a.due < b.due ? -1 : 1));
+  const contactMotion = useListMotion(contacts.map((c) => c.id));
   return (
     <section className="surface col scroll grow appear" style={{ padding: "24px 28px", gap: 22, minWidth: 0 }}>
       <div className="row gap12">
@@ -76,9 +84,9 @@ function AgentDetail({ p }: { p: Party }) {
           <div className="t-section">对接人</div>
           <Button size="small" kind="quiet" icon="plus" onClick={() => setContacts([...contacts, newContact()])}>添加对接人</Button>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+        <div style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
           {contacts.map((c, i) => (
-            <div key={c.id} className="v4-contact">
+            <div key={c.id} ref={contactMotion.rowRef(c.id)} className={`v4-contact ${contactMotion.isNew(c.id) ? "cp-new" : ""}`}>
               <div className="row gap6">
                 <InlineText value={c.name} placeholder="姓名" label="姓名" style={{ fontWeight: 600 }} onCommit={(v) => setContacts(contacts.map((x, j) => (j === i ? { ...x, name: v } : x)))} />
                 {i === 0 ? <span className="v4-chip lime">主对接</span>
@@ -102,8 +110,9 @@ function AgentDetail({ p }: { p: Party }) {
       <div className="col gap4">
         <div className="t-section" style={{ marginBottom: 6 }}>负责的事项</div>
         {dues.length ? dues.map((o) => (
-          <button key={o.key} className="v4-item" onClick={() => router.openDue(o.key)}>
-            <span className="v4-code">{o.company.jurisdiction}</span>
+          <button key={o.key} className="v4-item tk" onClick={() => router.openDue(o.key)}>
+            <TicketStub due={o.due} today={store.today} />
+            <span className="v4-code" style={companyTint(store, o.company.id)}>{o.company.jurisdiction}</span>
             <span className="col grow" style={{ minWidth: 0 }}>
               <span className="ellipsis" style={{ fontWeight: 600 }}>{o.company.name}</span>
               <span className="ellipsis muted t-meta">{o.rule.name} · {D.long(o.due)}</span>

@@ -23,7 +23,7 @@ const map: Record<string, LucideIcon> = {
   "doc.text.magnifyingglass": FileSearch, "clock.arrow.circlepath": History, "arrow.counterclockwise": ArchiveRestore, "chevron.left": ChevronLeft, checklist: ListChecks,
   "arrow.up.forward.app": ExternalLink, "xmark.circle": XCircle, "square.and.pencil": PencilLine, "questionmark.circle": HelpCircle,
   paperclip: Paperclip, "info.circle": Info, gearshape: Settings, clock: Clock, "chevron.up.chevron.down": ChevronsUpDown,
-  "chevron.down": ChevronDown, "chevron.up": ChevronUp, "checkmark.seal": BadgeCheck, "building.columns": Landmark,
+  "chevron.down": ChevronDown, "checkmark.circle": CheckCircle2, "chevron.up": ChevronUp, "checkmark.seal": BadgeCheck, "building.columns": Landmark,
   "arrow.up.right": ArrowUpRight, "arrow.up": ArrowUp, "arrow.right": ArrowRight, "arrow.down.doc": FileDown, "arrow.down": ArrowDown,
   archivebox: Archive, "xmark.octagon.fill": AlertOctagon, tray: Inbox, "text.bubble": MessageSquareText, tag: Tag,
   tablecells: Table2, "slider.horizontal.3": SlidersHorizontal, "rectangle.3.group": LayoutGrid, "questionmark.diamond": ShieldQuestion,

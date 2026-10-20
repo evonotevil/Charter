@@ -26,10 +26,19 @@ export function normCompany(r: Raw): Company {
 export const normPerson = (r: Raw): Person =>
   ({ ...r, id: str(r.id), name: str(r.name), aliases: arr(r.aliases), email: str(r.email), notes: str(r.notes) }) as Person;
 
-export const normHolding = (r: Raw): Holding =>
-  ({ ...r, shares: str(r.shares), shareClass: str(r.shareClass), isNominee: !!r.isNominee, percent: Number(r.percent) || 0 }) as Holding;
+/**
+ * 4.4 迁移：4.3 及以前的股权和任职没有 verified 字段。一律标为“待核实”，
+ * 原来的日期当作“资料截至日期”，生效日期留空（不猜）。幂等：迁移后 verified 为 false，不会再迁移。
+ */
+function migrateProvenance<T extends Raw>(r: T): T {
+  if (r.verified !== undefined) return r;
+  return { ...r, verified: false, migrated: true, asOf: r.asOf ?? r.from, from: undefined };
+}
 
-export const normAppointment = (r: Raw): Appointment => ({ ...r, title: str(r.title) }) as Appointment;
+export const normHolding = (r: Raw): Holding =>
+  migrateProvenance({ ...r, shares: str(r.shares), shareClass: str(r.shareClass), isNominee: !!r.isNominee, percent: Number(r.percent) || 0 }) as Holding;
+
+export const normAppointment = (r: Raw): Appointment => migrateProvenance({ ...r, title: str(r.title) }) as Appointment;
 
 export const normParty = (r: Raw): Party =>
   ({

@@ -1,8 +1,8 @@
 // 设置（Charter 4）：居中浮层。常规（数据与同步、提醒）/ 公司资料（集团、档案清单、文件包用途）/ 到期规则（合规规则）/ 高级（备份与恢复）。
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
-import { type CorporateGroup, type DateAdjust, type DocumentType, type NodeKind, type NodeRef, type RuleTemplate, type ValidityKind, brandPalette, dateAdjustLabel, ref, refKey, uuid, validityKinds, validityLabel } from "../domain/models";
+import { type CorporateGroup, type DateAdjust, type DocumentType, type NodeKind, type NodeRef, type RuleTemplate, type ValidityKind, brandPalette, isHexColor, dateAdjustLabel, ref, refKey, uuid, validityKinds, validityLabel } from "../domain/models";
 import { snapshotKeep, snapshotTitle, type DataSnapshot } from "../domain/folder";
 import { sourceLabel } from "../domain/groups";
 import { useApp } from "../state/hooks";
@@ -14,7 +14,9 @@ import { installSampleData } from "../state/sample";
 import { nonArchiveTypeIDs } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { Button, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField } from "../ui/kit";
+import { useChildMotion } from "../ui/motion";
+import { codeTint, companyTint, isSoft, setUIStyle, useUIStyle } from "../ui/uistyle";
+import { Button, Segmented, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField } from "../ui/kit";
 import { ScheduleEditor } from "./common";
 import { ArchiveItemFields, type ItemDraft, newItemDraft } from "./Companies";
 import { PurposeEditor } from "./Packet";
@@ -69,8 +71,9 @@ function PaneHeader({ title, detail, children }: { title: string; detail?: strin
   );
 }
 
-export function SGroup({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
-  return <div className="col gap8"><div className="s4-card">{children}</div>{footer && <span className="t-meta muted" style={{ padding: "0 4px" }}>{footer}</span>}</div>;
+export function SGroup({ children, footer, scope }: { children: ReactNode; footer?: ReactNode; scope?: string }) {
+  const box = useChildMotion<HTMLDivElement>(scope);
+  return <div className="col gap8"><div ref={box} className="s4-card" style={{ position: "relative" }}>{children}</div>{footer && <span className="t-meta muted" style={{ padding: "0 4px" }}>{footer}</span>}</div>;
 }
 
 export function SRow({ title, detail, children, danger }: { title: ReactNode; detail?: ReactNode; children?: ReactNode; danger?: boolean }) {
@@ -90,21 +93,22 @@ const Scroll = ({ children }: { children: ReactNode; max?: number }) => (
 );
 
 /** 列表 + 详情：左列表 250px，右详情；两栏等高，各自内部滚动。 */
-function Split({ header, list, detail }: { header: ReactNode; list: ReactNode; detail: ReactNode }) {
+function Split({ header, list, detail, scope }: { header: ReactNode; list: ReactNode; detail: ReactNode; scope?: string }) {
+  const box = useChildMotion<HTMLDivElement>(scope);
   return (
     <div className="col grow" style={{ minHeight: 0, padding: "28px 36px 28px", gap: 18 }}>
       {header}
       <div className="row grow" style={{ gap: 16, minHeight: 0, alignItems: "stretch" }}>
-        <div className="s4-card scroll" style={{ width: 250, flex: "none", padding: 6 }}>{list}</div>
+        <div ref={box} className="s4-card scroll" style={{ position: "relative", width: 250, flex: "none", padding: 6 }}>{list}</div>
         <div className="scroll grow col" style={{ minWidth: 0, gap: 14 }}>{detail}</div>
       </div>
     </div>
   );
 }
 
-function ListItem({ on, onClick, lead, title, sub, trailing }: { on: boolean; onClick: () => void; lead?: ReactNode; title: ReactNode; sub?: ReactNode; trailing?: ReactNode }) {
+function ListItem({ mid, on, onClick, lead, title, sub, trailing }: { mid?: string; on: boolean; onClick: () => void; lead?: ReactNode; title: ReactNode; sub?: ReactNode; trailing?: ReactNode }) {
   return (
-    <button className={`s4-item ${on ? "on" : ""}`} onClick={onClick} aria-current={on || undefined}>
+    <button data-mid={mid} className={`s4-item ${on ? "on" : ""}`} onClick={onClick} aria-current={on || undefined}>
       {lead}
       <span className="col grow" style={{ minWidth: 0, gap: 1 }}>
         <span className="ellipsis" style={{ fontSize: 13.5, fontWeight: 600 }}>{title}</span>
@@ -125,6 +129,7 @@ const paneDetail: Partial<Record<SettingsPane, string>> = {
 
 function GeneralSettings({ pane }: { pane: SettingsPane }) {
   const { store, sync } = useApp();
+  const uiStyle = useUIStyle();
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmSample, setConfirmSample] = useState(false);
   const [restoring, setRestoring] = useState<DataSnapshot | null>(null);
@@ -157,6 +162,9 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
     <Scroll>
       <PaneHeader title={settingsPaneTitle[pane]} detail={paneDetail[pane]} />
       {pane === "sync" && <>
+        <SGroup footer="柔和：集团色铺底、事项做成票据样式、侧栏和信息卡用大数字。只改外观，按这台电脑记住。">
+          <SRow title="界面风格"><Segmented options={[["classic", "经典"], ["soft", "柔和"]]} value={uiStyle} onChange={setUIStyle} /></SRow>
+        </SGroup>
         <SGroup footer="把数据文件夹放进 iCloud 云盘或 OneDrive，Mac 和 Windows 电脑就能共用同一套档案。">
           <SRow title={root.split(/[\\/]/).filter(Boolean).pop()} detail={<span className="selectable mono" title={root}>{root}</span>}>
             <Button size="small" onClick={() => void p.openPath(root)}>{finder}</Button>
@@ -280,8 +288,8 @@ function GroupsSettings() {
     <Split
       header={<PaneHeader title="集团" detail="结构图顶部的分组。删除集团只删除分组，公司和持股不受影响。"><Button kind="primary" icon="plus" onClick={create}>新建集团</Button></PaneHeader>}
       list={<>
-        {groups.map((g) => <ListItem key={g.id} on={g.id === sel?.id} onClick={() => router.set("settingsGroupID", g.id)}
-          lead={<span className="v4-dot" style={{ background: store.brandColor(g) }} />} title={g.name} sub={`${store.companyIDsIn(g).size} 家公司`} />)}
+        {groups.map((g) => <ListItem key={g.id} mid={g.id} on={g.id === sel?.id} onClick={() => router.set("settingsGroupID", g.id)}
+          lead={isSoft() ? <span className="v4-code" style={{ width: 26, height: 26, ...codeTint(store.brandColor(g)) }}>{[...g.name.trim()][0] ?? "集"}</span> : <span className="v4-dot" style={{ background: store.brandColor(g) }} />} title={g.name} sub={`${store.companyIDsIn(g).size} 家公司`} />)}
         {!groups.length && <span className="muted t-meta" style={{ padding: 12 }}>还没有集团。</span>}
         {loose > 0 && <><div className="hairline" style={{ margin: "6px 8px" }} /><span className="row gap8 t-meta muted" style={{ padding: "10px 12px" }}><span className="v4-dot" style={{ boxShadow: "inset 0 0 0 1.5px var(--muted)" }} />不属于任何集团 · {loose} 家</span></>}
       </>}
@@ -290,10 +298,41 @@ function GroupsSettings() {
   );
 }
 
+/** 18 个预设色 + 自定义（系统取色器，松手才保存一次）。 */
+function ColorPicker({ value, onPick }: { value: string; onPick: (c: string) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  useEffect(() => {
+    const el = input.current; if (!el) return;
+    const done = () => { setPreview(null); if (isHexColor(el.value) && el.value.toLowerCase() !== value.toLowerCase()) onPick(el.value.toUpperCase()); };
+    el.addEventListener("change", done);
+    return () => el.removeEventListener("change", done);
+  }, [value, onPick]);
+  const shown = preview ?? value;
+  const custom = !brandPalette.some((c) => c.toLowerCase() === shown.toLowerCase());
+  const dot = (c: string, on: boolean) => ({ width: 20, height: 20, borderRadius: "50%", background: c, flex: "none" as const,
+    boxShadow: on ? "0 0 0 2px var(--surface), 0 0 0 4px var(--ink)" : undefined, transition: "box-shadow var(--fast) var(--ease)" });
+  return (
+    <span className="col gap8" style={{ alignItems: "flex-end" }}>
+      <span style={{ display: "grid", gridTemplateColumns: "repeat(9, 20px)", gap: 8 }}>
+        {brandPalette.map((c) => <button key={c} aria-label={`颜色 ${c}`} aria-pressed={c.toLowerCase() === shown.toLowerCase()} onClick={() => onPick(c)} style={dot(c, c.toLowerCase() === shown.toLowerCase())} />)}
+      </span>
+      <label className="row gap6 t-meta" style={{ cursor: "pointer", color: "var(--muted)" }}>
+        <span style={{ ...dot(custom ? shown : "conic-gradient(#D64F6E, #E07A2E, #C99A1E, #2BA889, #3AA0C9, #4F7CF7, #B05CD6, #D64F6E)", custom), position: "relative" }}>
+          <input ref={input} type="color" value={shown} aria-label="自定义颜色" onInput={(e) => setPreview((e.target as HTMLInputElement).value)}
+            style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%", border: 0, padding: 0 }} />
+        </span>
+        {custom ? <span className="mono" style={{ color: "var(--ink)" }}>{shown.toUpperCase()}</span> : "自定义…"}
+      </label>
+    </span>
+  );
+}
+
 function GroupDetail({ g }: { g: CorporateGroup }) {
   const { store, router } = useApp();
   const [q, setQ] = useState("");
   const [pick, setPick] = useState<"top" | "member" | null>(null);
+  const members = useChildMotion<HTMLDivElement>(g.id);
   const save = (fn: (x: CorporateGroup) => void, label?: string) => store.commit((d) => { const x = d.groups.find((y) => y.id === g.id); if (x) fn(x as CorporateGroup); }, label ? { label } : {});
   const rows = store.rowsOf(g);
   const excluded = (g.excludedCompanyIDs ?? []).map((id) => store.company(id)).filter(Boolean);
@@ -321,11 +360,7 @@ function GroupDetail({ g }: { g: CorporateGroup }) {
           <InlineText value={g.name} label="集团名称" onCommit={(v) => v.trim() && save((x) => { x.name = v.trim(); }, "重命名集团")} style={{ fontWeight: 700, textAlign: "right", width: 220 }} />
         </SRow>
         <SRow title={<span className="muted" style={{ fontWeight: 500, fontSize: 13 }}>颜色</span>}>
-          {brandPalette.map((c) => {
-            const on = store.brandColor(g) === c;
-            return <button key={c} aria-label={`颜色 ${c}`} aria-pressed={on} onClick={() => save((x) => { x.color = c; })}
-              style={{ width: 20, height: 20, borderRadius: "50%", background: c, boxShadow: on ? "0 0 0 2px var(--surface), 0 0 0 4px var(--ink)" : undefined }} />;
-          })}
+          <ColorPicker value={store.brandColor(g)} onPick={(c) => save((x) => { x.color = c; }, "更改集团颜色")} />
         </SRow>
         <SRow title={<span className="muted" style={{ fontWeight: 500, fontSize: 13 }} title="从这里沿持股往下，自动算出成员">顶层</span>}>
           <span className="row gap6 wrap" style={{ justifyContent: "flex-end", maxWidth: 380 }}>
@@ -346,15 +381,15 @@ function GroupDetail({ g }: { g: CorporateGroup }) {
           </div>
         </div>
       )}
-      <div className="s4-card">
+      <div ref={members} className="s4-card" style={{ position: "relative" }}>
         <SRow title="成员" detail={`${rows.length} 家公司`}><button className="link t-meta" onClick={() => { setPick(pick === "member" ? null : "member"); setQ(""); }}>+ 手动加入公司</button></SRow>
         {rows.map((r) => {
           const c = store.company(r.companyID);
           if (!c) return null;
           const m = store.membership(c.id, g);
           return (
-            <div key={c.id} className="s4-row" style={{ minHeight: 50 }}>
-              <span className="v4-code">{c.jurisdiction}</span>
+            <div key={c.id} data-mid={c.id} className="s4-row" style={{ minHeight: 50 }}>
+              <span className="v4-code" style={companyTint(store, c.id)}>{c.jurisdiction}</span>
               <span className="grow ellipsis" style={{ fontSize: 13.5, fontWeight: 600 }}>{c.name}</span>
               <span className="t-meta muted">{sourceLabel(m)}</span>
               {m.kind !== "top" && <button className="link t-meta" onClick={() => { let msg = ""; const u = store.undoable("移出集团", () => { msg = store.moveOut(c.id, g.id); }); store.showToast(msg || `已把 ${c.name} 移出 ${g.name}。`, u ? () => store.undoID(u) : undefined); }}>移出</button>}
@@ -464,14 +499,14 @@ function ArchiveItemsSettings() {
       list={<>
         {lib.jurisdictions.map((j) => {
           const n = store.data.companies.filter((c) => c.jurisdiction === j.code).length;
-          return <ListItem key={j.code} on={code === j.code} onClick={() => setCode(j.code)} lead={<span className="v4-code">{j.code}</span>} title={j.name}
+          return <ListItem key={j.code} mid={j.code} on={code === j.code} onClick={() => setCode(j.code)} lead={<span className="v4-code">{j.code}</span>} title={j.name}
             sub={`${store.templateItems(j.code).length} 个条目 · ${n ? `${n} 家公司` : "暂无公司"}${lib.archiveItems?.[j.code] ? " · 已调整" : ""}`} />;
         })}
         <ListItem on={person} onClick={() => setCode(personScope)} lead={<span className="v4-code" style={{ borderRadius: "50%" }}>人</span>} title="人员文件" sub={`${personTypes.length} 个条目`} />
         <button className="s4-item" style={{ color: "var(--muted)", minHeight: 40 }} onClick={() => setAddingJ(true)}><Icon name="plus" size={12} />新建法域</button>
       </>}
       detail={<>
-        <SGroup footer={person ? "护照、身份证等挂在人名下的文件。" : "内置条目是管理用的起始清单，不代表已核验的法定要求。"}>
+        <SGroup scope={code} footer={person ? "护照、身份证等挂在人名下的文件。" : "内置条目是管理用的起始清单，不代表已核验的法定要求。"}>
           <SRow title={name} detail={person ? "挂在人名下的文件。" : `${name}公司默认管理这些文件。`}>
             {!person && lib.archiveItems?.[code] && <Button size="small" kind="quiet" onClick={() => store.saveLibrary((l) => { if (l.archiveItems) delete l.archiveItems[code]; })}>恢复内置</Button>}
           </SRow>
@@ -479,7 +514,7 @@ function ArchiveItemsSettings() {
           {ids.map((id, i) => {
             const t = store.docType(id);
             return (
-              <div key={id} className="s4-row item-row" style={{ minHeight: 56, cursor: "default" }} onDoubleClick={() => setEditing(id)}>
+              <div key={id} data-mid={id} className="s4-row item-row" style={{ minHeight: 56, cursor: "default" }} onDoubleClick={() => setEditing(id)}>
                 <span className="col grow" style={{ gap: 2, minWidth: 0 }}><span className="ellipsis" style={{ fontWeight: 600 }}>{t?.name ?? id}</span><span className="t-meta muted ellipsis">{t ? validityText(t) : ""}</span></span>
                 <span className="row gap4 tools">
                   {!person && <><button className="tool" title="上移" disabled={i === 0} onClick={() => move(i, -1)}><Icon name="chevron.up" size={10} /></button>
@@ -648,12 +683,13 @@ function RulesSettings() {
   return (
     <Split
       header={<PaneHeader title="合规规则" detail="各法域的截止日怎么算。算出来的日期在每件到期事项上确认或修改。"><Button kind="primary" icon="plus" onClick={add}>新建规则</Button></PaneHeader>}
+      scope={q}
       list={<>
         <input className="v4-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索规则" aria-label="搜索规则" style={{ height: 34, marginBottom: 4 }} />
         {byJ.map(({ j, list }) => (
           <div key={j.code} className="col" style={{ gap: 1 }}>
             <span className="v4-label" style={{ padding: "10px 10px 4px" }}>{j.name}</span>
-            {list.map((r) => <ListItem key={r.id} on={r.id === selection} onClick={() => setSelection(r.id)} title={<span style={{ color: r.enabled || r.id === selection ? undefined : "var(--muted)" }}>{r.name || "未命名规则"}</span>}
+            {list.map((r) => <ListItem key={r.id} mid={r.id} on={r.id === selection} onClick={() => setSelection(r.id)} title={<span style={{ color: r.enabled || r.id === selection ? undefined : "var(--muted)" }}>{r.name || "未命名规则"}</span>}
               sub={r.enabled ? store.scheduleText(r.schedule) : "已停用"} />)}
           </div>
         ))}

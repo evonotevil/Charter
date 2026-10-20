@@ -27,7 +27,7 @@ function Banner({ icon, tint, bg, children }: { icon: string; tint: string; bg: 
 
 function Progress({ done, total }: { done: number; total: number }) {
   return <div style={{ height: 6, borderRadius: 3, background: "var(--hairline)", overflow: "hidden" }} role="progressbar" aria-valuenow={total ? Math.round(done / total * 100) : 0}>
-    <div style={{ height: "100%", width: `${total ? (done / total) * 100 : 0}%`, background: "var(--ink)", transition: "width .2s" }} />
+    <div style={{ height: "100%", width: `${total ? (done / total) * 100 : 0}%`, background: "var(--ink)", transition: "width var(--standard) var(--ease)" }} />
   </div>;
 }
 

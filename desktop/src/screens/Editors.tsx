@@ -307,7 +307,7 @@ function HoldingRow({ h, options, labelOf, onChange, onDelete }: { h: Holding; o
   return (
     <Disclosure label={<span className="row gap8 grow">
       <span style={{ fontWeight: 500 }}>{store.nameOf(h.holder)}</span>{h.isNominee && <Pill text="代持" />}<span className="spacer" />
-      <b className="num">{percentLabel(h.percent)}</b><span className="t-meta muted num">{h.to ? `${h.from ?? "?"} 至 ${h.to}` : `自 ${h.from ?? "?"}`}</span>
+      <b className="num">{percentLabel(h.percent)}</b><span className="t-meta muted num">{h.to ? `${h.from ?? "?"} 至 ${h.to}` : h.from ? `自 ${h.from}` : h.asOf ? `最晚自 ${h.asOf}` : "生效日期未知"}</span>{!h.verified && <span className="v4-chip chip-pending" style={{ height: 20, fontSize: 11 }}>待核实</span>}
     </span>}>
       <FieldRow label="股东"><SelectField options={options.map((r) => [r, labelOf(r)] as [NodeRef, string])} value={h.holder} onChange={(holder) => set({ holder })} minWidth={240} keyOf={key} /></FieldRow>
       <FieldRow label="持股比例"><PercentField value={h.percent} onChange={(percent) => set({ percent })} /></FieldRow>
@@ -315,7 +315,8 @@ function HoldingRow({ h, options, labelOf, onChange, onDelete }: { h: Holding; o
       <FieldRow label="股份类别"><TextField value={h.shareClass} onChange={(shareClass) => set({ shareClass })} placeholder="可选" /></FieldRow>
       <FieldRow label="代持"><Checkbox checked={h.isNominee} onChange={(isNominee) => set({ isNominee })}>这是一笔代持</Checkbox></FieldRow>
       {h.isNominee && <FieldRow label="实际受益人"><SelectField options={[[null, "未指定"] as [NodeRef | null, string], ...options.map((r) => [r, labelOf(r)] as [NodeRef, string])]} value={h.beneficialOwner ?? null} onChange={(v) => set({ beneficialOwner: v ?? undefined })} minWidth={240} keyOf={key} /></FieldRow>}
-      <FieldRow label="生效日期"><DateField value={h.from} onChange={(from) => set({ from })} /></FieldRow>
+      <FieldRow label="生效日期" hint="法律上自哪天起；不知道就留空。"><DateField value={h.from} onChange={(from) => set({ from })} placeholder="未知" /></FieldRow>
+      <FieldRow label="资料截至" hint="依据文件反映的是哪一天的状态。"><DateField value={h.asOf} onChange={(asOf) => set({ asOf })} placeholder="可留空" /></FieldRow>
       <FieldRow label="结束日期"><DateField value={h.to} onChange={(to) => set({ to })} placeholder="仍持有可留空" /></FieldRow>
       <div className="row" style={{ justifyContent: "flex-end" }}><Button kind="quiet" size="small" icon="trash" onClick={onDelete}>删除这条持股</Button></div>
     </Disclosure>
@@ -328,7 +329,7 @@ function AppointmentRow({ a, roles, onChange, onDelete }: { a: Appointment; role
   return (
     <Disclosure label={<span className="row gap8 grow">
       <span style={{ fontWeight: 500 }}>{store.person(a.personID)?.name ?? "未选择"}</span><span className="muted">{a.title || "未填职位"}</span><span className="spacer" />
-      {!a.from && <span className="t-meta muted">日期未知</span>}{a.to && <Pill text="已离任" />}
+      {!a.from && <span className="t-meta muted">{a.asOf ? `最晚自 ${a.asOf}` : "生效日期未知"}</span>}{a.to && <Pill text="已离任" />}{!a.verified && <span className="v4-chip chip-pending" style={{ height: 20, fontSize: 11 }}>待核实</span>}
     </span>}>
       <FieldRow label="人员"><SelectField options={store.data.people.map((p) => [p.id, store.personLabel(p)] as [string, string])} value={a.personID} onChange={(personID) => set({ personID })} minWidth={220} /></FieldRow>
       <FieldRow label="职位" hint="按实体类型给出常用角色，也可以直接输入。">
