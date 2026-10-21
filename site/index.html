@@ -48,6 +48,8 @@
       color: var(--ink);
       background: var(--paper);
       font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
       -webkit-font-smoothing: antialiased;
     }
     a { color: inherit; text-decoration: none; }
@@ -76,19 +78,19 @@
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      font-size: 17px;
+      font-size: 19px;
       font-weight: 600;
       letter-spacing: -.35px;
     }
     .brand img { width: 29px; height: 29px; border-radius: 7px; }
-    .version { color: #7a847d; font-size: 10px; font-weight: 500; letter-spacing: .02em; }
+    .version { color: #7a847d; font-size: 12px; font-weight: 500; letter-spacing: .02em; }
     .nav {
       margin-left: auto;
       display: flex;
       align-items: center;
       gap: 24px;
       color: #4d5b52;
-      font-size: 12px;
+      font-size: 14px;
       font-weight: 500;
     }
     .nav a { transition: color .18s ease; }
@@ -116,7 +118,7 @@
       gap: 9px;
       margin-bottom: 26px;
       color: #4f5f54;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 600;
       letter-spacing: .02em;
     }
@@ -136,7 +138,7 @@
       max-width: 510px;
       margin: 26px 0 0;
       color: #5d6961;
-      font-size: 15px;
+      font-size: 17px;
       line-height: 1.8;
     }
     .actions {
@@ -157,7 +159,7 @@
       border-radius: 8px;
       color: #29372e;
       background: transparent;
-      font-size: 12px;
+      font-size: 14px;
       font-weight: 600;
       transition: color .18s ease, background .18s ease, border-color .18s ease;
     }
@@ -167,7 +169,7 @@
     .trust-line {
       margin: 24px 0 0;
       color: #7a847d;
-      font-size: 10px;
+      font-size: 12px;
       letter-spacing: .01em;
     }
 
@@ -209,7 +211,7 @@
       border-radius: 4px;
       color: #f0f5ee;
       background: rgba(19, 33, 24, .78);
-      font-size: 9px;
+      font-size: 11px;
       letter-spacing: .03em;
       pointer-events: none;
     }
@@ -221,13 +223,13 @@
     }
     .tab {
       min-width: 0;
-      min-height: 34px;
+      min-height: 38px;
       padding: 0 6px;
       border: 0;
       border-radius: 6px;
       color: #5f6c63;
       background: transparent;
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 500;
       cursor: pointer;
       transition: color .18s ease, background .18s ease;
@@ -240,7 +242,7 @@
       font-weight: 600;
     }
     .preview-caption {
-      min-height: 42px;
+      min-height: 50px;
       margin: 8px 3px 0;
       padding-top: 8px;
       display: flex;
@@ -248,10 +250,10 @@
       gap: 10px;
       border-top: 1px solid rgba(110, 128, 114, .16);
       color: #647168;
-      font-size: 10px;
+      font-size: 12.5px;
       line-height: 1.55;
     }
-    .preview-caption strong { flex: 0 0 auto; color: #29372e; font-size: 10px; }
+    .preview-caption strong { flex: 0 0 auto; color: #29372e; font-size: 12.5px; }
 
     .workspace {
       border-top: 1px solid var(--line);
@@ -270,7 +272,7 @@
     .download h2 {
       margin: 0;
       font-family: "Avenir Next", "Aptos Display", "PingFang SC", sans-serif;
-      font-size: 42px;
+      font-size: 48px;
       line-height: 1.08;
       letter-spacing: -2.2px;
     }
@@ -278,7 +280,7 @@
       max-width: 430px;
       margin: 17px 0 0;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 15px;
       line-height: 1.75;
     }
     .benefits {
@@ -290,8 +292,8 @@
       padding-top: 4px;
       border-top: 1px solid #c8d0c7;
     }
-    .benefit h3 { margin: 17px 0 9px; font-size: 13px; font-weight: 600; letter-spacing: -.1px; }
-    .benefit p { margin: 0; color: #68746b; font-size: 11px; line-height: 1.7; }
+    .benefit h3 { margin: 17px 0 9px; font-size: 16px; font-weight: 600; letter-spacing: -.1px; }
+    .benefit p { margin: 0; color: #68746b; font-size: 14px; line-height: 1.7; }
 
     .local-first {
       width: min(calc(100% - 48px), var(--max));
@@ -305,7 +307,7 @@
     .local-first-copy h2 {
       margin: 0;
       font-family: "Avenir Next", "Aptos Display", "PingFang SC", sans-serif;
-      font-size: 42px;
+      font-size: 48px;
       line-height: 1.08;
       letter-spacing: -2.2px;
     }
@@ -313,7 +315,7 @@
       max-width: 520px;
       margin: 18px 0 0;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 15px;
       line-height: 1.8;
     }
     .data-card {
@@ -322,25 +324,25 @@
       border-radius: 12px;
       background: rgba(255, 255, 255, .58);
     }
-    .data-card h3 { margin: 0 0 18px; font-size: 13px; font-weight: 600; }
+    .data-card h3 { margin: 0 0 18px; font-size: 16px; font-weight: 600; }
     .data-list { display: grid; gap: 13px; }
     .data-item {
       display: grid;
-      grid-template-columns: 20px 1fr;
+      grid-template-columns: 22px 1fr;
       gap: 10px;
       color: #536158;
-      font-size: 11px;
+      font-size: 14px;
       line-height: 1.6;
     }
     .data-item i {
-      width: 17px;
-      height: 17px;
+      width: 19px;
+      height: 19px;
       display: grid;
       place-items: center;
       border-radius: 50%;
       color: var(--forest);
       background: #dce8d7;
-      font-size: 10px;
+      font-size: 12px;
       font-style: normal;
       font-weight: 600;
     }
@@ -366,7 +368,7 @@
       max-width: 440px;
       margin: 0;
       color: #b8c6bb;
-      font-size: 12px;
+      font-size: 15px;
       line-height: 1.8;
     }
     .platform-grid {
@@ -404,12 +406,12 @@
     }
     .platform-mark.windows { padding: 9px; }
     .platform-mark svg { width: 20px; height: 20px; display: block; fill: currentColor; }
-    .platform-copy b { display: block; font-size: 15px; font-weight: 600; letter-spacing: -.2px; }
-    .platform-copy small { display: block; margin-top: 3px; color: #6e7971; font-size: 11px; }
+    .platform-copy b { display: block; font-size: 18px; font-weight: 600; letter-spacing: -.2px; }
+    .platform-copy small { display: block; margin-top: 3px; color: #6e7971; font-size: 13px; }
     .platform-meta {
       margin-left: auto;
       color: #737e76;
-      font-size: 10px;
+      font-size: 12px;
       letter-spacing: .02em;
       white-space: nowrap;
     }
@@ -428,12 +430,12 @@
       transition: padding-left .2s var(--ease), background .2s ease;
     }
     .asset-row:hover { padding-left: 7px; background: #edf0eb; }
-    .asset-copy b { display: block; color: #27342c; font-size: 12px; font-weight: 600; }
-    .asset-copy small { display: block; margin-top: 4px; color: #7a847d; font-size: 10px; }
+    .asset-copy b { display: block; color: #27342c; font-size: 15px; font-weight: 600; }
+    .asset-copy small { display: block; margin-top: 5px; color: #7a847d; font-size: 12.5px; }
     .asset-action {
       min-width: 40px;
       color: var(--forest);
-      font-size: 12px;
+      font-size: 14px;
       font-weight: 600;
       text-align: right;
       transition: transform .2s var(--ease);
@@ -448,12 +450,12 @@
       gap: 28px;
       border-top: 1px solid rgba(255,255,255,.2);
     }
-    .security-copy b { display: block; color: #dfe8e1; font-size: 11px; font-weight: 500; }
+    .security-copy b { display: block; color: #dfe8e1; font-size: 14px; font-weight: 500; }
     .security-copy p {
       max-width: 690px;
       margin: 6px 0 0;
       color: #a8b8ad;
-      font-size: 11px;
+      font-size: 13px;
       line-height: 1.7;
     }
     .download-links {
@@ -462,7 +464,7 @@
       justify-content: flex-end;
       gap: 18px;
       color: #dce9df;
-      font-size: 11px;
+      font-size: 13px;
       white-space: nowrap;
     }
     .download-links a {
@@ -471,8 +473,6 @@
       transition: color .18s ease, border-color .18s ease;
     }
     .download-links a:hover { color: var(--lime); border-color: var(--lime); }
-    }
-
     footer {
       border-top: 1px solid #cbd2ca;
       background: #eef1ec;
@@ -486,7 +486,7 @@
       justify-content: space-between;
       gap: 20px;
       color: #778078;
-      font-size: 10px;
+      font-size: 12px;
     }
     .footer-inner a { color: #566259; }
 
@@ -507,17 +507,17 @@
       .nav a:not(.github):not([href="#download"]) { display: none; }
       .hero { padding: 48px 0 54px; }
       h1 { font-size: clamp(40px, 11.8vw, 46px); letter-spacing: -2.8px; }
-      .lede { font-size: 14px; }
+      .lede { font-size: 16px; }
       .actions { align-items: stretch; }
       .actions .button { flex: 1 1 150px; }
       .preview-window { margin: 8px 8px 0; }
       .preview-controls { padding: 8px; }
       .tabs { gap: 2px; }
-      .tab { min-height: 32px; padding: 0 2px; font-size: 9px; }
-      .preview-caption { min-height: 58px; display: block; }
+      .tab { min-height: 36px; padding: 0 2px; font-size: 11.5px; }
+      .preview-caption { min-height: 68px; display: block; }
       .preview-caption strong { display: block; margin-bottom: 3px; }
       .workspace-inner { padding: 54px 0 58px; }
-      .workspace h2, .local-first-copy h2, .download h2 { font-size: 35px; letter-spacing: -1.8px; }
+      .workspace h2, .local-first-copy h2, .download h2 { font-size: 40px; letter-spacing: -2px; }
       .benefits { grid-template-columns: 1fr; gap: 0; }
       .benefit { padding: 16px 0 18px; }
       .benefit h3 { margin-top: 0; }
