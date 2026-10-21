@@ -24,6 +24,12 @@ import { AgentsView } from "./Agents";
 import { VerifyView } from "./Trust";
 import * as D from "../domain/day";
 
+function shortcutLabel(key: string, shift = false) {
+  return platform().os === "mac"
+    ? `${shift ? "⇧" : ""}⌘${key}`
+    : `${shift ? "Ctrl+Shift+" : "Ctrl+"}${key}`;
+}
+
 export function GroupIcon({ groupID, size = 22, fill = "var(--band)" }: { groupID: string | null; size?: number; fill?: string }) {
   const { store } = useApp();
   const g = groupID && groupID !== ungrouped ? store.group(groupID) : undefined;
@@ -58,7 +64,7 @@ function SidebarFooter({ rail }: { rail: boolean }) {
         <Icon name={syncSymbol(s)} size={13} style={spin} />
         {!rail && <span className="ellipsis lbl">{syncTitle(s)}</span>}
       </button>
-      <button className="muted row" style={{ width: 28, height: 28, justifyContent: "center", borderRadius: 8, flex: "none" }} title="设置（Ctrl/⌘+,）" aria-label="设置"
+      <button className="muted row" style={{ width: 28, height: 28, justifyContent: "center", borderRadius: 8, flex: "none" }} title={`设置（${shortcutLabel(",")}）`} aria-label="设置"
         onClick={() => router.openSettings("sync")}><Icon name="gearshape" size={15} /></button>
       <Popover anchor={ref} open={open} onClose={() => setOpen(false)} placement={rail ? "right" : "top"}>
         <div className="col gap8" style={{ width: 280, padding: 10 }}>
@@ -144,7 +150,7 @@ function FlyoutCard({ id, top, shown, onEnter, onLeave, done, soon }: { id: Sect
       <div className="fly-body col" key={id} style={{ gap: 6 }}>
         <button className="row" style={{ justifyContent: "space-between", textAlign: "left" }} onClick={go(() => router.go(id))}>
           <span style={{ fontSize: 15, fontWeight: 700 }}>{meta.title}</span>
-          <span className="mono t-meta muted">⌘{idx + 1}</span>
+          <span className="mono t-meta muted">{shortcutLabel(String(idx + 1))}</span>
         </button>
         <span className="t-meta muted">{sub}</span>
         {body && <div className="col" style={{ marginTop: 4, gap: 1 }}>{body}</div>}
@@ -176,7 +182,7 @@ function Sidebar() {
     const on = router.section === s.id || (s.id === "agents" && router.section === "parties");
     const n = badge(s.id);
     return (
-      <button key={s.id} onClick={() => { fly.hide(); router.go(s.id); }} title={rail ? undefined : `${s.title}（⌘${i + 1}）`} aria-label={rail ? s.title : undefined} aria-current={on ? "page" : undefined}
+      <button key={s.id} onClick={() => { fly.hide(); router.go(s.id); }} title={rail ? undefined : `${s.title}（${shortcutLabel(String(i + 1))}）`} aria-label={rail ? s.title : undefined} aria-current={on ? "page" : undefined}
         onMouseEnter={(e) => fly.enter(s.id, e.currentTarget)} onMouseLeave={fly.leave} onFocus={(e) => rail && fly.enter(s.id, e.currentTarget)} onBlur={fly.leave}
         className={`row gap12 nav-btn ${on ? "on" : ""}`} style={{ position: "relative", height: 36, flex: "none", padding: "0 12px", borderRadius: "var(--r-row)",
           color: on ? "var(--on-selection)" : "var(--ink)", fontWeight: on ? 600 : 500 }}>
@@ -191,19 +197,19 @@ function Sidebar() {
     <aside className={`side col ${rail ? "rail" : ""} ${softStyle ? "softrail" : ""}`}>
       <div className="drag-region" data-tauri-drag-region style={{ height: platform().os === "mac" ? 34 : 6, flex: "none" }} />
       <div className="row gap8" style={{ paddingBottom: 12, justifyContent: rail ? "center" : undefined }} data-tauri-drag-region>
-        <button className="v4-logo" onClick={toggle} title={rail ? "展开侧栏（⌘\\）" : "收起侧栏（⌘\\）"} aria-label={rail ? "展开侧栏" : "收起侧栏"} aria-expanded={!rail}><LogoMark size={rail ? 34 : 28} /></button>
+        <button className="v4-logo" onClick={toggle} title={`${rail ? "展开" : "收起"}侧栏（${shortcutLabel("\\")}）`} aria-label={rail ? "展开侧栏" : "收起侧栏"} aria-expanded={!rail}><LogoMark size={rail ? 34 : 28} /></button>
         {!rail && <span className="grow lbl brand-word" data-tauri-drag-region>Charter</span>}
         {!rail && <ActionMenu icon="plus" ariaLabel="新建" entries={[
-          item("新建公司", "building.2", () => router.open({ kind: "newCompany" }), { shortcut: "⇧⌘N" }),
+          item("新建公司", "building.2", () => router.open({ kind: "newCompany" }), { shortcut: shortcutLabel("N", true) }),
           item("新建集团", "square.stack.3d.up", () => router.openSettings("groups", "new")),
           divider,
-          item("上传材料…", "square.and.arrow.down", () => void router.chooseFiles(router.currentImportContext(groupExists)), { shortcut: "⌘I" }),
+          item("上传材料…", "square.and.arrow.down", () => void router.chooseFiles(router.currentImportContext(groupExists)), { shortcut: shortcutLabel("I") }),
         ]} />}
       </div>
-      <button className="v4-search" onClick={() => router.open({ kind: "quickSearch" })} aria-label="搜索公司或人（⌘K）" title={rail ? "搜索（⌘K）" : undefined}
+      <button className="v4-search" onClick={() => router.open({ kind: "quickSearch" })} aria-label={`搜索公司或人（${shortcutLabel("K")}）`} title={rail ? `搜索（${shortcutLabel("K")}）` : undefined}
         style={rail ? { justifyContent: "center", padding: 0 } : undefined}>
         <Icon name="magnifyingglass" size={14} />
-        {!rail && <><span className="grow lbl" style={{ textAlign: "left" }}>搜索公司或人</span><span className="mono" style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)" }}>⌘K</span></>}
+        {!rail && <><span className="grow lbl" style={{ textAlign: "left" }}>搜索公司或人</span><span className="mono" style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)" }}>{shortcutLabel("K")}</span></>}
       </button>
       <div className="col slide-host" style={{ gap: 2 }}>
         <SlideBg />
