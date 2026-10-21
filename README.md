@@ -4,6 +4,8 @@
 
 当前版本：**5.0.0**。Charter 5 使用 Electron + React + TypeScript，Mac 与 Windows 共用一套产品代码。
 
+产品网站：[https://evonotevil.github.io/Charter/](https://evonotevil.github.io/Charter/)
+
 ## 下载
 
 从 [GitHub Releases](https://github.com/evonotevil/Charter/releases/latest) 下载：

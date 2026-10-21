@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Charter 5 将海外子公司、股权、到期事项、公司档案、文件与人员关系整理在同一个本地优先的工作区中。">
+  <title>Charter 5 — 复杂公司关系，一眼看清</title>
+  <link rel="icon" href="assets/charter-icon.png">
+  <style>
+    @font-face {
+      font-family: "Inter";
+      src: url("assets/fonts/inter-latin-400-normal.woff2") format("woff2");
+      font-weight: 400;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Inter";
+      src: url("assets/fonts/inter-latin-500-normal.woff2") format("woff2");
+      font-weight: 500;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: "Inter";
+      src: url("assets/fonts/inter-latin-600-normal.woff2") format("woff2");
+      font-weight: 600;
+      font-display: swap;
+    }
+
+    :root {
+      --paper: #f5f6f2;
+      --surface: #ffffff;
+      --ink: #17221c;
+      --forest: #1c4a33;
+      --forest-deep: #153827;
+      --muted: #68736c;
+      --line: #d9ded7;
+      --soft: #e9eee6;
+      --lime: #c8ef75;
+      --focus: #de5d42;
+      --max: 1200px;
+      --ease: cubic-bezier(.22, 1, .36, 1);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+    button { font: inherit; }
+    section[id] { scroll-margin-top: 72px; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+
+    .header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(217, 222, 215, .9);
+      background: rgba(245, 246, 242, .91);
+      backdrop-filter: blur(14px);
+    }
+    .header-inner {
+      width: min(calc(100% - 48px), var(--max));
+      min-height: 64px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -.35px;
+    }
+    .brand img { width: 29px; height: 29px; border-radius: 7px; }
+    .version { color: #7a847d; font-size: 10px; font-weight: 500; letter-spacing: .02em; }
+    .nav {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      color: #4d5b52;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .nav a { transition: color .18s ease; }
+    .nav a:hover { color: var(--ink); }
+    .nav .github {
+      padding: 8px 12px;
+      color: white;
+      border-radius: 7px;
+      background: var(--ink);
+    }
+
+    .hero {
+      width: min(calc(100% - 48px), var(--max));
+      margin: 0 auto;
+      padding: 84px 0 78px;
+      display: grid;
+      grid-template-columns: .82fr 1.18fr;
+      align-items: center;
+      gap: 62px;
+    }
+    .hero-copy { min-width: 0; }
+    .intro {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 26px;
+      color: #4f5f54;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+    .intro i { width: 7px; height: 7px; border-radius: 50%; background: var(--forest); }
+    h1 {
+      max-width: 560px;
+      margin: 0;
+      font-family: "Avenir Next", "Aptos Display", "PingFang SC", sans-serif;
+      font-size: clamp(52px, 5.2vw, 72px);
+      line-height: 1.02;
+      font-weight: 600;
+      letter-spacing: -4px;
+    }
+    .hero-line { display: block; white-space: nowrap; }
+    .hero-line.accent { color: var(--forest); }
+    .lede {
+      max-width: 510px;
+      margin: 26px 0 0;
+      color: #5d6961;
+      font-size: 15px;
+      line-height: 1.8;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 30px;
+    }
+    .button {
+      min-height: 44px;
+      padding: 0 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid #b6beb6;
+      border-radius: 8px;
+      color: #29372e;
+      background: transparent;
+      font-size: 12px;
+      font-weight: 600;
+      transition: color .18s ease, background .18s ease, border-color .18s ease;
+    }
+    .button:hover { border-color: #89958b; background: rgba(255, 255, 255, .7); }
+    .button.primary { color: white; background: var(--forest); border-color: var(--forest); }
+    .button.primary:hover { background: var(--forest-deep); border-color: var(--forest-deep); }
+    .trust-line {
+      margin: 24px 0 0;
+      color: #7a847d;
+      font-size: 10px;
+      letter-spacing: .01em;
+    }
+
+    .preview {
+      min-width: 0;
+      border: 1px solid #cfd6cd;
+      border-radius: 15px;
+      background: #e6ebe4;
+      box-shadow: 0 24px 65px rgba(28, 52, 35, .12);
+    }
+    .preview-window {
+      position: relative;
+      margin: 12px 12px 0;
+      overflow: hidden;
+      border: 1px solid rgba(40, 54, 44, .15);
+      border-radius: 10px;
+      background: #fbfcfa;
+      aspect-ratio: 16 / 10;
+    }
+    .preview-link { position: absolute; inset: 0; display: block; cursor: zoom-in; }
+    .preview-image {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      scale: 1.008;
+      transition: opacity .22s ease, scale .36s var(--ease);
+      pointer-events: none;
+    }
+    .preview-image.active { opacity: 1; scale: 1; }
+    .demo-label {
+      position: absolute;
+      z-index: 3;
+      right: 10px;
+      bottom: 10px;
+      padding: 5px 7px;
+      border-radius: 4px;
+      color: #f0f5ee;
+      background: rgba(19, 33, 24, .78);
+      font-size: 9px;
+      letter-spacing: .03em;
+      pointer-events: none;
+    }
+    .preview-controls { padding: 11px 12px 12px; }
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 5px;
+    }
+    .tab {
+      min-width: 0;
+      min-height: 34px;
+      padding: 0 6px;
+      border: 0;
+      border-radius: 6px;
+      color: #5f6c63;
+      background: transparent;
+      font-size: 10px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: color .18s ease, background .18s ease;
+    }
+    .tab:hover { color: var(--ink); background: rgba(255, 255, 255, .58); }
+    .tab[aria-selected="true"] {
+      color: var(--forest-deep);
+      background: var(--surface);
+      box-shadow: 0 1px 2px rgba(24, 44, 31, .08);
+      font-weight: 600;
+    }
+    .preview-caption {
+      min-height: 42px;
+      margin: 8px 3px 0;
+      padding-top: 8px;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      border-top: 1px solid rgba(110, 128, 114, .16);
+      color: #647168;
+      font-size: 10px;
+      line-height: 1.55;
+    }
+    .preview-caption strong { flex: 0 0 auto; color: #29372e; font-size: 10px; }
+
+    .workspace {
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: #eef1ec;
+    }
+    .workspace-inner {
+      width: min(calc(100% - 48px), var(--max));
+      margin: 0 auto;
+      padding: 70px 0 74px;
+      display: grid;
+      grid-template-columns: .8fr 1.2fr;
+      gap: 74px;
+    }
+    .workspace h2,
+    .download h2 {
+      margin: 0;
+      font-family: "Avenir Next", "Aptos Display", "PingFang SC", sans-serif;
+      font-size: 42px;
+      line-height: 1.08;
+      letter-spacing: -2.2px;
+    }
+    .workspace-copy p {
+      max-width: 430px;
+      margin: 17px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.75;
+    }
+    .benefits {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 30px;
+    }
+    .benefit {
+      padding-top: 4px;
+      border-top: 1px solid #c8d0c7;
+    }
+    .benefit h3 { margin: 17px 0 9px; font-size: 13px; font-weight: 600; letter-spacing: -.1px; }
+    .benefit p { margin: 0; color: #68746b; font-size: 11px; line-height: 1.7; }
+
+    .local-first {
+      width: min(calc(100% - 48px), var(--max));
+      margin: 0 auto;
+      padding: 72px 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      gap: 78px;
+    }
+    .local-first-copy h2 {
+      margin: 0;
+      font-family: "Avenir Next", "Aptos Display", "PingFang SC", sans-serif;
+      font-size: 42px;
+      line-height: 1.08;
+      letter-spacing: -2.2px;
+    }
+    .local-first-copy p {
+      max-width: 520px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .data-card {
+      padding: 28px;
+      border: 1px solid #cbd3c9;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .58);
+    }
+    .data-card h3 { margin: 0 0 18px; font-size: 13px; font-weight: 600; }
+    .data-list { display: grid; gap: 13px; }
+    .data-item {
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      gap: 10px;
+      color: #536158;
+      font-size: 11px;
+      line-height: 1.6;
+    }
+    .data-item i {
+      width: 17px;
+      height: 17px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--forest);
+      background: #dce8d7;
+      font-size: 10px;
+      font-style: normal;
+      font-weight: 600;
+    }
+
+    .download {
+      color: #f4f7f2;
+      background: var(--forest-deep);
+    }
+    .download-inner {
+      width: min(calc(100% - 48px), var(--max));
+      margin: 0 auto;
+      padding: 66px 0 58px;
+    }
+    .download-head {
+      display: grid;
+      grid-template-columns: 1fr .72fr;
+      align-items: end;
+      gap: 60px;
+      margin-bottom: 30px;
+    }
+    .download h2 { color: white; }
+    .download-lede {
+      max-width: 440px;
+      margin: 0;
+      color: #b8c6bb;
+      font-size: 12px;
+      line-height: 1.8;
+    }
+    .platform-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .platform-card {
+      padding: 20px 20px 6px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 14px;
+      color: var(--ink);
+      background: #f3f5f0;
+      box-shadow: 0 18px 42px rgba(0, 0, 0, .12);
+    }
+    .platform-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 42px;
+    }
+    .platform-mark {
+      width: 38px;
+      height: 38px;
+      flex: 0 0 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      color: var(--forest);
+      background: #e2e9df;
+      font-family: "Avenir Next", "Aptos Display", sans-serif;
+      font-size: 21px;
+      font-weight: 600;
+      line-height: 1;
+    }
+    .platform-mark.windows { padding: 9px; }
+    .platform-mark svg { width: 20px; height: 20px; display: block; fill: currentColor; }
+    .platform-copy b { display: block; font-size: 15px; font-weight: 600; letter-spacing: -.2px; }
+    .platform-copy small { display: block; margin-top: 3px; color: #6e7971; font-size: 11px; }
+    .platform-meta {
+      margin-left: auto;
+      color: #737e76;
+      font-size: 10px;
+      letter-spacing: .02em;
+      white-space: nowrap;
+    }
+    .download-options {
+      margin-top: 17px;
+      border-top: 1px solid #d5dad3;
+    }
+    .asset-row {
+      min-height: 64px;
+      padding: 0 2px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      border-bottom: 1px solid #d5dad3;
+      transition: padding-left .2s var(--ease), background .2s ease;
+    }
+    .asset-row:hover { padding-left: 7px; background: #edf0eb; }
+    .asset-copy b { display: block; color: #27342c; font-size: 12px; font-weight: 600; }
+    .asset-copy small { display: block; margin-top: 4px; color: #7a847d; font-size: 10px; }
+    .asset-action {
+      min-width: 40px;
+      color: var(--forest);
+      font-size: 12px;
+      font-weight: 600;
+      text-align: right;
+      transition: transform .2s var(--ease);
+    }
+    .asset-row:hover .asset-action { transform: translate(2px, -2px); }
+    .download-foot {
+      margin-top: 22px;
+      padding-top: 18px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 28px;
+      border-top: 1px solid rgba(255,255,255,.2);
+    }
+    .security-copy b { display: block; color: #dfe8e1; font-size: 11px; font-weight: 500; }
+    .security-copy p {
+      max-width: 690px;
+      margin: 6px 0 0;
+      color: #a8b8ad;
+      font-size: 11px;
+      line-height: 1.7;
+    }
+    .download-links {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 18px;
+      color: #dce9df;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .download-links a {
+      padding-bottom: 3px;
+      border-bottom: 1px solid rgba(220,233,223,.5);
+      transition: color .18s ease, border-color .18s ease;
+    }
+    .download-links a:hover { color: var(--lime); border-color: var(--lime); }
+    }
+
+    footer {
+      border-top: 1px solid #cbd2ca;
+      background: #eef1ec;
+    }
+    .footer-inner {
+      width: min(calc(100% - 48px), var(--max));
+      min-height: 66px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      color: #778078;
+      font-size: 10px;
+    }
+    .footer-inner a { color: #566259; }
+
+    @media (max-width: 980px) {
+      .hero { grid-template-columns: 1fr; gap: 46px; padding-top: 62px; }
+      .hero-copy { max-width: 700px; }
+      .preview { width: 100%; }
+      .workspace-inner, .local-first { grid-template-columns: 1fr; gap: 36px; }
+      .benefits { max-width: 720px; }
+      .download-head { grid-template-columns: 1fr; gap: 14px; }
+    }
+    @media (max-width: 680px) {
+      .header-inner, .hero, .workspace-inner, .local-first, .download-inner, .footer-inner {
+        width: min(calc(100% - 36px), var(--max));
+      }
+      .header-inner { min-height: 58px; }
+      .nav { gap: 14px; }
+      .nav a:not(.github):not([href="#download"]) { display: none; }
+      .hero { padding: 48px 0 54px; }
+      h1 { font-size: clamp(40px, 11.8vw, 46px); letter-spacing: -2.8px; }
+      .lede { font-size: 14px; }
+      .actions { align-items: stretch; }
+      .actions .button { flex: 1 1 150px; }
+      .preview-window { margin: 8px 8px 0; }
+      .preview-controls { padding: 8px; }
+      .tabs { gap: 2px; }
+      .tab { min-height: 32px; padding: 0 2px; font-size: 9px; }
+      .preview-caption { min-height: 58px; display: block; }
+      .preview-caption strong { display: block; margin-bottom: 3px; }
+      .workspace-inner { padding: 54px 0 58px; }
+      .workspace h2, .local-first-copy h2, .download h2 { font-size: 35px; letter-spacing: -1.8px; }
+      .benefits { grid-template-columns: 1fr; gap: 0; }
+      .benefit { padding: 16px 0 18px; }
+      .benefit h3 { margin-top: 0; }
+      .local-first { padding: 54px 0; }
+      .data-card { padding: 22px; }
+      .download-inner { padding: 54px 0 58px; }
+      .platform-grid { grid-template-columns: 1fr; }
+      .download-foot { grid-template-columns: 1fr; gap: 16px; }
+      .download-links { justify-content: flex-start; flex-wrap: wrap; }
+      .footer-inner { min-height: 74px; flex-direction: column; justify-content: center; align-items: flex-start; gap: 5px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a class="brand" href="#top" aria-label="Charter 首页">
+        <img src="assets/charter-icon.png" alt="">
+        <span>Charter</span>
+        <span class="version">v5.0</span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="#workspace">产品</a>
+        <a href="#local-first">数据</a>
+        <a href="#download">下载</a>
+        <a class="github" href="https://github.com/evonotevil/Charter">GitHub ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="intro"><i></i> Charter 5 · macOS + Windows</div>
+        <h1><span class="hero-line">复杂公司关系，</span><span class="hero-line accent">一眼看清。</span></h1>
+        <p class="lede">股权、到期事项、公司档案、文件和人员关系放在同一个工作区。需要确认时，沿记录直接找到日期、来源和材料。</p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/evonotevil/Charter/releases/latest">下载 Charter 5</a>
+          <a class="button" href="https://github.com/evonotevil/Charter">查看 GitHub 源码 ↗</a>
+        </div>
+        <p class="trust-line">本地优先 · 无需账户 · 支持 Apple 芯片、Intel Mac 与 Windows</p>
+      </div>
+
+      <div class="preview" aria-label="Charter 界面预览">
+        <div class="preview-window">
+          <a class="preview-link" id="preview-link" href="assets/store/01-structure.png" target="_blank" rel="noreferrer" aria-label="打开结构界面大图">
+            <img class="preview-image active" data-view="structure" src="assets/screens/01-structure.png" alt="Charter 结构界面">
+            <img class="preview-image" data-view="due" src="assets/screens/02-due.png" alt="Charter 到期事项界面">
+            <img class="preview-image" data-view="companies" src="assets/screens/03-companies.png" alt="Charter 公司档案界面">
+            <img class="preview-image" data-view="documents" src="assets/screens/04-files.png" alt="Charter 文件材料界面">
+            <img class="preview-image" data-view="people" src="assets/screens/05-people.png" alt="Charter 人员关系界面">
+          </a>
+          <span class="demo-label">虚拟演示数据</span>
+        </div>
+        <div class="preview-controls">
+          <div class="tabs" role="tablist" aria-label="切换界面预览">
+            <button class="tab" id="tab-structure" role="tab" aria-selected="true" aria-controls="preview-panel" tabindex="0" data-view="structure">结构</button>
+            <button class="tab" id="tab-due" role="tab" aria-selected="false" aria-controls="preview-panel" tabindex="-1" data-view="due">到期</button>
+            <button class="tab" id="tab-companies" role="tab" aria-selected="false" aria-controls="preview-panel" tabindex="-1" data-view="companies">公司</button>
+            <button class="tab" id="tab-documents" role="tab" aria-selected="false" aria-controls="preview-panel" tabindex="-1" data-view="documents">文件</button>
+            <button class="tab" id="tab-people" role="tab" aria-selected="false" aria-controls="preview-panel" tabindex="-1" data-view="people">人员</button>
+          </div>
+          <div class="preview-caption" id="preview-panel" role="tabpanel" aria-labelledby="tab-structure" aria-live="polite">
+            <strong id="preview-title">结构</strong>
+            <span id="preview-description">沿集团、持股和任职关系查看完整链路。</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspace" id="workspace">
+      <div class="workspace-inner">
+        <div class="workspace-copy">
+          <h2>少翻找，<br>少猜错。</h2>
+          <p>Charter 把日常最常核对的信息放在同一套结构里。查看任何一条记录，都不用先判断它属于哪个文件或哪张表。</p>
+        </div>
+        <div class="benefits">
+          <article class="benefit">
+            <h3>关系有上下文</h3>
+            <p>从集团结构进入公司，再查看到董事、股东和名义持有人，关系始终连在一起。</p>
+          </article>
+          <article class="benefit">
+            <h3>到期事项有下一步</h3>
+            <p>截止日期、负责人、中介和邮件草稿集中管理，临近事项更容易安排。</p>
+          </article>
+          <article class="benefit">
+            <h3>材料找得到版本</h3>
+            <p>文件与公司、人员和时间关联，需要交付时可以直接整理出最新材料。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="local-first" id="local-first">
+      <div class="local-first-copy">
+        <h2>记录属于你，<br>也留在你的文件夹。</h2>
+        <p>Charter 不需要账户，也不依赖自有云服务。你可以选择本地文件夹或现有的同步盘，在 Mac 与 Windows 之间继续使用同一份数据。</p>
+      </div>
+      <div class="data-card">
+        <h3>从 4.x 升级时</h3>
+        <div class="data-list">
+          <div class="data-item"><i>✓</i><span>数据文件夹格式延续，可直接打开原有记录。</span></div>
+          <div class="data-item"><i>✓</i><span>不需要导入到 Charter 账户或新的在线空间。</span></div>
+          <div class="data-item"><i>✓</i><span>升级前仍建议备份整个数据文件夹。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="download" id="download">
+      <div class="download-inner">
+        <div class="download-head">
+          <h2>下载 Charter 5</h2>
+          <p class="download-lede">选择你的设备芯片或 Windows 安装方式。所有安装包都来自 v5.0.0，并在对应系统上完成构建与验证。</p>
+        </div>
+
+        <div class="platform-grid">
+          <section class="platform-card" aria-labelledby="download-macos">
+            <div class="platform-head">
+              <span class="platform-mark" aria-hidden="true">⌘</span>
+              <span class="platform-copy"><b id="download-macos">macOS</b><small>Apple 芯片或 Intel</small></span>
+              <span class="platform-meta">DMG</span>
+            </div>
+            <div class="download-options">
+              <a class="asset-row" href="https://github.com/evonotevil/Charter/releases/download/v5.0.0/Charter-5.0.0-Mac-arm64.dmg" aria-label="下载 macOS Apple 芯片安装包">
+                <span class="asset-copy"><b>Apple 芯片</b><small>arm64 · DMG · 125 MB</small></span>
+                <span class="asset-action" aria-hidden="true">下载 ↘</span>
+              </a>
+              <a class="asset-row" href="https://github.com/evonotevil/Charter/releases/download/v5.0.0/Charter-5.0.0-Mac-x64.dmg" aria-label="下载 macOS Intel 安装包">
+                <span class="asset-copy"><b>Intel Mac</b><small>x64 · DMG · 132 MB</small></span>
+                <span class="asset-action" aria-hidden="true">下载 ↘</span>
+              </a>
+            </div>
+          </section>
+
+          <section class="platform-card" aria-labelledby="download-windows">
+            <div class="platform-head">
+              <span class="platform-mark windows" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M2.5 3.4 11 2.2v9.1H2.5V3.4Zm9.5-1.3 9.5-1.4v10.6H12V2.1ZM2.5 12.3H11v9.1l-8.5-1.2v-7.9Zm9.5 0h9.5v10.6L12 21.5v-9.2Z"/></svg>
+              </span>
+              <span class="platform-copy"><b id="download-windows">Windows 10 / 11</b><small>x64 · 安装版或免安装</small></span>
+              <span class="platform-meta">EXE / ZIP</span>
+            </div>
+            <div class="download-options">
+              <a class="asset-row" href="https://github.com/evonotevil/Charter/releases/download/v5.0.0/Charter-5.0.0-Windows-Setup.exe" aria-label="下载 Windows 安装版">
+                <span class="asset-copy"><b>安装版</b><small>SETUP.EXE · 117 MB · 推荐</small></span>
+                <span class="asset-action" aria-hidden="true">下载 ↘</span>
+              </a>
+              <a class="asset-row" href="https://github.com/evonotevil/Charter/releases/download/v5.0.0/Charter-5.0.0-Windows-x64.zip" aria-label="下载 Windows 免安装版">
+                <span class="asset-copy"><b>免安装版</b><small>x64 · ZIP · 148 MB</small></span>
+                <span class="asset-action" aria-hidden="true">下载 ↘</span>
+              </a>
+            </div>
+          </section>
+        </div>
+
+        <div class="download-foot">
+          <div class="security-copy">
+            <b>首次打开时如果系统显示安全提示</b>
+            <p>macOS 请在访达中右键 Charter 并选择「打开」；Windows 请选择「更多信息 → 仍要运行」。安装包没有使用商业代码签名证书。</p>
+          </div>
+          <div class="download-links">
+            <a href="https://github.com/evonotevil/Charter/releases/download/v5.0.0/SHA256SUMS.txt">SHA-256 校验值</a>
+            <a href="https://github.com/evonotevil/Charter/releases/tag/v5.0.0">完整安装说明 ↗</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <span>Charter · Private company operations</span>
+      <span><a href="https://github.com/evonotevil/Charter">GitHub</a> · 所有界面使用虚拟演示数据</span>
+    </div>
+  </footer>
+
+  <script>
+    (() => {
+      const tabs = [...document.querySelectorAll(".tab")];
+      const images = [...document.querySelectorAll(".preview-image")];
+      const title = document.querySelector("#preview-title");
+      const description = document.querySelector("#preview-description");
+      const panel = document.querySelector("#preview-panel");
+      const link = document.querySelector("#preview-link");
+
+      const views = {
+        structure: {
+          title: "结构",
+          description: "沿集团、持股和任职关系查看完整链路。",
+          image: "assets/store/01-structure.png"
+        },
+        due: {
+          title: "到期",
+          description: "集中查看截止日期、负责人和下一步安排。",
+          image: "assets/store/02-due.png"
+        },
+        companies: {
+          title: "公司",
+          description: "在同一个公司页查看档案、材料与变更记录。",
+          image: "assets/store/03-companies.png"
+        },
+        documents: {
+          title: "文件",
+          description: "快速确认材料版本、关联记录和交付状态。",
+          image: "assets/store/04-files.png"
+        },
+        people: {
+          title: "人员",
+          description: "查看董事、股东、实际权益与代持关系。",
+          image: "assets/store/05-people.png"
+        }
+      };
+
+      const selectView = (view, moveFocus = false) => {
+        const data = views[view];
+        if (!data) return;
+
+        tabs.forEach((tab) => {
+          const selected = tab.dataset.view === view;
+          tab.setAttribute("aria-selected", String(selected));
+          tab.tabIndex = selected ? 0 : -1;
+          if (selected && moveFocus) tab.focus();
+        });
+
+        images.forEach((image) => {
+          image.classList.toggle("active", image.dataset.view === view);
+        });
+
+        title.textContent = data.title;
+        description.textContent = data.description;
+        panel.setAttribute("aria-labelledby", `tab-${view}`);
+        link.href = data.image;
+        link.setAttribute("aria-label", `打开${data.title}界面大图`);
+      };
+
+      tabs.forEach((tab, index) => {
+        tab.addEventListener("click", () => selectView(tab.dataset.view));
+        tab.addEventListener("keydown", (event) => {
+          let nextIndex = index;
+          if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+          else if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
+          else if (event.key === "Home") nextIndex = 0;
+          else if (event.key === "End") nextIndex = tabs.length - 1;
+          else return;
+          event.preventDefault();
+          selectView(tabs[nextIndex].dataset.view, true);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
