@@ -1,5 +1,11 @@
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/600.css";
+import "@fontsource/inter/700.css";
+import "@fontsource/inter/800.css";
+import "@fontsource/nunito/800.css";
+import "@fontsource/nunito/900.css";
 import "./ui/styles.css";
 import { setPlatform, platform } from "./platform/platform";
 import { Store, ungrouped } from "./state/store";
@@ -13,7 +19,12 @@ import { dragEnd, dragOver } from "./ui/drop";
 
 async function boot() {
   const inTauri = "__TAURI_INTERNALS__" in window;
-  if (inTauri) {
+  const inElectron = !!window.charter;
+  if (inElectron) {
+    const { createElectronPlatform } = await import("./platform/electron");
+    setPlatform(await createElectronPlatform());
+    document.documentElement.dataset.shell = "electron";
+  } else if (inTauri) {
     const { createTauriPlatform } = await import("./platform/tauri");
     setPlatform(await createTauriPlatform());
   } else {
@@ -37,7 +48,10 @@ async function boot() {
     }
   };
   await store.load();
-  if (!inTauri && store.data.companies.length === 0 && new URLSearchParams(location.search).has("sample")) await installSampleData(store);
+  if (!inTauri && !inElectron && store.data.companies.length === 0 && new URLSearchParams(location.search).has("sample")) {
+    await installSampleData(store);
+    if (new URLSearchParams(location.search).has("stress")) await (await import("./state/stress")).installStressData(store);
+  }
   sync.start(store.folder.root);
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
@@ -61,6 +75,19 @@ function App() {
   }, [store.folder.root]);
   useEffect(() => startReminderLoop(store), [store]);
   // 拖入文件：落到当前公司或当前集团
+  useEffect(() => {
+    if (!window.charter) return;
+    let un: (() => void) | undefined;
+    void import("./platform/electron").then(({ installElectronDrop }) => {
+      un = installElectronDrop(dragOver, dragEnd, (paths, x, y) => {
+        const zone = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop]");
+        if (zone) { zone.dispatchEvent(new CustomEvent("charter-drop", { detail: paths, bubbles: false })); return; }
+        if (router.sheet) return;
+        router.startImport(paths, router.currentImportContext((id) => !!store.group(id)));
+      });
+    });
+    return () => un?.();
+  }, []);
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     let un: (() => void) | undefined;

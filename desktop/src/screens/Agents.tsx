@@ -3,7 +3,7 @@
 import { TicketStub } from "../ui/TicketStub";
 import { companyTint } from "../ui/uistyle";
 import { useListMotion } from "../ui/motion";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useApp } from "../state/hooks";
 import * as D from "../domain/day";
 import { type Contact, type Party, contactsOf, newContact, newParty } from "../domain/models";
@@ -126,18 +126,27 @@ function AgentDetail({ p }: { p: Party }) {
 }
 
 /** 就地编辑：看起来是文字，点一下就能改，回车或离开保存，Esc 放弃。 */
-export function InlineText({ value, onCommit, placeholder, label, style, className }: {
+export function InlineText({ value, onCommit, placeholder, label, style, className, wrap }: {
   value: string; onCommit: (v: string) => void; placeholder?: string; label: string; style?: React.CSSProperties; className?: string;
+  /** 长文本（公司名）：自动换行，最多按内容撑高；回车提交，不插入换行。 */
+  wrap?: boolean;
 }) {
   const [v, setV] = useState(value);
+  const ta = useRef<HTMLTextAreaElement>(null);
   useEffect(() => setV(value), [value]);
+  useLayoutEffect(() => { const el = ta.current; if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; } }, [v, wrap]);
+  const keys = (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); }
+    if (e.key === "Escape") { e.stopPropagation(); setV(value); setTimeout(() => (e.target as HTMLElement).blur()); }
+  };
+  if (wrap) return (
+    <textarea ref={ta} rows={1} className={`v4-inline wrap ${className ?? ""}`} aria-label={label} value={v} placeholder={placeholder} style={style} title={value}
+      onChange={(e) => setV(e.target.value.replace(/\n/g, " "))} onBlur={() => { if (v !== value) onCommit(v); }} onKeyDown={keys} />
+  );
   return (
-    <input className={`v4-inline ${className ?? ""}`} aria-label={label} value={v} placeholder={placeholder} style={style}
+    <input className={`v4-inline ${className ?? ""}`} aria-label={label} value={v} placeholder={placeholder} style={style} title={value.length > 24 ? value : undefined}
       onChange={(e) => setV(e.target.value)}
       onBlur={() => { if (v !== value) onCommit(v); }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        if (e.key === "Escape") { e.stopPropagation(); setV(value); setTimeout(() => (e.target as HTMLInputElement).blur()); }
-      }} />
+      onKeyDown={keys} />
   );
 }

@@ -1,5 +1,6 @@
 // 文件包、用途编辑、导出全部档案、文件详情。移植自 PacketView.swift、PurposeEditor.swift、ExportSheet.swift、DocumentSheet.swift。
 
+import { ExtraTags, StatusTag, statusOfFreshness } from "./Status";
 import { useEffect, useRef, useState } from "react";
 import { pdfjs } from "../services/extract";
 import * as D from "../domain/day";
@@ -78,7 +79,7 @@ export function PacketView({ companyID: initialCompany, purposeID, onClose }: { 
       const path = await buildPacket(frozen, template, company, store, (done, total) => setProgress({ done, total }));
       platform().prefSet(lastPurposeKey(company.id), template.id);
       setPhase({ kind: "done", path, complete, missing: missing.length });
-    } catch (e) { setPhase({ kind: "failed", message: (e as Error).message }); }
+    } catch (e) { setPhase({ kind: "failed", message: (e instanceof Error ? e.message : String(e)) }); }
   };
   const sendNote = () => {
     const lines = [`${company?.name ?? ""} ${latinPadEnd(template?.name ?? "")}文件包（${D.long(store.today)}）`, "", `已包含（${included.length} 份）：`,
@@ -254,7 +255,7 @@ export function ExportSheet({ companyID, onClose }: { companyID: string; onClose
   const run = async () => {
     setWorking(true); setFailure(null); setProgress({ done: 0, total: 0 });
     try { setResult(await exportAll(c, store, includeOld, (done, total) => setProgress({ done, total }))); }
-    catch (e) { setFailure((e as Error).message); }
+    catch (e) { setFailure((e instanceof Error ? e.message : String(e))); }
     finally { setWorking(false); }
   };
   return (
@@ -361,7 +362,7 @@ export function DocumentSheet({ documentID, onClose }: { documentID: string; onC
       else if (orig && orig.typeID !== doc.typeID) text = `已改为“${store.docType(doc.typeID)?.name ?? "文件"}”`;
       store.showToast(text, u ? () => store.undoID(u) : undefined);
       onClose();
-    } catch (e) { setSaveError((e as Error).message); }
+    } catch (e) { setSaveError((e instanceof Error ? e.message : String(e))); }
   };
   const reveal = platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示";
   return (
@@ -381,7 +382,7 @@ export function DocumentSheet({ documentID, onClose }: { documentID: string; onC
         <div className="row start" style={{ gap: 22 }}>
           <div style={{ width: 380, height: 540, flex: "none", borderRadius: 14, overflow: "hidden", background: "var(--band)", boxShadow: "inset 0 0 0 1px var(--hairline)" }}><FilePreview key={doc.filePath} path={store.fileURL(doc)} /></div>
           <div className="col grow gap16" style={{ minWidth: 0 }}>
-            <div className="row gap8"><Pill text={freshnessLabel(f)} kind={freshnessPill(f)} />{doc.needsUpdate && f.kind !== "needsUpdate" && <Pill text="需要更新" kind="warn" />}</div>
+            <div className="row gap8 wrap"><StatusTag s={statusOfFreshness(f)} />{doc.needsUpdate && f.kind !== "needsUpdate" && <StatusTag s={statusOfFreshness({ kind: "needsUpdate" })} />}<ExtraTags d={doc} t={store.docType(doc.typeID)} /></div>
             <FormGroup title="文件">
               <FieldRow label="类型"><SelectField options={typeChoices} value={doc.typeID} onChange={(typeID) => set({ typeID })} minWidth={260} /></FieldRow>
               <FieldRow label="归属"><SelectField options={owners.map((r) => [r, store.nameOf(r)] as [NodeRef, string])} value={doc.owner} onChange={(owner) => set({ owner })} minWidth={260} keyOf={(r) => `${r.kind}:${r.id}`} /></FieldRow>
@@ -393,11 +394,16 @@ export function DocumentSheet({ documentID, onClose }: { documentID: string; onC
             </FormGroup>
             <FormGroup title="状态与备注">
               <Switch checked={doc.needsUpdate} onChange={(needsUpdate) => set({ needsUpdate })}>信息有变更，需要重开</Switch>
+              {store.docType(doc.typeID)?.requiresSignature && <FieldRow label="签署日期" hint="这类文件需要签署；留空表示待签署。"><DateField value={doc.signedOn} onChange={(signedOn) => set({ signedOn })} placeholder="待签署" /></FieldRow>}
+              <FieldRow label="核实" hint="与原件（或经认证副本）核对过的日期。"><DateField value={doc.verifiedOn} onChange={(verifiedOn) => set({ verifiedOn })} placeholder="未核实" /></FieldRow>
               <FieldRow label="备注"><TextField multiline rows={2} value={doc.notes} onChange={(notes) => set({ notes })} placeholder="可选" /></FieldRow>
             </FormGroup>
             <FormGroup title="记录">
               <FieldRow label="原始文件名"><span className="ellipsis selectable" title={doc.originalFileName}>{doc.originalFileName || "—"}</span></FieldRow>
               <FieldRow label="归档日期"><span>{D.long(doc.addedOn)}</span></FieldRow>
+              <FieldRow label="来源路径"><span className="mono selectable t-meta" style={{ overflowWrap: "anywhere" }}>{store.fileURL(doc)}</span></FieldRow>
+              {(() => { const older = store.data.documents.filter((x) => x.supersededBy === doc.id); const newer = doc.supersededBy ? store.data.documents.find((x) => x.id === doc.supersededBy) : undefined;
+                return <FieldRow label="版本">{newer ? <span>旧版，已被 {newer.issueDate ?? "新版"} 的版本替代</span> : <span>现行{older.length ? `，替代了 ${older.length} 个旧版` : ""}</span>}</FieldRow>; })()}
             </FormGroup>
           </div>
         </div>

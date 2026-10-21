@@ -70,14 +70,14 @@ export async function exportConfig(s: Store, path: string) {
     await platform().writeText(path, toJSON(configBundle(s)));
     s.showToast(`配置已导出：${basename(path)}`);
   } catch (e) {
-    s.setError(`导出配置失败：${(e as Error).message}。请换一个可写入的位置再试。`);
+    s.setError(`导出配置失败：${(e instanceof Error ? e.message : String(e))}。请换一个可写入的位置再试。`);
   }
 }
 
 export async function readConfig(path: string): Promise<ConfigBundle> {
   let raw: any;
   try { raw = JSON.parse(await platform().readText(path)); }
-  catch (e) { throw new Error(`这个文件不是 Charter 导出的配置，或者已经损坏。请选择用“导出配置…”生成的 JSON 文件。（${(e as Error).message}）`); }
+  catch (e) { throw new Error(`这个文件不是 Charter 导出的配置，或者已经损坏。请选择用“导出配置…”生成的 JSON 文件。（${(e instanceof Error ? e.message : String(e))}）`); }
   if (!raw || typeof raw.version !== "number" || !raw.library || !raw.settings) throw new Error("这个文件不是 Charter 导出的配置，或者已经损坏。请选择用“导出配置…”生成的 JSON 文件。");
   if (raw.version > configVersion) throw new Error(`这份配置来自更新版本的 Charter（格式版本 ${raw.version}）。请先把这台电脑上的 Charter 升级到最新版本再导入。`);
   const b: ConfigBundle = { ...raw, library: normLibrary(raw.library) };

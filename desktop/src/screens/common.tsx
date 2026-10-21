@@ -159,7 +159,7 @@ export function useStageFile(): [(opts: { typeID?: string; owner?: NodeRef; repl
     if (!path) return;
     setBusy(true);
     try { setFile(await stage(store, path, opts)); }
-    catch (e) { store.setError(`读取文件失败：${(e as Error).message}`); }
+    catch (e) { store.setError(`读取文件失败：${(e instanceof Error ? e.message : String(e))}`); }
     finally { setBusy(false); }
   };
   return [start, file ? <ArchiveConfirmSheet file={file} onClose={() => { void discardStaged(file.id); setFile(null); }} /> : null, busy];
@@ -202,7 +202,7 @@ export function ArchiveConfirmSheet({ file, onClose }: { file: StagedFile; onClo
     try {
       await commitStaged(store, file.id, { typeID, owner, issued, expiry, form: file.form, note, keepBoth: keepBoth && !!current });
       onClose();
-    } catch (e) { setError(`归档未完成：${(e as Error).message}`); }
+    } catch (e) { setError(`归档未完成：${(e instanceof Error ? e.message : String(e))}`); }
     finally { setWorking(false); }
   };
   const card = (title: string, date: Day | undefined, name: string) => (

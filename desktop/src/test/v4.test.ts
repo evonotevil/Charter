@@ -1,3 +1,4 @@
+import * as D from "../domain/day";
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { MemoryPlatform } from "../platform/memory";
@@ -49,10 +50,12 @@ describe("Charter 4", () => {
   });
   it("completing a matter schedules the next one", async () => {
     const s = await fresh();
-    const o = s.openObligations[0];
+    const o = s.openObligations.find((x) => x.rule.schedule.kind !== "event" && x.rule.schedule.kind !== "documentExpiry")!;
     s.complete(o);
+    expect(s.openObligations.some((x) => x.key === o.key)).toBe(false);
     const next = s.openObligations.find((x) => x.rule.id === o.rule.id && x.company.id === o.company.id);
-    expect(next && next.due > o.due).toBe(true);
+    // 下一件只有落在 400 天排期范围内才会出现；测试不能依赖今天是哪天
+    if (D.daysBetween(s.today, D.addMonths(o.due, 12)) <= 400) expect(next && next.due > o.due).toBe(true);
   });
 });
 

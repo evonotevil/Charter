@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
 import {
   type ArchiveItem, type ArchiveState, type Company, type Document, type DocumentType, type GroupRow, type NodeRef,
-  archiveItemName, changeKindLabel, companyStatusLabel, hasFile, isActiveOn, isNotApplicable, itemMarkLabel, itemMarks, ref, stateNeedsAttention, latinPad, latinPadStart } from "../domain/models";
+  archiveItemName, changeKindLabel, companyStatusLabel, hasFile, isActiveOn, isNotApplicable, itemMarkLabel, itemMarks, ref, stateNeedsAttention, latinPad, latinPadStart, archiveCounts } from "../domain/models";
 import { daysLeft, expiryLabel, obligationDone, percentLabel } from "../domain/engine";
 import { isMember, sourceLabel } from "../domain/groups";
 import { useApp } from "../state/hooks";
@@ -29,14 +29,17 @@ const searchText = (c: Company) => [c.name, ...c.formerNames, ...c.aliases, c.re
 
 function CompaniesHeader() {
   const { store, router } = useApp();
-  const live = store.data.companies.filter((c) => c.status !== "dissolved" && c.status !== "redomiciled");
-  const missing = store.attentionCompanyCount(null);
+  const f = router.groupFilter;
+  const scope = store.companyIDsForFilter(f);
+  const live = store.data.companies.filter((c) => c.status !== "dissolved" && c.status !== "redomiciled" && (!scope || scope.has(c.id)));
+  const miss = store.missingSummary(f);
+  const attention = store.attentionCount(f);
+  const unv = store.unverified.filter((x) => !scope || scope.has(x.item.companyID)).length;
   return (
-    <PageHeader title="公司" stats={[
-      { label: "在管公司", value: live.length, unit: "家" },
-      { label: "集团", value: store.data.groups.length, unit: "个" },
-      { label: "档案待补", value: missing, unit: "家", tone: missing ? "warn" : undefined, onClick: missing ? () => router.go("files") : undefined },
-      { label: "待核实", value: store.unverified.length, unit: "条", tone: store.unverified.length ? "accent" : undefined, onClick: () => router.go("verify") },
+    <PageHeader title="公司" scope={`${store.filterName(f)} · ${live.length} 家`} stats={[
+      { label: "缺件", value: miss.companies, unit: `家 · ${miss.items} 项`, tone: miss.companies ? "warn" : undefined, onClick: miss.companies ? () => router.go("files") : undefined },
+      { label: "文件需处理", value: attention, unit: "份", tone: attention ? "warn" : undefined, onClick: attention ? () => router.update((r) => { r.section = "files"; r.filesFilter = 2; }) : undefined },
+      { label: "待核实", value: unv, unit: "条", tone: unv ? "accent" : undefined, onClick: () => router.go("verify") },
     ]}><BrandPills /></PageHeader>
   );
 }
@@ -84,7 +87,7 @@ function CompanyList() {
       const items = store.archive(c);
       const counted = items.filter((i) => !isNotApplicable(i.state));
       return [items.some((i) => i.state.kind === "expired") ? 0 : 1, items.some((i) => i.state.kind === "expiring") ? 0 : 1,
-        items.some((i) => i.state.kind === "needsUpdate" || i.state.kind === "noDate") ? 0 : 1, counted.length ? counted.filter((i) => hasFile(i.state)).length / counted.length : 2];
+        items.some((i) => i.state.kind === "needsUpdate" || i.state.kind === "noDate") ? 0 : 1, counted.length ? archiveCounts(items).held / counted.length : 2];
     };
     const cmp = (a: number[], b: number[]) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
     let best: Company | undefined, bk: number[] | undefined;
@@ -182,8 +185,8 @@ function CompanyRailRow({ c, r, alsoIn }: { c: Company; r: GroupRow; alsoIn?: st
   const dup = !!alsoIn;
   const on = router.selectedCompanyID === c.id && !dup;
   const { severity, text } = alertInfo(store, c);
-  const items = store.archive(c).filter((i) => !isNotApplicable(i.state));
-  const parts = [store.jurisdictionName(c.jurisdiction), isForming(c) ? "设立中" : `档案 ${items.filter((i) => hasFile(i.state)).length}/${items.length}`];
+  const cnt = archiveCounts(store.archive(c));
+  const parts = [store.jurisdictionName(c.jurisdiction), isForming(c) ? "设立中" : `档案 ${cnt.held}/${cnt.total}${cnt.missing ? `，缺 ${cnt.missing}` : ""}`];
   if (r.percent != null) parts.push(`上级持股 ${percentLabel(r.percent)}`);
   const sub = alsoIn ? `也属于 ${alsoIn}` : parts.join("，");
   const menu: MenuEntry[] = [

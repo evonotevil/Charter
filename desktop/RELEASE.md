@@ -1,25 +1,24 @@
-Charter 4.4.0：让股权与任职记录带日期、依据和核实状态，并补齐跨法域角色、双外观和更顺畅的就地编辑。
-
-## 本版更新
-
-- 新增可信台账：股权与任职可分别记录生效日期和资料截至日期，关联具体文件及页码，并标记“已核实 / 待核实”。
-- 新增待核实清单。旧版记录会保留，并把原日期视为资料截至日期，不会被误报为一次新发生的变更。
-- 新增按法域和实体类型整理的治理角色表，覆盖董事、公司秘书、代表取締役、业务执行社员、Manager、Member 等常见角色。
-- 录入股东或董事时可以内联新建公司、选择实体类型与集团；公司名称只提供法域建议，不会自动代选。
-- 法域、实体类型、集团和状态改为可点标签，可直接就地修改。
-- 增加经典与柔和两套界面风格、票据式事项卡、集团色铺底、18 个预设色与自定义颜色，以及兼顾减少动态效果设置的交互动效。
-- 改进公司页、结构图、人员、到期事项、中介、设置和检索体验，并修复 Windows 同步盘元数据读取的兼容性问题。
+Charter 5.0.0：全新视觉与 Electron 桌面内核，同时提供 Mac 和 Windows 版本。
 
 ## 下载与安装
 
-- Windows 10/11（x64）：推荐下载 `-setup.exe`，也可使用 `.msi`。首次安装可能需要联网安装 Microsoft Edge WebView2 Runtime。安装器未签名，系统可能显示未知发布者或 SmartScreen 提示。
-- macOS 12+：下载 `universal.dmg`（Apple Silicon 与 Intel 通用），打开并拖入 Applications。也可下载 Universal ZIP。应用使用本地临时签名，尚未经过 Apple 公证；若被系统拦截，在“系统设置 → 隐私与安全性”选择“仍要打开”。
-- `SHA256SUMS.txt` 用于核对下载文件。
+- **Mac Apple 芯片（M1 及以后）**：`Charter-5.0.0-Mac-arm64.dmg`
+- **Mac Intel**：`Charter-5.0.0-Mac-x64.dmg`
+- **Windows 10/11 x64**：`Charter-5.0.0-Windows-Setup.exe`
+- **Windows 免安装**：`Charter-5.0.0-Windows-x64.zip`
+- Mac 的 `.zip` 与对应 `.dmg` 内容相同，作为备用下载。
+- `SHA256SUMS.txt` 用于核对全部下载文件。
 
-## 数据与升级
+安装包没有使用 Apple Developer ID 或 Windows 商业代码签名证书。Mac 包使用 ad-hoc 签名，首次打开时可能需要在访达中右键 Charter →「打开」；Windows 可能显示 SmartScreen 提示，选择「更多信息」→「仍要运行」。
 
-用户资料存放在所选数据文件夹中，安装包不含真实业务资料。升级前请备份整个数据文件夹。4.4.0 会兼容读取旧版持股与任职记录；由于旧记录缺少可核实依据，它们会显示为“待核实”。跨 Mac 和 Windows 共用文件夹时，需要两端都能访问的同步服务，例如 OneDrive。
+## 本版更新
+
+- 全新视觉系统、新标志，以及更清晰的页面层级和交互反馈。
+- 桌面内核改为 Electron，Mac 与 Windows 使用同一套产品代码。
+- 分别提供 Apple 芯片和 Intel Mac 安装包，并新增 Windows 免安装 ZIP。
+- 修复其他设备同步到数据文件夹后界面没有及时刷新的问题。
+- 保留旧版数据文件夹格式，升级后可以直接打开原有资料。
 
 ## 验证范围
 
-发布流程在 Windows 和 macOS 上运行前端测试、TypeScript 构建、Rust 回归和安装包构建。Windows 另运行静默安装和应用启动检查；Mac 验证双架构、签名、模板资源与 DMG 完整性。这些检查不代替真实设备上的 OCR、同步盘、通知和完整业务流程验收。
+GitHub Actions 在原生 Windows 与 macOS runner 上运行单元测试和 TypeScript/Vite 构建。Windows 包会执行静默安装、启动和窗口检查；macOS 的两种架构分别检查应用版本、架构、ad-hoc 签名、模板资源、DMG 完整性和 ZIP 内容。自动检查不代替真实设备上的 iCloud、OneDrive、通知、文字识别和完整业务流程验收。

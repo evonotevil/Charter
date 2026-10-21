@@ -14,7 +14,7 @@ import { writePDF } from "../services/files";
 import { useStageFile } from "./common";
 import { leftText } from "./InfoCard";
 import { Icon } from "../ui/Icon";
-import { SlideBg, reducedMotion, useTweenNumber } from "../ui/motion";
+import { SlideBg, useChildMotion, useTweenNumber } from "../ui/motion";
 import type { Document } from "../domain/models";
 
 type Range = 90 | 365 | 0;
@@ -30,11 +30,9 @@ export function DueView() {
   const shownCount = useTweenNumber(list.length);
   // #14 完成：这一行先打勾（lime），280ms 后淡出，再真正完成；件数随后递减。
   const [finishing, setFinishing] = useState<string | null>(null);
-  const finish = (o: Obligation, receipt?: Document) => {
-    if (reducedMotion()) { store.complete(o, receipt); return; }
-    setFinishing(o.key);
-    window.setTimeout(() => { store.complete(o, receipt); setFinishing(null); }, 420);
-  };
+  // 4.5：数据立即完成，不等动画；被移走的行由 useChildMotion 原地淡出（可被下一次操作打断，不排队）。
+  const finish = (o: Obligation, receipt?: Document) => { setFinishing(null); store.complete(o, receipt); };
+  const listRef = useChildMotion<HTMLDivElement>(String(range));
 
   const months: { label: string; items: Obligation[] }[] = [];
   for (const o of list) {
@@ -46,7 +44,7 @@ export function DueView() {
   const subscribe = () => void writeCalendarFile(store).then(async (path) => {
     await platform().reveal(path);
     store.showToast("已显示日历文件。用日历应用打开它即可订阅，事项变化时 Charter 会自动更新。");
-  }).catch((e) => store.showToast(`无法写入日历文件：${(e as Error).message}`, undefined, "", "failure"));
+  }).catch((e) => store.showToast(`无法写入日历文件：${(e instanceof Error ? e.message : String(e))}`, undefined, "", "failure"));
 
   const exportList = async (csv: boolean) => {
     const title = `到期事项清单 ${store.today}`;
@@ -63,12 +61,12 @@ export function DueView() {
         await platform().writeBytes(path, await writePDF("到期事项清单", `共 ${list.length} 件，${D.long(store.today)}导出`, sections, "标注“日期为推算”的按规则算出，尚未确认。"));
       }
       store.showToast(`已导出 ${list.length} 件事项。`, () => void platform().reveal(path), "在访达中显示");
-    } catch (e) { store.setError(`导出失败：${(e as Error).message}`); }
+    } catch (e) { store.setError(`导出失败：${(e instanceof Error ? e.message : String(e))}`); }
   };
 
   return (
     <div className="col grow" style={{ minHeight: 0, padding: "0 var(--page-edge)" }}>
-      <PageHeader title="到期" stats={[
+      <PageHeader title="到期" scope={`${range === 90 ? "90 天内" : range ? "一年内" : "全部未完成"} · 全部公司`} stats={[
         { label: "已逾期", value: list.filter((o) => o.due < store.today).length, unit: "件", tone: list.some((o) => o.due < store.today) ? "bad" : undefined },
         { label: "30 天内", value: soon, unit: "件", tone: soon ? "warn" : undefined },
         { label: range === 90 ? "90 天内共" : range ? "一年内共" : "全部", value: list.length, unit: "件", tone: "accent" },
@@ -88,14 +86,14 @@ export function DueView() {
         <EmptyStateView symbol="calendar.badge.clock" title="这段时间没有到期事项" message="事项按公司的法域和成立日期自动排出。新建公司后这里会出现它的年审。" />
       ) : (
         <div className="row grow" style={{ minHeight: 0, gap: 16, alignItems: "stretch", padding: "16px 0 24px" }}>
-          <div className="surface scroll grow due-list" style={{ padding: 8, minWidth: 0 }}>
+          <div ref={listRef} className="surface scroll grow due-list" style={{ padding: 8, minWidth: 0, position: "relative" }}>
             {months.map((m) => (
               <div key={m.label}>
                 <div className="v4-label" style={{ padding: "12px 14px 6px" }}>{m.label}</div>
                 {m.items.map((o) => {
                   const on = o.key === sel?.key, left = D.daysBetween(store.today, o.due), party = store.responsibleParty(o);
                   return (
-                    <button key={o.key} className={`v4-item due-row ${on ? "on" : ""} ${finishing === o.key ? "finishing" : ""}`} onClick={() => router.set("selectedObligationKey", o.key)}>
+                    <button key={o.key} data-mid={o.key} className={`v4-item due-row ${on ? "on" : ""} ${finishing === o.key ? "finishing" : ""}`} onClick={() => router.set("selectedObligationKey", o.key)}>
                       <span className="col" style={{ width: 40, alignItems: "center" }}>
                         <span className="num" style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.1 }}>{String(D.dayOf(o.due)).padStart(2, "0")}</span>
                         <span style={{ fontSize: 11, opacity: 0.65 }}>{D.weekdayName(o.due).replace("星期", "周")}</span>

@@ -4,7 +4,7 @@
 import { TicketStub } from "../ui/TicketStub";
 import { useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
-import { type Appointment, type ArchiveItem, type Company, type NodeRef, archiveItemName, archiveStateLabel, companyStatusLabel, companyStatuses, contactsOf, hasFile, isNotApplicable, ref } from "../domain/models";
+import { type Appointment, type ArchiveItem, type Company, type NodeRef, archiveItemName, archiveStateLabel, companyStatusLabel, companyStatuses, contactsOf, hasFile, isNotApplicable, ref, archiveCounts, isHeld, isMissing } from "../domain/models";
 import { percentLabel } from "../domain/engine";
 import { useApp } from "../state/hooks";
 import { quickArchive } from "../state/actions";
@@ -18,14 +18,15 @@ import { useStageFile } from "./common";
 import { useListMotion } from "../ui/motion";
 import { EntrySheet, ProvenanceLine, VerifyChip } from "./Trust";
 import { CompanyChips } from "./PropChips";
+import { ExtraTags, StatusTag, statusOfArchive } from "./Status";
 import { roleByID, roleCategoryLabel, roleLabel, rolesFor } from "../domain/roles";
-import { companyTint, softBg, useUIStyle } from "../ui/uistyle";
+import { companyTint, softBg, useUIStyle, softLike } from "../ui/uistyle";
 
 export function CompanyPage({ company: c }: { company: Company }) {
   const { store, router } = useApp();
   const [startStage, stageNode] = useStageFile();
   const g = store.brandOf(c.id);
-  const soft = useUIStyle() === "soft";
+  const soft = softLike(useUIStyle());
   const unv = store.unverified.filter((x) => x.item.companyID === c.id).length;
   const [busy, setBusy] = useState(false);
   const onDrop = async (paths: string[]) => {
@@ -38,14 +39,16 @@ export function CompanyPage({ company: c }: { company: Company }) {
   return (
     <DropTarget message={`松开即可归档到 ${c.name}`} onDrop={(p) => void onDrop(p)} style={{ flex: 1, minHeight: 0, display: "flex" }}>
       <div className="surface col grow cp-card">
-        <header className={`row gap16 ${soft && g ? "tinted" : ""}`} style={{ padding: "22px 24px 18px", alignItems: "flex-start", background: soft && g ? softBg(store.brandColor(g)) : undefined, transition: "background var(--standard) var(--ease)" }}>
+        <header className={`row gap16 cp-head ${soft && g ? "tinted" : ""}`} style={{ flexWrap: "wrap", padding: "22px 24px 18px", alignItems: "flex-start", background: soft && g ? softBg(store.brandColor(g)) : undefined, transition: "background var(--standard) var(--ease)" }}>
           <span className="v4-code big">{c.jurisdiction}</span>
           <div className="col grow" style={{ minWidth: 0, gap: 8 }}>
-            <InlineText value={c.name} label="公司名称" onCommit={(v) => v.trim() && store.editCompanyField(c, "name", v.trim(), "公司名称")} style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.4 }} />
+            <InlineText wrap value={c.name} label="公司名称" onCommit={(v) => v.trim() && store.editCompanyField(c, "name", v.trim(), "公司名称")} style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.4, lineHeight: 1.25 }} />
             <div className="row gap6 wrap"><CompanyChips c={c} chipClass={soft && g ? "bento-chip" : ""} /></div>
             {unv > 0 && <button className="v4-chip btnlike chip-pending" style={{ alignSelf: "flex-start" }} onClick={() => router.go("verify")}>{unv} 条待核实 ›</button>}
           </div>
-          <HeaderNumbers c={c} />
+          <div className="col gap10" style={{ alignItems: "flex-end", flex: "none" }}>
+            <HeaderNumbers c={c} />
+            <div className="row gap8">
           {busy && <span className="busy-chip" role="status"><span className="ring" />正在识别…</span>}
           <Button onClick={() => { void platform().copyText(store.companySummary(c)); store.showToast("公司资料摘要已复制。"); }}>复制摘要</Button>
           <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" showsChevron={false} entries={[
@@ -57,9 +60,11 @@ export function CompanyPage({ company: c }: { company: Company }) {
             divider,
             item("删除公司", "trash", () => { store.deleteCompany(c); router.set("selectedCompanyID", null); }, { destructive: true }),
           ]} />
+            </div>
+          </div>
         </header>
         <div className="hairline" />
-        <div className="scroll grow swap-in">
+        <div className="scroll grow swap-quick">
           <div className="cp-grid">
             <div className="col gap16" style={{ minWidth: 0 }}>
               <Basics c={c} />
@@ -83,8 +88,7 @@ export function CompanyPage({ company: c }: { company: Company }) {
 /** 公司页头三个数字：档案 x/y、下一件到期（天）、上层持股（%）。两种风格同一骨架。 */
 function HeaderNumbers({ c }: { c: Company }) {
   const { store } = useApp();
-  const items = store.archive(c).filter((i) => !isNotApplicable(i.state));
-  const have = items.filter((i) => hasFile(i.state)).length;
+  const cnt = archiveCounts(store.archive(c));
   const next = store.openObligations.filter((o) => o.company.id === c.id).sort((a, b) => (a.due < b.due ? -1 : 1))[0];
   const left = next ? D.daysBetween(store.today, next.due) : null;
   const top = store.directShareholders(c.id)[0];
@@ -94,7 +98,7 @@ function HeaderNumbers({ c }: { c: Company }) {
   );
   return (
     <div className="row hdr-nums">
-      {cell("档案", `${have}/${items.length}`, "")}
+      {cell(cnt.missing ? `档案 · 缺 ${cnt.missing}` : "档案", `${cnt.held}/${cnt.total}`, "", cnt.missing ? "var(--risk-warn)" : undefined)}
       {cell(left !== null && left < 0 ? "已逾期" : "下一件到期", left === null ? "—" : Math.abs(left), left === null ? "" : "天", left !== null && left < 0 ? "var(--danger)" : left !== null && left <= 30 ? "var(--amber-text)" : undefined)}
       {cell(top ? "上层持股" : "股东", top ? Number(top.percent.toFixed(2)) : "待补", top ? "%" : "")}
     </div>
@@ -168,20 +172,31 @@ function Officers({ c }: { c: Company }) {
   const [adding, setAdding] = useState(false);
   return (
     <Card title="董事和高管">
-      {os.map((a) => {
-        const p = store.person(a.personID);
-        const role = roleByID(a.roleID);
+      {[...new Set(os.map((a) => a.personID))].map((pid) => {
+        const p = store.person(pid);
+        const mine = os.filter((a) => a.personID === pid);
         return (
-          <div key={a.id} ref={rowRef(a.id)} className={`cp-row2 ${isNew(a.id) ? "cp-new" : ""}`}>
-            <div className="cp-line">
+          <div key={pid} ref={rowRef(mine[0].id)} className={`cp-row2 ${mine.some((a) => isNew(a.id)) ? "cp-new" : ""}`}>
+            <div className="cp-line" style={{ alignItems: "flex-start", paddingTop: 8 }}>
               <span className="v4-code" style={{ borderRadius: "50%" }}>{[...(p?.name ?? "?")][0]}</span>
-              <button className="v4-link ellipsis grow" style={{ textAlign: "left" }} onClick={() => router.openPerson(a.personID)}>{p?.name}</button>
-              <RoleChip a={a} c={c} />
-              {role && <span className="t-meta muted" style={{ width: 70, textAlign: "right" }}>{roleCategoryLabel[role.category]}</span>}
-              <VerifyChip kind="appointment" item={a} companyID={c.id} />
-              <button className="v4-x cp-hide" aria-label={`移除 ${p?.name}`} title="卸任（记入历史）" onClick={() => store.endAppointment(a)}><Icon name="xmark" size={10} /></button>
+              <button className="v4-link grow name-2" style={{ textAlign: "left", paddingTop: 5 }} title={p?.name} onClick={() => router.openPerson(pid)}>{p?.name}</button>
+              {mine.length > 1 && <span className="t-meta muted" style={{ paddingTop: 6, whiteSpace: "nowrap" }}>{mine.length} 个职务</span>}
             </div>
-            <ProvenanceLine p={a} />
+            {mine.map((a) => {
+              const role = roleByID(a.roleID);
+              return (
+                <div key={a.id} className="col role-line">
+                  <div className="row gap8">
+                    <RoleChip a={a} c={c} />
+                    {role && <span className="t-meta muted" style={{ whiteSpace: "nowrap" }}>{roleCategoryLabel[role.category]}</span>}
+                    <span className="spacer" />
+                    <VerifyChip kind="appointment" item={a} companyID={c.id} />
+                    <button className="v4-x cp-hide" aria-label={`移除 ${p?.name} 的${a.title}`} title="卸任（记入历史）" onClick={() => store.endAppointment(a)}><Icon name="xmark" size={10} /></button>
+                  </div>
+                  <ProvenanceLine p={a} />
+                </div>
+              );
+            })}
           </div>
         );
       })}
@@ -241,17 +256,19 @@ function Dues({ c }: { c: Company }) {
       {list.map((o) => {
         const left = D.daysBetween(store.today, o.due);
         return (
-          <button key={o.key} className="cp-due tk" style={{ background: left < 0 ? "var(--danger-soft)" : left <= 30 ? "var(--amber-soft)" : "var(--band)" }} onClick={() => router.openDue(o.key)}>
+          <div key={o.key} className="cp-due tk" style={{ background: left < 0 ? "var(--danger-soft)" : left <= 30 ? "var(--amber-soft)" : "var(--band)" }}>
+            <button className="cp-due-main" onClick={() => router.openDue(o.key)}>
             <TicketStub due={o.due} today={store.today} />
             <span className="col grow" style={{ minWidth: 0 }}>
               <span className="ellipsis" style={{ fontWeight: 600 }}>{o.rule.name}</span>
               <span className="t-meta muted row gap6" style={{ minWidth: 0 }}><span style={{ whiteSpace: "nowrap" }}>{D.long(o.due)}</span>
-                {o.record?.dateConfirmed ? <span>· 已确认</span> : <span role="button" tabIndex={0} className="v4-chip btnlike" style={{ height: 20, fontSize: 11 }} title="按推算日期确认"
-                  onClick={(e) => { e.stopPropagation(); store.confirmDue(o); }} onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); store.confirmDue(o); } }}>推算 · 确认</span>}
+                {o.record?.dateConfirmed ? <span>· 已确认</span> : <span>· 推算日期</span>}
                 <span className="ellipsis">· {store.responsibleParty(o)?.name ?? "未指定中介"}</span></span>
             </span>
             <span className={`v4-chip ${left < 0 ? "bad" : left <= 30 ? "warn" : ""}`} style={{ background: left >= 0 && left > 30 ? "var(--surface)" : undefined }}>{leftText(left)}</span>
-          </button>
+            </button>
+            {!o.record?.dateConfirmed && <button className="v4-chip btnlike" style={{ height: 24, fontSize: 11, flexShrink: 0 }} title="按推算日期确认" onClick={() => store.confirmDue(o)}>确认日期</button>}
+          </div>
         );
       })}
       {!list.length && <span className="muted t-meta" style={{ padding: "6px 0" }}>这家公司暂时没有到期事项。</span>}
@@ -262,22 +279,35 @@ function Dues({ c }: { c: Company }) {
 function Archive({ c, onUpload }: { c: Company; onUpload: (typeID: string) => void }) {
   const { store, router } = useApp();
   const items = store.archive(c);
-  const counted = items.filter((i) => !isNotApplicable(i.state));
-  const have = counted.filter((i) => hasFile(i.state)).length;
-  const dot = (i: ArchiveItem) => i.state.kind === "expired" ? "var(--danger)" : i.state.kind === "expiring" || i.state.kind === "needsUpdate" || i.state.kind === "noDate" ? "var(--amber)" : hasFile(i.state) ? "#B5D334" : "var(--hairline)";
+  const cnt = archiveCounts(items);
+  const [showNA, setShowNA] = useState(false);
+  const na = items.filter((i) => isNotApplicable(i.state));
+  const row = (i: ArchiveItem) => {
+    const st = statusOfArchive(i.state);
+    const d = i.document;
+    const date = d ? (d.expiryDate ? `${d.expiryDate} 到期` : d.issueDate ? `${d.issueDate} 签发` : "") : "";
+    return (
+      <div key={i.typeID} className="cp-line archive-line" role="button" tabIndex={0} style={{ cursor: "default" }}
+        title={d ? d.originalFileName : st.hint}
+        onClick={() => d ? router.open({ kind: "document", id: d.id }) : onUpload(i.typeID)}
+        onKeyDown={(e) => e.key === "Enter" && (d ? router.open({ kind: "document", id: d.id }) : onUpload(i.typeID))}>
+        <span className="col grow" style={{ minWidth: 0, gap: 1 }}>
+          <span className="name-1" style={{ fontSize: 13.5, fontWeight: 600, color: isHeld(i.state) ? undefined : "var(--muted)" }}>{archiveItemName(i)}</span>
+          {(i.copies > 0 || i.olderVersions > 0 || i.note) && <span className="t-meta muted name-1">
+            {[i.copies > 0 ? `另有 ${i.copies} 份同类现行` : "", i.olderVersions > 0 ? `${i.olderVersions} 个旧版` : "", i.note].filter(Boolean).join(" · ")}</span>}
+        </span>
+        <span className="t-meta muted num" style={{ whiteSpace: "nowrap" }}>{date}</span>
+        <StatusTag s={st} />
+        {d && <ExtraTags d={d} t={i.type} />}
+        {!d && isMissing(i.state) && <span className="t-meta link" style={{ whiteSpace: "nowrap" }}>上传</span>}
+      </div>
+    );
+  };
   return (
-    <Card title="档案清单" aside={<span className="row gap10"><span className="t-meta muted num">{have} / {counted.length} 已归档</span><button className="link t-meta" onClick={() => router.open({ kind: "companyItems", companyID: c.id })}>调整清单</button></span>}>
-      {items.filter((i) => !isNotApplicable(i.state)).map((i) => (
-        <div key={i.typeID} className="cp-line" role="button" tabIndex={0} style={{ cursor: "default" }}
-          onClick={() => i.document ? router.open({ kind: "document", id: i.document.id }) : onUpload(i.typeID)}
-          onKeyDown={(e) => e.key === "Enter" && (i.document ? router.open({ kind: "document", id: i.document.id }) : onUpload(i.typeID))}>
-          <span className="v4-dot" style={{ background: dot(i) }} />
-          <span className="grow ellipsis" style={{ fontSize: 13.5, color: hasFile(i.state) ? undefined : "var(--muted)" }}>{archiveItemName(i)}{i.olderVersions > 0 && <span className="t-meta muted">　{i.olderVersions} 个旧版</span>}</span>
-          <span className="t-meta num" style={{ color: i.state.kind === "expired" ? "var(--danger)" : i.state.kind === "valid" || i.state.kind === "missing" ? "var(--muted)" : "var(--amber-text)" }}>
-            {i.state.kind === "valid" ? (i.document?.expiryDate ? `${D.long(i.document.expiryDate)}到期` : i.document?.issueDate ? D.long(i.document.issueDate) : "有效") : i.state.kind === "missing" ? "缺少 · 上传" : archiveStateLabel(i.state)}
-          </span>
-        </div>
-      ))}
+    <Card title="档案清单" aside={<span className="row gap10"><span className="t-meta muted num" title="已有 = 有现行文件，或外部保管、权限受限；不适用的不计入">已有 {cnt.held}/{cnt.total}{cnt.missing ? ` · 缺 ${cnt.missing}` : ""}</span><button className="link t-meta" onClick={() => router.open({ kind: "companyItems", companyID: c.id })}>调整清单</button></span>}>
+      {items.filter((i) => !isNotApplicable(i.state)).map(row)}
+      {na.length > 0 && <button className="t-meta muted" style={{ textAlign: "left", padding: "8px 0 2px" }} onClick={() => setShowNA((v) => !v)}>{showNA ? "收起" : "显示"}不适用的 {na.length} 项</button>}
+      {showNA && na.map(row)}
       <span className="t-meta muted" style={{ paddingTop: 8 }}>把文件拖到这张卡片上的任何地方即可归档，Charter 会识别类型和日期。</span>
     </Card>
   );

@@ -157,9 +157,20 @@ export function StructureView() {
     const f = { x: (p.x - s.width / 2) * z, y: (p.y - s.height / 2) * z, w: s.width * z, h: s.height * z };
     const v = { x: el.scrollLeft + 24, y: el.scrollTop + 24, w: el.clientWidth - 48, h: el.clientHeight - 48 };
     if (f.x >= v.x && f.y >= v.y && f.x + f.w <= v.x + v.w && f.y + f.h <= v.y + v.h) return;
+    // 减少动态效果：不自动滚动视野（只高亮）；否则平滑滚动，用户一滚动就被浏览器取消
+    if (reducedMotion()) return;
     el.scrollTo({ left: Math.max(0, f.x + f.w / 2 - el.clientWidth / 2), top: Math.max(0, f.y + f.h / 2 - el.clientHeight / 2), behavior: "smooth" });
   };
   useEffect(() => { if (selected) { const r = requestAnimationFrame(() => reveal(selected)); return () => cancelAnimationFrame(r); } }, [selected?.id]);
+
+  // 筛选（切集团）后适配视野：回到“适合窗口”并滚回左上，避免筛选后的节点在视野外。
+  const lastGroup = useRef(group);
+  useEffect(() => {
+    if (lastGroup.current === group) return;
+    lastGroup.current = group;
+    setSavedZoom(0);
+    scroller.current?.scrollTo({ left: 0, top: 0 });
+  }, [group]);
 
   // #9 用按钮缩放：比例与滚动位置一起过渡（standard），以视口中心为锚点。
   const zoomAnim = useRef(0);
@@ -233,7 +244,7 @@ export function StructureView() {
     <div className="row grow" style={{ alignItems: "stretch", minHeight: 0 }}>
       <div className="col grow" style={{ minWidth: 0, position: "relative" }}>
         <div className="col gap8" style={{ padding: "var(--page-edge) var(--page-edge) 8px" }}>
-          <PageHeader title="结构" stats={isToday ? (() => {
+          <PageHeader title="结构" scope={`${store.filterName(group)} · ${snapshot.companies.length} 家`} stats={isToday ? (() => {
             const ids = new Set(snapshot.companies.map((c) => c.id));
             const mine = store.openObligations.filter((o) => ids.has(o.company.id));
             const over = mine.filter((o) => o.due < store.today).length, soon = mine.filter((o) => o.due >= store.today && D.daysBetween(store.today, o.due) <= 30).length;
@@ -241,7 +252,6 @@ export function StructureView() {
             return [
               { label: "已逾期", value: over, unit: "件", tone: over ? "bad" as const : undefined, onClick: over ? () => router.go("due") : undefined },
               { label: "30 天内", value: soon, unit: "件", tone: soon ? "warn" as const : undefined, onClick: soon ? () => router.go("due") : undefined },
-              { label: "在管公司", value: snapshot.companies.length, unit: "家" },
               { label: "待核实", value: unv, unit: "条", tone: unv ? "accent" as const : undefined, onClick: () => router.go("verify") },
             ];
           })() : undefined}>
@@ -729,11 +739,11 @@ export function BrandPills() {
   const { store, router } = useApp();
   const group = router.groupFilter;
   return (
-    <div className="v4-pills slide-host" role="tablist" aria-label="集团">
+    <div className="v4-pills slide-host" role="group" aria-label="按集团筛选">
       <SlideBg />
-      <button role="tab" aria-selected={!group} className={!group ? "on" : ""} onClick={() => router.set("groupFilter", null)}>全部</button>
+      <button aria-pressed={!group} className={!group ? "on" : ""} onClick={() => router.set("groupFilter", null)}>全部</button>
       {[...store.data.groups].sort((a, b) => a.name.localeCompare(b.name)).map((x) => (
-        <button key={x.id} role="tab" aria-selected={group === x.id} className={group === x.id ? "on" : ""} onClick={() => router.set("groupFilter", x.id)}>
+        <button key={x.id} aria-pressed={group === x.id} className={group === x.id ? "on" : ""} onClick={() => router.set("groupFilter", x.id)}>
           <span className="v4-dot" style={{ background: store.brandColor(x) }} />{x.name}
         </button>
       ))}

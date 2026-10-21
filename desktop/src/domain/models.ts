@@ -172,6 +172,10 @@ export interface Document {
   needsUpdate: boolean;
   addedOn: Day;
   notes: string;
+  /** 签署日期（类型 requiresSignature 时才有意义）。 */
+  signedOn?: Day;
+  /** 与原件核对过的日期（文件层面的“已核实”）。 */
+  verifiedOn?: Day;
 }
 
 
@@ -285,6 +289,8 @@ export interface DocumentType {
   hints: string[];
   builtIn: boolean;
   entityForms?: string[];
+  /** 这类文件需要签署（决议、会议记录、转让文书等）；打开后文件显示“已签署 / 待签署”。默认关闭。 */
+  requiresSignature?: boolean;
 }
 export const typeAppliesTo = (t: DocumentType, jurisdiction: string) =>
   t.jurisdictions.length === 0 || t.jurisdictions.includes(jurisdiction);
@@ -437,12 +443,32 @@ export const hasFile = (s: ArchiveState) =>
 export const stateNeedsAttention = (s: ArchiveState) =>
   s.kind === "expiring" || s.kind === "expired" || s.kind === "needsUpdate" || s.kind === "noDate";
 export const isNotApplicable = (s: ArchiveState) => s.kind === "marked" && s.mark === "notApplicable";
+/** “已有”：有现行文件，或标记为外部保管 / 权限受限（材料存在但不在本地）。 */
+export const isHeld = (s: ArchiveState) => hasFile(s) || (s.kind === "marked" && (s.mark === "external" || s.mark === "restricted"));
+/** “缺件”（待取得）：没有文件且没有标记，或标记为未取得 / 待核对。 */
+export const isMissing = (s: ArchiveState) => s.kind === "missing" || (s.kind === "marked" && (s.mark === "notObtained" || s.mark === "unverified"));
+/** 公司页“档案 x/y”、公司列表、数字条共用的口径。 */
+export function archiveCounts(items: { state: ArchiveState }[]) {
+  const counted = items.filter((i) => !isNotApplicable(i.state));
+  return {
+    held: counted.filter((i) => isHeld(i.state)).length,
+    total: counted.length,
+    missing: counted.filter((i) => isMissing(i.state)).length,
+    attention: counted.filter((i) => stateNeedsAttention(i.state)).length,
+    notApplicable: items.length - counted.length,
+  };
+}
 
 export interface ArchiveItem {
   typeID: string;
   type?: DocumentType;
   document?: Document;
+  /** 被替代的旧版本数（只有存在替代关系的才算旧版）。 */
   olderVersions: number;
+  /** 同时现行的同类文件还有几份（不是旧版，例如不同股份类别的两份名册）。 */
+  copies: number;
+  /** 当前这份之外的同类现行文件。 */
+  others: Document[];
   state: ArchiveState;
   note: string;
   isExtra: boolean;

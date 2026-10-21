@@ -1,10 +1,12 @@
-node_modules/
-dist/
-desktop/src-tauri/target/
-*.dmg
 .DS_Store
-build-mac.log
 xcuserdata/
 DerivedData/
 *.xcuserstate
 build/
+node_modules/
+dist/
+desktop/src-tauri/target/
+release/
+*.dmg
+*.exe
+build-mac.log

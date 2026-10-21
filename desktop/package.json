@@ -1,39 +1,120 @@
 {
   "name": "charter-desktop",
   "private": true,
-  "version": "4.4.0",
+  "version": "5.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "electron": "vite build && electron .",
+    "dist": "node scripts/release.mjs"
   },
-  "dependencies": {
+  "devDependencies": {
+    "@fontsource/inter": "^5.1.0",
+    "@fontsource/nunito": "^5.1.0",
     "@pdf-lib/fontkit": "^1.1.1",
     "@tauri-apps/api": "^2.12.3",
+    "@tauri-apps/cli": "^2.12.2",
     "@tauri-apps/plugin-dialog": "^2.8.2",
     "@tauri-apps/plugin-fs": "^2.7.0",
     "@tauri-apps/plugin-notification": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2.7.1",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "44.5.1",
+    "electron-builder": "26.17.0",
     "immer": "^10.1.1",
     "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
+    "playwright": "^1.64.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "zustand": "^5.0.2"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2.12.2",
-    "@types/node": "^22.10.2",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.4",
-    "playwright": "^1.64.0",
+    "resedit": "2.0.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "zustand": "^5.0.2"
+  },
+  "dependencies": {},
+  "main": "electron/main.cjs",
+  "description": "Charter：集团公司档案、股权结构与合规申报",
+  "author": "Charter",
+  "build": {
+    "appId": "app.charter.desktop",
+    "productName": "Charter",
+    "copyright": "Charter",
+    "directories": {
+      "output": "release",
+      "buildResources": "electron/resources"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json",
+      "!electron/resources/**",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "src/assets/charter-templates.json",
+        "to": "charter-templates.json"
+      }
+    ],
+    "asar": true,
+    "afterPack": "scripts/after-pack.cjs",
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "Charter-${version}-Mac-${arch}.${ext}",
+      "icon": "electron/resources/icon.icns",
+      "category": "public.app-category.business",
+      "identity": null,
+      "minimumSystemVersion": "12.0",
+      "extendInfo": {
+        "NSHumanReadableCopyright": "Charter",
+        "LSApplicationCategoryType": "public.app-category.business"
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Charter-${version}-Windows-${arch}.${ext}",
+      "icon": "electron/resources/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
+      "language": "2052",
+      "shortcutName": "Charter",
+      "artifactName": "Charter-${version}-Windows-Setup.${ext}"
+    },
+    "electronVersion": "44.5.1",
+    "publish": null
   }
 }

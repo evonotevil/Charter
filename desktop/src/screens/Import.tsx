@@ -262,7 +262,7 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
       store.showToast(`已归档 ${archived.length} 份文件${received}${n ? `，新建 ${n} 家公司。请补充新公司的财年结束日和中介。` : "。"}`, undoID ? () => store.undoID(undoID) : undefined);
       setResult({ count: archived.length, companyIDs: ids, newCompanyCount: n });
     } catch (e) {
-      setCommitError(`归档失败，档案没有改动：${(e as Error).message}`);
+      setCommitError(`归档失败，档案没有改动：${(e instanceof Error ? e.message : String(e))}`);
     } finally { setCommitting(false); }
   };
 

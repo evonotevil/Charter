@@ -39,7 +39,10 @@ export async function exportBackup(s: Store, path: string, onProgress?: (done: n
   const files: { rel: string[]; full: string }[] = [];
   await walk(f.filesDir, ["files"], files);
   await walk(f.groupIconsDir, ["group-icons"], files);
-  for (const x of files) entries.push({ path: x.rel.join("/"), data: await p.readBytes(x.full) });
+  for (const x of files) {
+    try { entries.push({ path: x.rel.join("/"), data: await p.readBytes(x.full) }); }
+    catch (e) { throw new Error(`读取“${x.rel.slice(1).join("/")}”时出错（${e instanceof Error ? e.message : String(e)}）`); }
+  }
   const d = s.data;
   const info: BackupInfo = {
     exportedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"), format: FORMAT_VERSION,
@@ -47,7 +50,9 @@ export async function exportBackup(s: Store, path: string, onProgress?: (done: n
     files: files.filter((x) => x.rel[0] === "files").length,
   };
   entries.unshift({ path: MANIFEST, data: new TextEncoder().encode(JSON.stringify({ app: "Charter", ...info }, null, 2)) });
-  await p.writeBytes(path, await writeZip(entries, onProgress));
+  const zip = await writeZip(entries, onProgress);
+  try { await p.writeBytes(path, zip); }
+  catch (e) { throw new Error(`写入备份文件时出错（${e instanceof Error ? e.message : String(e)}，大小 ${(zip.byteLength / 1048576).toFixed(1)} MB）`); }
   return info;
 }
 
@@ -89,7 +94,7 @@ export async function restoreBackup(s: Store, b: OpenedBackup) {
     await s.flushWrites();
     if (!s.loadFailed) await makeSnapshot(f, "恢复备份前");
   } catch (e) {
-    s.setError(`恢复前的快照没有写成，没有恢复：${(e as Error).message}。请确认数据文件夹可写入后重试。`);
+    s.setError(`恢复前的快照没有写成，没有恢复：${(e instanceof Error ? e.message : String(e))}。请确认数据文件夹可写入后重试。`);
     return;
   }
   try {
@@ -105,7 +110,7 @@ export async function restoreBackup(s: Store, b: OpenedBackup) {
       await p.writeBytes(dest, await e.async("uint8array"));
     }
   } catch (e) {
-    s.setError(`恢复没有完成：${(e as Error).message}。可以在“备份与配置”里用“恢复备份前”的快照回到原来的状态。`);
+    s.setError(`恢复没有完成：${(e instanceof Error ? e.message : String(e))}。可以在“备份与配置”里用“恢复备份前”的快照回到原来的状态。`);
     await s.load();
     return;
   }

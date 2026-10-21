@@ -15,8 +15,8 @@ import { nonArchiveTypeIDs } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { useChildMotion } from "../ui/motion";
-import { codeTint, companyTint, isSoft, setUIStyle, useUIStyle } from "../ui/uistyle";
-import { Button, Segmented, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField } from "../ui/kit";
+import { codeTint, companyTint, isSoft, setDensity, setUIStyle, useDensity, useUIStyle } from "../ui/uistyle";
+import { Button, Segmented, useFocusReturn, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField } from "../ui/kit";
 import { ScheduleEditor } from "./common";
 import { ArchiveItemFields, type ItemDraft, newItemDraft } from "./Companies";
 import { PurposeEditor } from "./Packet";
@@ -26,6 +26,8 @@ export function SettingsView() {
   const { router } = useApp();
   const pane: SettingsPane = router.settings ?? "sync";
   const [leaving, setLeaving] = useState(false);
+  const win = useRef<HTMLDivElement>(null);
+  useFocusReturn(win);
   const close = () => { setLeaving(true); setTimeout(() => router.set("settings", null), 120); };
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !router.sheet && !document.querySelector(".overlay .sheet, .popover")) { e.preventDefault(); close(); } };
@@ -34,7 +36,7 @@ export function SettingsView() {
   }, []);
   return (
     <div className={`s4-backdrop ${leaving ? "out" : ""}`} onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="s4-window appear" role="dialog" aria-label="设置">
+      <div ref={win} className="s4-window appear" role="dialog" aria-modal="true" aria-label="设置">
         <nav className="s4-nav">
           <div style={{ fontSize: 18, fontWeight: 800, padding: "4px 12px 6px" }}>设置</div>
           {settingsGroups().map((g) => (
@@ -130,6 +132,7 @@ const paneDetail: Partial<Record<SettingsPane, string>> = {
 function GeneralSettings({ pane }: { pane: SettingsPane }) {
   const { store, sync } = useApp();
   const uiStyle = useUIStyle();
+  const density = useDensity();
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmSample, setConfirmSample] = useState(false);
   const [restoring, setRestoring] = useState<DataSnapshot | null>(null);
@@ -162,8 +165,9 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
     <Scroll>
       <PaneHeader title={settingsPaneTitle[pane]} detail={paneDetail[pane]} />
       {pane === "sync" && <>
-        <SGroup footer="柔和：集团色铺底、事项做成票据样式、侧栏和信息卡用大数字。只改外观，按这台电脑记住。">
-          <SRow title="界面风格"><Segmented options={[["classic", "经典"], ["soft", "柔和"]]} value={uiStyle} onChange={setUIStyle} /></SRow>
+        <SGroup footer="柔和：集团色铺底、事项做成票据样式、信息卡分块。只改外观，按这台电脑记住。">
+          <SRow title="界面风格"><Segmented options={[["grove", "Charter 5"], ["soft", "柔和"], ["classic", "经典"]]} value={uiStyle} onChange={setUIStyle} /></SRow>
+          <SRow title="信息密度" detail="紧凑：行更矮、标题和数字条更小，一屏看到更多行。与界面风格无关。"><Segmented options={[["comfortable", "舒适"], ["compact", "紧凑"]]} value={density} onChange={setDensity} /></SRow>
         </SGroup>
         <SGroup footer="把数据文件夹放进 iCloud 云盘或 OneDrive，Mac 和 Windows 电脑就能共用同一套档案。">
           <SRow title={root.split(/[\\/]/).filter(Boolean).pop()} detail={<span className="selectable mono" title={root}>{root}</span>}>
@@ -209,7 +213,7 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
               if (!t) return;
               setBackupBusy(true);
               try { const i = await exportBackup(store, t); store.showToast(`备份已导出：${i.companies} 家公司、${i.groups} 个集团、${i.files} 个归档文件。`, () => void p.reveal(t), finder); }
-              catch (e) { store.setError(`导出备份失败：${(e as Error).message}。请换一个可写入的位置再试。`); }
+              catch (e) { store.setError(`导出备份失败：${e instanceof Error ? e.message : String(e)}。`); }
               finally { setBackupBusy(false); }
             }}>{backupBusy ? "正在导出…" : "导出备份…"}</Button>
           </SRow>
@@ -217,7 +221,7 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
             <Button size="small" disabled={store.isLoading || store.isImporting || backupBusy} onClick={async () => {
               const f = (await p.pickFiles({ multiple: false, extensions: ["zip"], title: "选择备份" }))[0];
               if (!f) return;
-              try { setPendingBackup({ opened: await readBackup(f), fileName: f.split(/[\\/]/).pop()! }); } catch (e) { store.setError((e as Error).message); }
+              try { setPendingBackup({ opened: await readBackup(f), fileName: f.split(/[\\/]/).pop()! }); } catch (e) { store.setError((e instanceof Error ? e.message : String(e))); }
             }}>选择备份…</Button>
           </SRow>
         </SGroup>
@@ -229,7 +233,7 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
             <Button size="small" disabled={store.isLoading || store.loadFailed} onClick={async () => {
               const f = (await p.pickFiles({ multiple: false, extensions: ["json"], title: "读取配置" }))[0];
               if (!f) return;
-              try { setPendingConfig({ bundle: await readConfig(f), fileName: f.split(/[\\/]/).pop()! }); } catch (e) { store.setError((e as Error).message); }
+              try { setPendingConfig({ bundle: await readConfig(f), fileName: f.split(/[\\/]/).pop()! }); } catch (e) { store.setError((e instanceof Error ? e.message : String(e))); }
             }}>导入…</Button>
           </SRow>
         </SGroup>
@@ -560,6 +564,10 @@ function ItemEditSheet({ id, scope, onClose, onDelete }: { id: string; scope: st
             })}</div>
           </FormGroup>}
           <DocumentTypeForm type={t} onChange={save} />
+          <FormGroup title="签署">
+            <Switch checked={!!t.requiresSignature} onChange={(v) => save({ ...t, requiresSignature: v || undefined })}>这类文件需要签署（决议、会议记录、转让文书等）</Switch>
+            <span className="t-meta muted">打开后，这类文件会显示“已签署 / 待签署”，可在文件详情里填签署日期。</span>
+          </FormGroup>
         </div>
       </SheetScaffold>
     </Modal>

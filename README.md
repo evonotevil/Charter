@@ -1,25 +1,35 @@
-# Charter 4
+# Charter 5
 
 管理海外子公司的跨平台桌面应用：股权结构、到期事项、中介、公司档案、文件与人员。
 
-当前版本：**4.4.0**。
+当前版本：**5.0.0**。Charter 5 使用 Electron + React + TypeScript，Mac 与 Windows 共用一套产品代码。
 
 ## 下载
 
 从 [GitHub Releases](https://github.com/evonotevil/Charter/releases/latest) 下载：
 
-- Windows 10/11 x64：推荐 `-setup.exe`，也可使用 `.msi`。
-- macOS 12+：下载 Universal DMG（Apple Silicon 与 Intel 通用），也可使用 Universal ZIP。
-- `SHA256SUMS.txt`：用于核对下载文件。
+- **Mac Apple 芯片（M1 及以后）**：`Charter-5.0.0-Mac-arm64.dmg`
+- **Mac Intel**：`Charter-5.0.0-Mac-x64.dmg`
+- **Windows 10/11 x64**：推荐 `Charter-5.0.0-Windows-Setup.exe`
+- **Windows 免安装**：`Charter-5.0.0-Windows-x64.zip`
+- **SHA-256 校验值**：`SHA256SUMS.txt`
 
-安装包暂未使用开发者证书签名。Windows 可能显示未知发布者或 SmartScreen 提示；macOS 首次打开可能需要在“系统设置 → 隐私与安全性”中确认。
+Mac 用户也可以下载对应的 `.zip`。应用没有使用 Apple Developer ID 或 Windows 商业代码签名证书：Mac 首次打开时可能需要在访达中右键 Charter →「打开」；Windows 可能显示 SmartScreen 提示，选择「更多信息」→「仍要运行」。
+
+## 5.0 更新
+
+- 全新视觉系统、新标志与更紧凑的信息层级。
+- 改用 Electron，正式提供 Apple 芯片 Mac、Intel Mac 和 Windows x64 安装包。
+- 同步文件夹中的外部改动会自动刷新。
+- 延续 4.x 的数据文件夹格式，升级后直接打开原数据。
 
 ## 源码
 
-| 文件夹 | 内容 |
+| 目录 | 内容 |
 | --- | --- |
-| `desktop/` | Tauri 2 + React + TypeScript 应用源码、测试和构建脚本 |
-| `规范/` | 设计规范、视觉令牌、动效审查和方案记录 |
-| `.github/workflows/release.yml` | Windows x64 与 macOS Universal 安装包的自动构建、验证和发布流程 |
+| `desktop/` | Electron + React + TypeScript 应用、测试和打包配置 |
+| `desktop/src-tauri/` | 4.x Tauri 源码，保留作兼容参考，不再用于发布 |
+| `规范/` | 产品设计、交互与视觉规范 |
+| `.github/workflows/release.yml` | Windows 与两种 Mac 架构的原生构建、安装测试和发布流程 |
 
-编译与开发说明见 [desktop/README.md](desktop/README.md)，发布说明见 [desktop/RELEASE.md](desktop/RELEASE.md)。
+开发说明见 [desktop/README.md](desktop/README.md)，5.0 发布说明见 [desktop/RELEASE.md](desktop/RELEASE.md)。

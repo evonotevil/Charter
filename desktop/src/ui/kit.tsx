@@ -401,42 +401,73 @@ export function ListField({ values, onChange, placeholder }: { values: string[];
  * 经 router 关闭的弹窗已经由 html.closing-sheet 播过淡出，这里跳过。
  */
 function useExitGhost(ref: React.RefObject<HTMLElement>, active: boolean) {
-  const last = useRef<{ el: HTMLElement; rect: DOMRect } | null>(null);
+  // 只记住元素，不在每次渲染时读布局；离场时才量一次尺寸。
+  const last = useRef<HTMLElement | null>(null);
   const activeRef = useRef(active);
   activeRef.current = active;
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (active && el) last.current = { el, rect: el.getBoundingClientRect() };
-  });
+  useLayoutEffect(() => { if (active && ref.current) last.current = ref.current; });
+  const ghost = (el: HTMLElement | null) => {
+    if (!el || !el.isConnected || reducedMotion() || document.documentElement.classList.contains("closing-sheet")) return;
+    const rect = el.getBoundingClientRect();
+    // 大弹窗（设置等）整体克隆代价高：只克隆外壳和第一层面板，内容留空，淡出 120ms
+    const big = el.getElementsByTagName("*").length > 400;
+    const g = el.cloneNode(!big) as HTMLElement;
+    if (big) { const sheet = el.firstElementChild?.cloneNode(false) as HTMLElement | undefined; if (sheet) { const r = (el.firstElementChild as HTMLElement).getBoundingClientRect(); sheet.style.width = `${r.width}px`; sheet.style.height = `${r.height}px`; g.appendChild(sheet); } }
+    g.setAttribute("aria-hidden", "true");
+    g.classList.add("ghost-out");
+    Object.assign(g.style, { position: "fixed", left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, pointerEvents: "none", margin: "0", animationDelay: "0s" });
+    document.body.appendChild(g);
+    setTimeout(() => g.remove(), 160);
+  };
   useLayoutEffect(() => {
     if (active) return;
-    const l = last.current; last.current = null;
-    if (!l || reducedMotion() || document.documentElement.classList.contains("closing-sheet")) return;
-    const g = l.el.cloneNode(true) as HTMLElement;
-    g.setAttribute("aria-hidden", "true");
-    g.classList.add("ghost-out");
-    Object.assign(g.style, { position: "fixed", left: `${l.rect.left}px`, top: `${l.rect.top}px`, width: `${l.rect.width}px`, height: `${l.rect.height}px`, pointerEvents: "none", margin: "0", animationDelay: "0s" });
-    document.body.appendChild(g);
-    setTimeout(() => g.remove(), 160);
+    const el = last.current; last.current = null; ghost(el);
   }, [active]);
-  useLayoutEffect(() => () => {
-    const l = last.current;
-    if (!activeRef.current || !l || reducedMotion() || document.documentElement.classList.contains("closing-sheet")) return;
-    const g = l.el.cloneNode(true) as HTMLElement;
-    g.setAttribute("aria-hidden", "true");
-    g.classList.add("ghost-out");
-    Object.assign(g.style, { position: "fixed", left: `${l.rect.left}px`, top: `${l.rect.top}px`, width: `${l.rect.width}px`, height: `${l.rect.height}px`, pointerEvents: "none", margin: "0" });
-    document.body.appendChild(g);
-    setTimeout(() => g.remove(), 160);
-  }, []);
+  useLayoutEffect(() => () => { if (activeRef.current) ghost(last.current); }, []);
 }
 
 const SheetDepth = createContext(0);
+
+/**
+ * 弹窗和浮层的焦点：打开时把焦点移进去（没有 autoFocus 的元素就聚焦第一个可操作元素），
+ * Tab 在里面循环；关闭后焦点回到打开它的按钮（DESIGN.md §7）。
+ */
+export function useFocusReturn(ref: React.RefObject<HTMLElement>) {
+  // 在渲染时就记下入口：此时焦点还没被弹窗内容拿走
+  const [opener] = useState(() => (typeof document !== "undefined" ? document.activeElement as HTMLElement | null : null));
+  useEffect(() => {
+    const el = ref.current;
+    const focusables = () => [...(el?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])') ?? [])]
+      .filter((x) => x.offsetParent !== null);
+    const t = requestAnimationFrame(() => { if (el && !el.contains(document.activeElement)) focusables()[0]?.focus({ preventScroll: true }); });
+    const trap = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !el) return;
+      const f = focusables(); if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    el?.addEventListener("keydown", trap);
+    return () => {
+      cancelAnimationFrame(t);
+      el?.removeEventListener("keydown", trap);
+      // 等离场完成、DOM 卸载后再还焦点；入口已不在页面上就不还
+      setTimeout(() => {
+        if (!opener || !opener.isConnected || opener === document.body) return;
+        const a = document.activeElement as HTMLElement | null;
+        // 用户已经在别处打字就不抢焦点；其他情况（body、应用根、已卸载的弹窗元素）都还给入口
+        const typing = a && a !== document.body && a.isConnected && !el?.contains(a) && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+        if (!typing) opener.focus({ preventScroll: true });
+      }, 0);
+    };
+  }, []);
+}
 
 export function Modal({ onClose, children, dismissOnEscape = true }: { onClose: () => void; children: ReactNode; dismissOnEscape?: boolean }) {
   const depth = useContext(SheetDepth);
   const overlay = useRef<HTMLDivElement>(null);
   useExitGhost(overlay, true);
+  useFocusReturn(overlay);
   useEffect(() => {
     if (!dismissOnEscape) return;
     const k = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(".popover")) { e.stopPropagation(); onClose(); } };
@@ -445,7 +476,7 @@ export function Modal({ onClose, children, dismissOnEscape = true }: { onClose: 
   }, [onClose, dismissOnEscape]);
   return createPortal(
     <SheetDepth.Provider value={depth + 1}>
-      <div ref={overlay} className="overlay" style={{ zIndex: 900 + depth * 10 }}
+      <div ref={overlay} className="overlay" role="dialog" aria-modal="true" style={{ zIndex: 900 + depth * 10 }}
         // 弹窗经 portal 渲染，React 事件仍会沿组件树冒泡到触发它的行；在这里截住点击类事件。键盘事件不截，Esc 等快捷键挂在 window 上。
         onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()} onMouseDown={(e) => { if (e.target === e.currentTarget) { /* 与 Mac 一致：点背景不关闭 */ } }}>{children}</div>
     </SheetDepth.Provider>,
@@ -556,27 +587,27 @@ export const Skeleton = ({ width, height = 12 }: { width?: number | string; heig
 export type PageStat = { label: string; value: number; unit?: string; tone?: "bad" | "warn" | "accent"; onClick?: () => void };
 
 /** 页面标题。柔和风格下，subtitle 换成一排大数字卡（stats）；经典风格显示 subtitle。 */
-export function PageHeader({ title, subtitle, children, stats }: { title: string; subtitle?: ReactNode; children?: ReactNode; stats?: PageStat[] }) {
-  const soft = !!stats?.length;
-  const compact = !isSoft();
+export function PageHeader({ title, subtitle, children, stats, scope }: { title: string; subtitle?: ReactNode; children?: ReactNode; stats?: PageStat[]; scope?: string }) {
+  const has = !!stats?.length;
   return (
-    <div className="col gap4">
-      <div className="row gap16" style={{ minHeight: 40 }} data-tauri-drag-region>
+    <div className="col page-head">
+      <div className="row gap16 page-head-row" data-tauri-drag-region>
         <h1 className="t-page ellipsis" data-tauri-drag-region>{title}</h1>
         <span className="spacer" data-tauri-drag-region />
         {children}
       </div>
-      {soft ? (
-        <div className={`stat-row ${compact ? "classic" : ""}`}>
+      {has ? (
+        <div className={`stat-row ${isSoft() ? "" : "classic"}`}>
           {stats!.map((st) => {
             const body = <>
               <span className="stat-label">{st.label}</span>
-              <span className="row" style={{ alignItems: "flex-end", gap: 3 }}><span className="big-num" style={compact ? undefined : { fontSize: 34 }}><TweenNumber value={st.value} /></span>{st.unit && <span className="big-unit" style={{ fontSize: 12.5, paddingBottom: 3 }}>{st.unit}</span>}</span>
+              <span className="stat-value"><span className="big-num"><TweenNumber value={st.value} /></span>{st.unit && <span className="big-unit">{st.unit}</span>}</span>
             </>;
             return st.onClick
-              ? <button key={st.label} className={`stat-tile ${st.tone ?? ""}`} onClick={st.onClick}>{body}</button>
+              ? <button key={st.label} className={`stat-tile ${st.tone ?? ""}`} onClick={st.onClick} title={`查看${st.label}`}>{body}</button>
               : <div key={st.label} className={`stat-tile ${st.tone ?? ""}`}>{body}</div>;
           })}
+          {scope && <span className="stat-scope" title="数字统计的范围">范围：{scope}</span>}
         </div>
       ) : subtitle && <span className="t-body muted">{subtitle}</span>}
     </div>

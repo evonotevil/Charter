@@ -9,7 +9,7 @@ import {
   type Document, type DocumentRequest, type DocumentType, type GroupRow, type HandoffAction, type Holding, type ItemMark,
   type Jurisdiction, type NodeRef, type ObligationRecord, type Party, type Person, type RuleTemplate, type RuleTrust,
   type RuleVerification, type Schedule, type Evidence, type Provenance, type SharedSettings, type TemplateLibrary,
-  changeKindLabel, companyStatusLabel, emptyArchive, hasFile, isActiveOn, isHandedOff, isNotApplicable, itemMarkLabel,
+  archiveCounts, changeKindLabel, companyStatusLabel, emptyArchive, hasFile, isActiveOn, isHandedOff, isNotApplicable, itemMarkLabel,
   latinPad, newPerson, normalizedStatus, pendingTypeIDs, ref, refKey, sameRef, typeAppliesTo, uuid, latinPadStart, brandPalette } from "../domain/models";
 import {
   type Chain, type Freshness, type Obligation, type OwnershipBreakdown, adjustDay, breakdown, chainPaths, computeObligations,
@@ -199,7 +199,7 @@ export class Store {
     } catch (e) {
       if (gen !== this.loadGeneration) return;
       this.isLoading = false;
-      this.setError(`读取数据失败，现有档案已保留并暂停保存。请检查数据文件夹是否可访问，修复后重新载入：${(e as Error).message}`);
+      this.setError(`读取数据失败，现有档案已保留并暂停保存。请检查数据文件夹是否可访问，修复后重新载入：${(e instanceof Error ? e.message : String(e))}`);
     }
   }
 
@@ -239,7 +239,7 @@ export class Store {
             this.lastLoaded[name] = await this.folder.modificationDate(name);
           }
         } catch (e) {
-          this.setError(`保存失败：${(e as Error).message}`);
+          this.setError(`保存失败：${(e instanceof Error ? e.message : String(e))}`);
         }
       }
       this.onSaved?.();
@@ -819,7 +819,9 @@ export class Store {
           : f.kind === "expired" ? { kind: "expired", days: f.days } : f.kind === "needsUpdate" ? { kind: "needsUpdate" } : { kind: "noDate" };
       } else if (a.marks[id]) state = { kind: "marked", mark: a.marks[id] };
       else state = { kind: "missing" };
-      return { typeID: id, type: this.docType(id), document: current, olderVersions: versions.length - (current ? 1 : 0), state, note: a.notes[id] ?? "", isExtra: !templ.has(id) };
+      const others = currents.filter((d) => d !== current);
+      return { typeID: id, type: this.docType(id), document: current, olderVersions: versions.filter((d) => !!d.supersededBy).length, copies: others.length, others,
+        state, note: a.notes[id] ?? "", isExtra: !templ.has(id) };
     });
   }
 
@@ -905,6 +907,18 @@ export class Store {
     return this.documentsNeedingAttention.filter((d) => d.owner.kind === "company" && (!scope || scope.has(d.owner.id)));
   }
   attentionCount = (filter: string | null) => this.attentionCompanyDocuments(filter).length;
+  /** 缺件统计（与公司页“档案 x/y”同一口径）：范围内缺件的公司数和条目数。 */
+  missingSummary(filter: string | null) {
+    const scope = this.companyIDsForFilter(filter);
+    let companies = 0, items = 0;
+    for (const c of this.data.companies) {
+      if (scope && !scope.has(c.id)) continue;
+      if (c.status === "dissolved" || c.status === "redomiciled" || c.status === "forming") continue;
+      const m = archiveCounts(this.archive(c)).missing;
+      if (m) { companies++; items += m; }
+    }
+    return { companies, items };
+  }
   /** 有文件需要处理的公司数（侧栏“公司”的角标）。 */
   attentionCompanyCount = (filter: string | null) => new Set(this.attentionCompanyDocuments(filter).map((d) => d.owner.id)).size;
   get attentionPersonalCount() { return this.documentsNeedingAttention.filter((d) => d.owner.kind === "person").length; }
@@ -1092,7 +1106,7 @@ export class Store {
     try {
       validateHoldings([...this.data.holdings, h], new Set([...this.data.companies.map((c) => c.id), ...(created.company ? [created.company.id] : [])]),
         new Set([...this.data.people.map((p) => p.id), ...(created.person ? [created.person.id] : [])]), new Set([companyID]));
-    } catch (e) { this.setError(`无法添加股东：${(e as Error).message}`); return; }
+    } catch (e) { this.setError(`无法添加股东：${(e instanceof Error ? e.message : String(e))}`); return; }
     const name = created.person?.name ?? created.company?.name ?? this.nameOf(r!);
     this.editWithHistory("添加股东", companyID, "shareholderChange", `新增股东 ${name} ${percentLabel(percent)}`, (d) => {
       if (created.person) d.people.push(created.person as any);
@@ -1181,7 +1195,7 @@ export class Store {
     try {
       validateHoldings([...this.data.holdings, h], new Set([...this.data.companies.map((c) => c.id), ...(created.company ? [created.company.id] : [])]),
         new Set([...this.data.people.map((p) => p.id), ...(created.person ? [created.person.id] : [])]), new Set([a.companyID]));
-    } catch (e) { this.setError(`无法添加股东：${(e as Error).message}`); return false; }
+    } catch (e) { this.setError(`无法添加股东：${(e instanceof Error ? e.message : String(e))}`); return false; }
     const name = created.person?.name ?? created.company?.name ?? this.nameOf(r!);
     const role = roleByID(a.roleID);
     this.editWithHistory("添加股东", a.companyID, "shareholderChange", `${a.backfill ? "补录" : "新增"}${role ? role.name : "股东"} ${name} ${percentLabel(a.percent)}`, (d) => {
@@ -1306,7 +1320,7 @@ export class Store {
     try {
       validateHoldings([...this.data.holdings, h], new Set(this.data.companies.map((c) => c.id)), new Set(this.data.people.map((p) => p.id)), new Set([args.companyID]));
     } catch (e) {
-      this.setError(`无法添加持股：${(e as Error).message}`);
+      this.setError(`无法添加持股：${(e instanceof Error ? e.message : String(e))}`);
       return false;
     }
     this.commit((d) => { d.holdings.push(h as any); this.tidyGroups(d); });
@@ -1879,7 +1893,7 @@ export class Store {
       this.snapshots = await listSnapshots(this.folder);
       return snap;
     } catch (e) {
-      this.setError(`自动备份没有写成：${(e as Error).message}。操作仍会继续；可以在设置的“备份与配置”里手动备份。`);
+      this.setError(`自动备份没有写成：${(e instanceof Error ? e.message : String(e))}。操作仍会继续；可以在设置的“备份与配置”里手动备份。`);
       return null;
     }
   }
@@ -1894,7 +1908,7 @@ export class Store {
       await this.refreshSnapshots();
       this.showToast("已备份当前数据。");
     } catch (e) {
-      this.showToast(`备份没有写成：${(e as Error).message}`, () => void this.backUpNow(), "重试", "failure");
+      this.showToast(`备份没有写成：${(e instanceof Error ? e.message : String(e))}`, () => void this.backUpNow(), "重试", "failure");
     }
   }
 
@@ -1906,7 +1920,7 @@ export class Store {
       if (!this.loadFailed) await makeSnapshot(this.folder, `恢复到 ${snapshotTitle(s.date)} 之前`);
       await restoreSnapshot(s, this.folder);
     } catch (e) {
-      this.setError(`恢复失败：${(e as Error).message}。当前数据没有被覆盖，或已在“备份与配置”里留有恢复前的快照。`);
+      this.setError(`恢复失败：${(e instanceof Error ? e.message : String(e))}。当前数据没有被覆盖，或已在“备份与配置”里留有恢复前的快照。`);
       await this.refreshSnapshots();
       return;
     }
@@ -1937,13 +1951,13 @@ export class Store {
     // 清空前的快照连同归档文件一起保存，恢复这份快照就能完整找回。快照写不成就不清空。
     let snap: DataSnapshot;
     try { await this.flushWrites(); snap = await makeSnapshot(this.folder, "清空所有数据前"); }
-    catch (e) { this.setError(`清空前的备份没有写成，数据没有改动：${(e as Error).message}。请确认数据文件夹可写入后重试。`); return; }
+    catch (e) { this.setError(`清空前的备份没有写成，数据没有改动：${(e instanceof Error ? e.message : String(e))}。请确认数据文件夹可写入后重试。`); return; }
     this.undoStack = []; this.redoStack = [];
     const files = this.data.documents.map((d) => this.fileURL(d));
     const rels = this.data.documents.map((d) => d.filePath);
     const empty = { companies: [], people: [], holdings: [], appointments: [], parties: [], documents: [], records: [], changes: [], groups: [], requests: [] };
     try { await this.persistCollections(empty); }
-    catch (e) { this.setError(`清空失败，数据没有改动：${(e as Error).message}。请确认数据文件夹可写入后重试。`); return; }
+    catch (e) { this.setError(`清空失败，数据没有改动：${(e instanceof Error ? e.message : String(e))}。请确认数据文件夹可写入后重试。`); return; }
     this.data = { ...this.data, ...empty };
     this.afterChange();
     const p = platform();

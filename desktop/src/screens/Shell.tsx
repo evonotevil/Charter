@@ -15,7 +15,8 @@ import { PeopleView } from "./People";
 import { SettingsView } from "./Settings";
 import { leftText, liveCompanies } from "./InfoCard";
 import { SlideBg, TweenNumber } from "../ui/motion";
-import { isSoft, useUIStyle, companyTint } from "../ui/uistyle";
+import { isSoft, useUIStyle, softLike, companyTint } from "../ui/uistyle";
+import { LogoMark } from "../ui/Logo";
 import type { Obligation } from "../domain/engine";
 import { StructureView } from "./Structure";
 import { DueView } from "./Due";
@@ -156,9 +157,10 @@ function Sidebar() {
   const { store, router } = useApp();
   const [railPref, setRail] = useState(readRail);
   // 柔和：固定 76px 图标栏（DESIGN.md §2.1）；经典：可收起。
-  const softStyle = useUIStyle() === "soft";
-  const rail = softStyle || railPref;
-  const toggle = () => { if (!softStyle) setRail((r) => { writeRail(!r); return !r; }); };
+  const softStyle = softLike(useUIStyle());
+  // 两种风格都可以图标 + 文字或收起为图标栏（4.5：柔和不再强制纯图标）。
+  const rail = railPref;
+  const toggle = () => setRail((r) => { writeRail(!r); return !r; });
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); toggle(); } };
     window.addEventListener("keydown", k);
@@ -189,8 +191,8 @@ function Sidebar() {
     <aside className={`side col ${rail ? "rail" : ""} ${softStyle ? "softrail" : ""}`}>
       <div className="drag-region" data-tauri-drag-region style={{ height: platform().os === "mac" ? 34 : 6, flex: "none" }} />
       <div className="row gap8" style={{ paddingBottom: 12, justifyContent: rail ? "center" : undefined }} data-tauri-drag-region>
-        <button className="v4-logo" onClick={toggle} title={softStyle ? "Charter" : rail ? "展开侧栏（⌘\\）" : "收起侧栏（⌘\\）"} aria-label={softStyle ? "Charter" : rail ? "展开侧栏" : "收起侧栏"} aria-expanded={softStyle ? undefined : !rail}>C</button>
-        {!rail && <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: -0.3 }} className="grow lbl" data-tauri-drag-region>Charter</span>}
+        <button className="v4-logo" onClick={toggle} title={rail ? "展开侧栏（⌘\\）" : "收起侧栏（⌘\\）"} aria-label={rail ? "展开侧栏" : "收起侧栏"} aria-expanded={!rail}><LogoMark size={rail ? 34 : 28} /></button>
+        {!rail && <span className="grow lbl brand-word" data-tauri-drag-region>Charter</span>}
         {!rail && <ActionMenu icon="plus" ariaLabel="新建" entries={[
           item("新建公司", "building.2", () => router.open({ kind: "newCompany" }), { shortcut: "⇧⌘N" }),
           item("新建集团", "square.stack.3d.up", () => router.openSettings("groups", "new")),
@@ -210,13 +212,7 @@ function Sidebar() {
         <nav className="col" style={{ gap: 2 }}>{sections.slice(3).map((s, i) => navButton(s, i + 3))}</nav>
       </div>
       {rail ? <span className="grow" /> : <>
-        {soft ? (
-          <button className="soft-tile lbl" onClick={() => router.go("due")} title="打开到期">
-            <span className="v4-label" style={{ color: "inherit", opacity: .8 }}>接下来 90 天</span>
-            <span className="row" style={{ alignItems: "flex-end", gap: 4, marginTop: 6 }}><span className="big-num" style={{ fontSize: 40 }}><TweenNumber value={soon.length} /></span><span className="big-unit" style={{ fontSize: 13 }}>件到期</span></span>
-            <span className="t-meta" style={{ marginTop: 4, opacity: .85 }}>{overdue ? `其中 ${overdue} 件已逾期` : "没有逾期"}</span>
-          </button>
-        ) : <div className="v4-label lbl" style={{ padding: "18px 12px 4px" }}>接下来 90 天</div>}
+        <div className="v4-label lbl" style={{ padding: "18px 12px 4px" }}>接下来 90 天{overdue ? ` · ${overdue} 件逾期` : ""}</div>
         <div className="col scroll grow" style={{ minHeight: 0 }}>
           {soon.length ? soon.slice(0, 8).map((o) => (
             <button key={o.key} className="v4-side" onClick={() => router.openDue(o.key)}>

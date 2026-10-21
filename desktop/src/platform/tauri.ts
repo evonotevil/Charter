@@ -1,6 +1,28 @@
 // 桌面端（Tauri）实现。
 
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke as rawInvoke } from "@tauri-apps/api/core";
+
+/** 系统返回的英文错误翻成用户能看懂的话。 */
+export function describeOSError(raw: string): string {
+  const m = raw.toLowerCase();
+  if (m.includes("os error 11") || m.includes("deadlock") || m.includes("resource temporarily unavailable")) return "文件还在 iCloud 里，没有下载到这台电脑";
+  if (m.includes("os error 2") || m.includes("no such file")) return "找不到文件";
+  if (m.includes("os error 13") || m.includes("os error 1)") || m.includes("permission denied") || m.includes("operation not permitted")) return "没有权限读写这个位置";
+  if (m.includes("os error 28") || m.includes("no space")) return "磁盘空间不足";
+  if (m.includes("os error 30") || m.includes("read-only")) return "这个位置是只读的";
+  if (m.includes("os error 63") || m.includes("name too long")) return "文件名太长";
+  return raw;
+}
+
+// Tauri 的命令失败时抛出的是字符串，不是 Error；统一包成 Error，界面才能读到 message。
+const invoke = (async (cmd: string, args?: any, opts?: any) => {
+  try { return await rawInvoke(cmd, args, opts); }
+  catch (e) {
+    if (e instanceof Error) throw e;
+    const raw = typeof e === "string" ? e : JSON.stringify(e);
+    const err = new Error(describeOSError(raw)); (err as any).raw = raw; throw err;
+  }
+}) as typeof rawInvoke;
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";

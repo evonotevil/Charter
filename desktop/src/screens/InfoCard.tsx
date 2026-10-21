@@ -12,7 +12,7 @@ import { Icon } from "../ui/Icon";
 import { Button, PageHeader } from "../ui/kit";
 import { TweenNumber } from "../ui/motion";
 import { CompanyChips } from "./PropChips";
-import { softBg, useUIStyle } from "../ui/uistyle";
+import { softBg, useUIStyle, softLike } from "../ui/uistyle";
 
 
 /** 公司 → 最大的公司股东（当前有效）。 */
@@ -39,7 +39,7 @@ export const liveCompanies = (store: Store) => store.data.companies.filter((c) =
 
 
 export function InfoCard({ store, router, id }: { store: Store; router: Router; id: string }) {
-  const soft = useUIStyle() === "soft";
+  const soft = softLike(useUIStyle());
   const c = store.company(id)!;
   const parents = companyParents(store);
   const g = store.brandOf(c.id);
@@ -51,6 +51,8 @@ export function InfoCard({ store, router, id }: { store: Store; router: Router; 
   const holders = store.directShareholders(c.id);
   const sibs = p ? liveCompanies(store).filter((x) => x.id !== c.id && parents.get(x.id)?.parent === p.parent) : [];
   const officers = store.officers(c.id);
+  // 一人多职：一行人名，职务合并（长内容规则）
+  const people = [...new Set(officers.map((x) => x.personID))].map((pid) => ({ pid, name: store.person(pid)?.name ?? "", titles: officers.filter((x) => x.personID === pid).map((x) => x.title) }));
   const next = store.openObligations.filter((o) => o.company.id === c.id).sort((a, b) => (a.due < b.due ? -1 : 1))[0];
   const party = store.party(c.defaultPartyID);
   const contact = party ? contactsOf(party)[0] : undefined;
@@ -61,17 +63,17 @@ export function InfoCard({ store, router, id }: { store: Store; router: Router; 
     const copy = () => { void platform().copyText(store.companySummary(c)); store.showToast("公司资料摘要已复制。"); };
     return (
       <aside className="bento appear" aria-label="信息卡">
-        <div className="bento-tile swap-in tinted" key={c.id + "h"} style={{ background: color ? softBg(color) : "var(--surface)" }}>
+        <div className="bento-tile swap-quick tinted" key={c.id + "h"} style={{ background: color ? softBg(color) : "var(--surface)" }}>
           <div className="row gap12" style={{ alignItems: "flex-start" }}>
             <span className="bento-code">{c.jurisdiction}</span>
             <div className="col grow" style={{ minWidth: 0, gap: 8 }}>
-              <div className="selectable" style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3, lineHeight: 1.3 }}>{c.name}</div>
+              <div className="selectable name-2" title={c.name} style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3, lineHeight: 1.3, WebkitLineClamp: 3 }}>{c.name}</div>
               <div className="row gap6" style={{ flexWrap: "wrap" }}><CompanyChips c={c} chipClass="bento-chip" /></div>
             </div>
             <button className="v4-x" aria-label="关闭信息卡" onClick={() => router.set("selectedCompanyID", null)}><Icon name="xmark" size={12} /></button>
           </div>
         </div>
-        <div className="col scroll grow swap-in" key={c.id} style={{ gap: 10, minHeight: 0 }}>
+        <div className="col scroll grow swap-quick" key={c.id} style={{ gap: 10, minHeight: 0 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {next && left !== null ? (
               <button className="bento-tile" style={{ textAlign: "left", background: left < 0 ? "var(--danger-soft)" : left <= 30 ? "var(--amber-soft)" : "var(--surface)" }} onClick={() => router.openDue(next.key)}>
@@ -96,12 +98,12 @@ export function InfoCard({ store, router, id }: { store: Store; router: Router; 
           </div>}
           <div className="bento-tile col gap8">
             <div className="v4-label">董事和高管</div>
-            {officers.length ? officers.map((a) => {
-              const name = store.person(a.personID)?.name ?? "";
-              return <div key={a.id} className="row" style={{ justifyContent: "space-between" }}>
-                <button className="row gap8 v4-link" onClick={() => router.openPerson(a.personID)}><span className="bento-avatar">{[...name][0]}</span><span style={{ fontWeight: 600 }}>{name}</span></button>
-                <span className="muted t-meta">{a.title}</span></div>;
-            }) : <span className="muted">未登记</span>}
+            {people.length ? people.map(({ pid, name, titles }) => (
+              <div key={pid} className="row gap8" style={{ alignItems: "flex-start" }}>
+                <span className="bento-avatar">{[...name][0]}</span>
+                <button className="v4-link grow name-2" style={{ textAlign: "left", fontWeight: 600, minWidth: 0 }} title={name} onClick={() => router.openPerson(pid)}>{name}</button>
+                <span className="muted t-meta" style={{ textAlign: "right", maxWidth: 120 }}>{titles.join("、")}</span></div>
+            )) : <span className="muted">未登记</span>}
           </div>
           <div className="bento-tile">
             <div className="row" style={{ justifyContent: "space-between" }}><span className="v4-label">平行公司</span><span className="v4-label">默认中介</span></div>
@@ -120,16 +122,16 @@ export function InfoCard({ store, router, id }: { store: Store; router: Router; 
   }
   return (
     <aside className="v4-card appear" aria-label="信息卡">
-      <div className="row gap12 swap-in" key={c.id + "h"} style={{ alignItems: "flex-start", padding: "22px 22px 16px" }}>
+      <div className="row gap12 swap-quick" key={c.id + "h"} style={{ alignItems: "flex-start", padding: "22px 22px 16px" }}>
         <span className="v4-code big">{c.jurisdiction}</span>
         <div className="col grow" style={{ minWidth: 0, gap: 8 }}>
-          <div className="selectable" style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3, lineHeight: 1.3 }}>{c.name}</div>
+          <div className="selectable name-2" title={c.name} style={{ fontSize: 18, fontWeight: 700, letterSpacing: -0.3, lineHeight: 1.3, WebkitLineClamp: 3 }}>{c.name}</div>
           <div className="row gap6" style={{ flexWrap: "wrap" }}><CompanyChips c={c} /></div>
         </div>
         <button className="v4-x" aria-label="关闭信息卡" onClick={() => router.set("selectedCompanyID", null)}><Icon name="xmark" size={12} /></button>
       </div>
       <div className="hairline" />
-      <div className="col scroll grow swap-in" key={c.id} style={{ padding: "16px 22px", gap: 18 }}>
+      <div className="col scroll grow swap-quick" key={c.id} style={{ padding: "16px 22px", gap: 18 }}>
         <section className="col gap6">
           <div className="v4-label">股东</div>
           {holders.length ? holders.map((h) => (
@@ -148,10 +150,10 @@ export function InfoCard({ store, router, id }: { store: Store; router: Router; 
         </section>
         <section className="col gap6">
           <div className="v4-label">董事和高管</div>
-          {officers.length ? officers.map((a) => (
-            <div key={a.id} className="row" style={{ justifyContent: "space-between" }}>
-              <button className="v4-link" onClick={() => router.openPerson(a.personID)}>{store.person(a.personID)?.name}</button>
-              <span className="muted t-meta">{a.title}</span>
+          {people.length ? people.map(({ pid, name, titles }) => (
+            <div key={pid} className="row gap8" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+              <button className="v4-link name-2" style={{ textAlign: "left", minWidth: 0 }} title={name} onClick={() => router.openPerson(pid)}>{name}</button>
+              <span className="muted t-meta" style={{ textAlign: "right", flex: "none", maxWidth: 140 }}>{titles.join("、")}</span>
             </div>
           )) : <span className="muted">未登记</span>}
         </section>

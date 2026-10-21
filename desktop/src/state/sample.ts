@@ -179,7 +179,7 @@ export async function installSampleData(s: Store) {
   await doc("vi.cogs", C(vi), D.addMonths(today, -4));
   await doc("common.passport", P(zhang), "2021-03-02", "2031-03-01");
   await doc("common.passport", P(wang), "2019-12-09", D.addDays(today, 25));
-  try { await s.archiveBatch(reqs); } catch (e) { s.setError(`示例文件没有全部生成：${(e as Error).message}`); }
+  try { await s.archiveBatch(reqs); } catch (e) { s.setError(`示例文件没有全部生成：${(e instanceof Error ? e.message : String(e))}`); }
   try { await p.removeDir(tmp); } catch { /* 忽略 */ }
   s.onDataCleared?.();
   s.showToast("示例数据已载入：17 家公司、4 个人、10 家中介。");

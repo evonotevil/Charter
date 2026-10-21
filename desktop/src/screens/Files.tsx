@@ -13,7 +13,8 @@ import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Avatar, Button, EmptyStateView, JurisdictionBadge, type MenuEntry, Pill, Segmented, SelectField, divider, header, item, useContextMenu, PageHeader } from "../ui/kit";
 import { DropTarget } from "../ui/drop";
-import { DocumentRow, FileHeaderRow, FileThumb, ReissueRequestSheet, freshnessPill, useStageFile } from "./common";
+import { FileThumb, ReissueRequestSheet, freshnessPill, useStageFile } from "./common";
+import { ExtraTags, StatusTag, statusOfFreshness } from "./Status";
 
 interface Snap { d: Document; f: Freshness; owner: string; type: string; expiry?: D.Day }
 
@@ -107,7 +108,7 @@ export function FilesView() {
       void p.reveal(target);
     } catch (e) {
       try { await p.removeFile(target); } catch { /* 忽略 */ }
-      store.setError(`导出 ZIP 失败：${(e as Error).message}。请换一个保存位置再试。`);
+      store.setError(`导出 ZIP 失败：${(e instanceof Error ? e.message : String(e))}。请换一个保存位置再试。`);
     } finally { setExporting(false); }
   };
   const batchMenu = (id: string): MenuEntry[] | undefined => {
@@ -139,16 +140,12 @@ export function FilesView() {
             {list.map((d) => <FileCard key={d.id} d={d} showOwner={!owner} selected={selected.has(d.id)} extraMenu={batchMenu(d.id)} onClick={(e) => click(e, d.id)} />)}
           </div>
         ) : (
-          <div className="surface" style={{ padding: 8 }}>
-            <FileHeaderRow />
-            {list.map((d, i) => (
-              <div key={d.id}>
-                <div style={{ borderRadius: "var(--r-row)", boxShadow: selected.has(d.id) ? "inset 0 0 0 2px var(--ink)" : undefined, background: selected.has(d.id) ? "var(--band)" : undefined }}>
-                  <DocumentRow d={d} showOwner={!owner} extraMenu={batchMenu(d.id)} onSelect={(e) => click(e, d.id)} />
-                </div>
-                {i < list.length - 1 && <div className="hairline" style={{ margin: "0 16px" }} />}
-              </div>
-            ))}
+          <div className="surface" style={{ padding: "4px 8px 8px", overflow: "hidden" }}>
+            <table className="ftable" aria-label={`${title}的文件`}>
+              <thead><tr><th style={{ width: 28 }} aria-label="选择" /><th>文件</th>{!owner && <th>归属</th>}<th>签发</th><th>到期</th><th>状态</th><th style={{ width: 120 }} aria-label="操作" /></tr></thead>
+              <tbody>{list.map((d) => <FileTableRow key={d.id} d={d} showOwner={!owner} selected={selected.has(d.id)} extraMenu={batchMenu(d.id)} onSelect={(e) => click(e, d.id)}
+                onToggle={() => { const s2 = new Set(selected); if (s2.has(d.id)) s2.delete(d.id); else s2.add(d.id); setSelected(s2); setAnchor(d.id); }} />)}</tbody>
+            </table>
           </div>
         )}
       </div>
@@ -166,11 +163,13 @@ export function FilesView() {
   return (
     <DropTarget message="松开以开始识别" radius={20} onDrop={(paths) => router.startImport(paths, null)} style={{ flex: 1, minHeight: 0, display: "flex" }}>
       <div className="scroll grow">
-        <div className="col appear" style={{ gap: 40, padding: "var(--page-edge)", paddingBottom: selectedDocs.length ? 96 : undefined }}>
-          <div className="col gap24">
-            <PageHeader title="文件" stats={[
+        <div className="col" style={{ gap: 24, padding: "var(--page-edge)", paddingBottom: selectedDocs.length ? 96 : undefined }}>
+          <div className="col gap12">
+            <PageHeader title="文件" scope={[ownerKind === "company" ? "公司材料" : ownerKind === "person" ? "个人材料" : "公司与人员", router.groupFilter ? store.filterName(router.groupFilter) : "", q ? `搜索“${query.trim()}”` : ""].filter(Boolean).join(" · ")} stats={[
               { label: "现行文件", value: scoped.length, unit: "份" },
+              { label: "已过期", value: scoped.filter((x) => x.f.kind === "expired").length, unit: "份", tone: scoped.some((x) => x.f.kind === "expired") ? "bad" : undefined },
               { label: "需处理", value: attention, unit: "份", tone: attention ? "warn" : undefined, onClick: attention ? () => router.set("filesFilter", 2) : undefined },
+              ...(ownerKind !== "person" ? [{ label: "缺件", value: store.missingSummary(router.groupFilter).items, unit: "项", tone: store.missingSummary(router.groupFilter).items ? "warn" as const : undefined }] : []),
             ]} subtitle={(docs.length === scoped.length ? `${scoped.length} 份现行文件` : `显示 ${docs.length} / ${scoped.length} 份`) + (attention ? `，${attention} 份需处理` : "，都在有效期内") + "。把 PDF、照片或文件夹拖进窗口即可导入。"}>
               <Button kind="primary" icon="square.and.arrow.down" title="选择 PDF、照片或文件夹；也可以直接拖进窗口" onClick={() => void router.chooseFiles(null)}>导入文件</Button>
             </PageHeader>
@@ -251,5 +250,47 @@ function FileCard({ d, showOwner, selected, extraMenu, onClick }: { d: Document;
       {ctx.node}{stageNode}
       {reissue && <ReissueRequestSheet owner={d.owner} typeIDs={[d.typeID]} onClose={() => setReissue(false)} />}
     </button>
+  );
+}
+
+/** 文件表的一行：具体文件名优先；类型、同类第几份在第二行；来源路径和校验值放在详情里。 */
+function FileTableRow({ d, showOwner, selected, extraMenu, onSelect, onToggle }: { d: Document; showOwner: boolean; selected: boolean; extraMenu?: MenuEntry[]; onSelect: (e: React.MouseEvent) => void; onToggle: () => void }) {
+  const { store, router } = useApp();
+  const ctx = useContextMenu();
+  const [startStage, stageNode] = useStageFile();
+  const t = store.docType(d.typeID);
+  const f = store.freshness(d);
+  const st = statusOfFreshness(f);
+  const expiry = expiryOf(d, t);
+  const same = store.data.documents.filter((x) => !x.supersededBy && x.typeID === d.typeID && x.owner.kind === d.owner.kind && x.owner.id === d.owner.id);
+  const older = store.data.documents.filter((x) => x.supersededBy === d.id).length;
+  const c = d.owner.kind === "company" ? store.company(d.owner.id) : undefined;
+  const fileName = /^[0-9A-F-]{36}\.[a-z]+$/i.test(d.originalFileName) ? "（无原始文件名）" : d.originalFileName;
+  const sub = [t?.name ?? "未知类型", same.length > 1 ? `同类 ${same.indexOf(d) + 1}/${same.length} 份` : "", older ? `替代了 ${older} 个旧版` : "", d.notes].filter(Boolean).join(" · ");
+  const upload = () => void startStage({ typeID: d.typeID, owner: d.owner, replaces: d, form: d.form, onArchived: (n) => router.open({ kind: "document", id: n.id }) });
+  const menu: MenuEntry[] = [
+    ...(extraMenu ? [...extraMenu, divider] : []),
+    item("打开", "arrow.up.forward.app", () => void store.openDocument(d)),
+    item(platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示", "folder", () => void store.revealDocument(d)),
+    item("归档新版…", "square.and.arrow.up", upload),
+    divider,
+    item("从 Charter 移除记录", "trash", () => store.deleteDocument(d), { destructive: true }),
+  ];
+  return (
+    <tr className={selected ? "sel" : ""} tabIndex={0} onClick={onSelect} onContextMenu={(e) => ctx.open(e, menu)} aria-selected={selected}
+      onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) router.open({ kind: "document", id: d.id }); if (e.key === " " && e.target === e.currentTarget) { e.preventDefault(); onToggle(); } }}>
+      <td onClick={(e) => { e.stopPropagation(); onToggle(); }}><span className={`mark sq ${selected ? "on" : ""}`} role="checkbox" aria-checked={selected} aria-label="选择">{selected && <Icon name="checkmark" size={10} strokeWidth={3.5} />}</span></td>
+      <td><div className="col" style={{ minWidth: 0, gap: 1 }}><span className="fname name-1" title={d.originalFileName}>{fileName}</span><span className="t-meta muted name-1" title={sub}>{sub}</span></div></td>
+      {showOwner && <td className="owner"><span className="row gap6" style={{ minWidth: 0 }}>{c && <span className="v4-code" style={{ width: 24, height: 20, fontSize: 9.5, borderRadius: 6, ...companyTint(store, c.id) }}>{c.jurisdiction}</span>}<span className="name-1" title={store.nameOf(d.owner)}>{store.nameOf(d.owner)}</span></span></td>}
+      <td className="date mono">{d.issueDate ?? <span className="missing-val">未填</span>}</td>
+      <td className="date mono" style={{ color: f.kind === "expired" ? "var(--risk-bad)" : undefined }}>{expiry ?? (t?.validity === "permanent" || t?.validity === "untilChanged" ? <span className="muted">长期</span> : <span className="missing-val">未填</span>)}</td>
+      <td><span className="row gap4" style={{ flexWrap: "nowrap" }}><StatusTag s={st} /><ExtraTags d={d} t={t} /></span></td>
+      <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
+        {f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补日期</Button>
+          : freshnessNeedsAttention(f) ? <Button size="small" onClick={upload} title="类型和归属沿用这份，旧版保留">归档新版</Button>
+            : <Button size="small" kind="quiet" onClick={() => void store.openDocument(d)}>打开</Button>}
+        {ctx.node}{stageNode}
+      </td>
+    </tr>
   );
 }

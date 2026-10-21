@@ -1,48 +1,81 @@
 # Charter 桌面版
 
-Tauri 2 + React + TypeScript。正式发布同时提供 Windows x64 与 macOS Universal 安装包，从 [GitHub Releases](https://github.com/evonotevil/Charter/releases/latest) 下载。
+Electron + React + TypeScript。5.0 正式发布同时提供 Windows x64、Apple 芯片 Mac 和 Intel Mac 安装包；4.x 的 Tauri 源码保留在 `src-tauri/`，不再用于发布。
 
-## 在 Windows 上编译安装包
+GitHub 发布使用三个原生构建环境：
 
-安装 Node.js 22、Rust MSVC 工具链，以及带“使用 C++ 的桌面开发”工作负载的 Visual Studio Build Tools；随后运行：
+- Windows x64：NSIS 安装版与免安装 ZIP
+- macOS arm64：DMG 与 ZIP
+- macOS x64：DMG 与 ZIP
 
-```powershell
+Windows 测试完成静默安装、启动和窗口检查；两种 Mac 包分别校验版本、架构、ad-hoc 签名、资源、DMG 和 ZIP。
+
+## 本地构建
+
+先安装 Node.js 22，然后：
+
+```bash
 npm ci
 npm test
-npm run tauri build -- --bundles nsis,msi
+npm run build
 ```
 
-产物位于 `src-tauri/target/release/bundle/nsis/` 和 `msi/`。安装器在需要时联网安装 WebView2。GitHub Actions 会在原生 Windows runner 上编译、测试、静默安装并检查应用能否创建窗口。
-
-## 在 Mac 上编译安装包
-
-第一次需要装三样东西（已装过可跳过）：
+在 Mac 上生成 Apple 芯片和 Intel 包：
 
 ```bash
-xcode-select --install                                   # 苹果命令行工具
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # Rust
-brew install node                                        # Node.js 18 以上
+npm run dist
 ```
 
-然后在这个文件夹里：
+在 Windows PowerShell 中生成 Windows 包：
+
+```powershell
+npm run dist
+```
+
+`npm run dist` 只在当前系统生成对应平台的安装包，产物汇总在 `release/out/`，并写入 `SHA256SUMS.txt`。正式发布由 [Electron desktop release](../.github/workflows/release.yml) 分别使用原生 runner 构建。
+
+只运行 electron-builder、不经过本地汇总：
 
 ```bash
-npm ci
-npm run tauri build -- --bundles dmg
+# Mac
+npx electron-builder --mac dmg zip --arm64 --x64 --publish never
+
+# Windows
+npx electron-builder --win nsis zip --x64 --publish never
 ```
 
-装好的安装包在 `src-tauri/target/release/bundle/dmg/Charter_<版本号>_aarch64.dmg`。
+原始产物位于 `release/`。下载文件使用 ASCII 名称：
 
-应用没有开发者签名或公证。第一次打开时 macOS 可能会提示“无法验证开发者”：在“访达”里右键 Charter →“打开”，确认一次即可。正式 Universal 包由 GitHub Actions 构建并验证双架构。
+| 文件 | 说明 |
+| --- | --- |
+| `Charter-<版本>-Mac-arm64.dmg` / `.zip` | Apple 芯片 Mac |
+| `Charter-<版本>-Mac-x64.dmg` / `.zip` | Intel Mac |
+| `Charter-<版本>-Windows-Setup.exe` | Windows 10/11 x64 安装版 |
+| `Charter-<版本>-Windows-x64.zip` | Windows 免安装版 |
+| `SHA256SUMS.txt` | 全部文件的 SHA-256 |
+
+## 安装提示
+
+- **Mac**：安装包使用 ad-hoc 签名，没有 Apple 公证。首次打开时在访达中右键 Charter →「打开」。
+- **Windows**：安装包没有商业代码签名证书。SmartScreen 提示时选择「更多信息」→「仍要运行」。
 
 ## 开发
 
 ```bash
 npm run dev          # 浏览器预览，数据在内存里；地址后加 ?sample 自动载入示例数据
-npm run tauri dev    # 真实应用窗口，读写真实文件夹
+npm run electron     # 编译后用真实 Electron 窗口打开，读写真实文件夹
 npm test             # 单元测试
 ```
 
+## 结构
+
+- `electron/main.cjs`：主进程。窗口、文件读写（原子写入）、文件夹监听、同步盘状态、文字识别、系统字体。
+- `electron/preload.cjs`：把白名单系统能力以 `window.charter` 暴露给界面。
+- `electron/jxa.cjs`：Mac 上读取 iCloud 状态和 Vision 文字识别。
+- `src/platform/electron.ts`：界面侧 Electron 平台实现。
+- `scripts/release.mjs`：当前平台的测试、打包与校验值汇总。
+- `scripts/after-pack.cjs`：Mac ad-hoc 签名，以及 Windows 图标和版本信息。
+
 ## 数据
 
-用户在设置里选择数据文件夹。跨 Mac 和 Windows 使用时，请放在两端都能访问的同步服务中，例如 OneDrive。连接旧版资料前请先备份。设计与数据结构见 [规范/DESIGN.md](../规范/DESIGN.md)。
+用户在设置里选择数据文件夹。Mac 与 Windows 共用数据时，请选两端都能访问的同步服务。5.0 延续 4.x 的数据文件夹格式，升级前仍建议备份整个文件夹。
