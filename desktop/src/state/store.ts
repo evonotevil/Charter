@@ -825,6 +825,45 @@ export class Store {
     });
   }
 
+  /** 个人档案：护照或身份证件、住址证明必备；在任董事另需董事同意书。其余类型有就列出，没有算“可选”。 */
+  personArchive(personID: string): (ArchiveItem & { required: boolean })[] {
+    const d = this.data;
+    return this.cached(`parchive:${personID}`, [d.documents, d.library, d.appointments, this.today], () => {
+      const r = ref("person", personID);
+      const mine = d.documents.filter((x) => sameRef(x.owner, r));
+      const types = d.library.documentTypes.filter((t) => t.owner === "person");
+      const director = d.appointments.some((a) => a.personID === personID && isActiveOn(a, this.today) && a.title.includes("董事"));
+      const ids = types.map((t) => t.id);
+      for (const x of mine) if (!ids.includes(x.typeID)) ids.push(x.typeID);
+      const hasID = mine.some((x) => !x.supersededBy && (x.typeID === "common.passport" || x.typeID === "person.idcard"));
+      const required = (id: string) => id === "common.address" || (director && id === "person.consent")
+        || (id === "common.passport" && (!hasID || mine.some((x) => x.typeID === id))) || (id === "person.idcard" && mine.some((x) => x.typeID === id));
+      return ids.map((id) => {
+        const versions = mine.filter((x) => x.typeID === id);
+        const currents = versions.filter((x) => !x.supersededBy);
+        const current = currents.reduce<Document | undefined>((m, x) => (!m || (x.issueDate ?? x.addedOn) > (m.issueDate ?? m.addedOn) ? x : m), undefined);
+        let state: ArchiveState = { kind: "missing" };
+        if (current) {
+          const f = this.freshness(current);
+          state = f.kind === "valid" ? { kind: "valid" } : f.kind === "expiring" ? { kind: "expiring", days: f.days }
+            : f.kind === "expired" ? { kind: "expired", days: f.days } : f.kind === "needsUpdate" ? { kind: "needsUpdate" } : { kind: "noDate" };
+        }
+        const others = currents.filter((x) => x !== current);
+        return { typeID: id, type: this.docType(id), document: current, olderVersions: versions.filter((x) => !!x.supersededBy).length, copies: others.length, others,
+          state, note: "", isExtra: false, required: required(id) };
+      });
+    });
+  }
+
+  /** 关联到某家公司的个人文件（现行版本）。 */
+  relatedPersonDocuments(companyID: string): Document[] {
+    return this.data.documents.filter((x) => x.relatedCompanyID === companyID && x.owner.kind === "person" && !x.supersededBy);
+  }
+
+  setDocumentCompany(docID: string, companyID: string | undefined) {
+    this.commit((d) => { const x = d.documents.find((y) => y.id === docID); if (x) { if (companyID) x.relatedCompanyID = companyID; else delete x.relatedCompanyID; } }, { label: "关联公司" });
+  }
+
   archiveProgress(c: Company): { have: number; total: number } {
     if (c.status === "forming") return { have: 0, total: 0 };
     const items = this.archive(c).filter((i) => !isNotApplicable(i.state));

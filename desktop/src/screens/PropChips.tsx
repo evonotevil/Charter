@@ -5,7 +5,6 @@ import { useApp } from "../state/hooks";
 import { type Company, companyStatusLabel, companyStatuses } from "../domain/models";
 import { Popover, PopoverRow } from "../ui/kit";
 import { Icon } from "../ui/Icon";
-import { isSoft, softBg, softInk } from "../ui/uistyle";
 
 /** 通用：标签 + 气泡。 */
 export function PickChip({ label, title, children, className = "", style, width = 240 }: {
@@ -28,7 +27,6 @@ export function PickChip({ label, title, children, className = "", style, width 
 /** 公司的法域、实体类型、集团、状态四个标签（公司页头、信息卡、结构图详情共用）。 */
 export function CompanyChips({ c, chipClass = "" }: { c: Company; chipClass?: string }) {
   const { store, router } = useApp();
-  const soft = isSoft();
   const groups = [...store.data.groups].sort((a, b) => a.name.localeCompare(b.name));
   const mine = store.groupsContaining(c.id);
   const forms = store.jurisdiction(c.jurisdiction)?.entityForms ?? [];
@@ -47,8 +45,8 @@ export function CompanyChips({ c, chipClass = "" }: { c: Company; chipClass?: st
           : <span className="t-meta muted" style={{ padding: 10 }}>这个法域还没有实体类型清单，可在设置 → 档案清单里添加。</span>}
       </PickChip>
       <PickChip className={chipClass} title="点按修改集团归属" width={250}
-        style={soft && g0 ? { background: softBg(store.brandColor(g0)), color: softInk(store.brandColor(g0)) } : mine.length ? undefined : { color: "var(--muted)" }}
-        label={<>{!soft && mine.map((g) => <span key={g.id} className="v4-dot" style={{ background: store.brandColor(g) }} />)}{groupLabel}</>}>
+        style={mine.length ? undefined : { color: "var(--muted)" }}
+        label={<>{mine.map((g) => <span key={g.id} className="v4-dot" style={{ background: store.brandColor(g) }} />)}{groupLabel}</>}>
         {(close) => <>
           <span className="t-meta muted" style={{ padding: "6px 10px 4px" }}>归属集团（可多选）</span>
           {groups.map((g) => <PopoverRow key={g.id} title={g.name} checked={mine.some((x) => x.id === g.id)} onClick={() => { close(); store.toggleCompanyGroup(c.id, g.id); }} />)}

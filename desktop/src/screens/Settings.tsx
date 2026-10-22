@@ -15,8 +15,8 @@ import { nonArchiveTypeIDs } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { useChildMotion } from "../ui/motion";
-import { codeTint, companyTint, isSoft, setDensity, setUIStyle, useDensity, useUIStyle } from "../ui/uistyle";
-import { Button, Segmented, useFocusReturn, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField } from "../ui/kit";
+import { companyTint, groupRing, setDensity, useDensity } from "../ui/uistyle";
+import { Banner, Card, PageHeader, Button, Segmented, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField } from "../ui/kit";
 import { ScheduleEditor } from "./common";
 import { ArchiveItemFields, type ItemDraft, newItemDraft } from "./Companies";
 import { PurposeEditor } from "./Packet";
@@ -24,38 +24,96 @@ import { InlineText } from "./Agents";
 
 export function SettingsView() {
   const { router } = useApp();
-  const pane: SettingsPane = router.settings ?? "sync";
-  const [leaving, setLeaving] = useState(false);
-  const win = useRef<HTMLDivElement>(null);
-  useFocusReturn(win);
-  const close = () => { setLeaving(true); setTimeout(() => router.set("settings", null), 120); };
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !router.sheet && !document.querySelector(".overlay .sheet, .popover")) { e.preventDefault(); close(); } };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, []);
+  const pane: SettingsPane = router.settingsPane === "sync" ? "reminders" : router.settingsPane;
   return (
-    <div className={`s4-backdrop ${leaving ? "out" : ""}`} onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div ref={win} className="s4-window appear" role="dialog" aria-modal="true" aria-label="设置">
-        <nav className="s4-nav">
-          <div style={{ fontSize: 18, fontWeight: 800, padding: "4px 12px 6px" }}>设置</div>
+    <div className="page"><div className="page-inner">
+      <PageHeader title="设置" subtitle="提醒、集团、档案清单、规则和备份。外观在“设备与同步”里。" />
+      <div className="settings">
+        <nav className="settings-nav" aria-label="设置分类">
           {settingsGroups().map((g) => (
-            <div key={g.title} className="col" style={{ gap: 2 }}>
-              <span className="v4-label" style={{ padding: "14px 12px 6px" }}>{g.title}</span>
+            <div key={g.title} className="nav">
+              <span className="nav-head">{g.title}</span>
               {g.panes.map((p) => (
-                <button key={p} className={`s4-navitem ${p === pane ? "on" : ""}`} aria-current={p === pane || undefined} onClick={() => router.set("settings", p)}>{settingsPaneTitle[p]}</button>
+                <button key={p} className="nav-item" aria-current={p === pane ? "page" : undefined} onClick={() => router.set("settingsPane", p)}>{settingsPaneTitle[p]}</button>
               ))}
             </div>
           ))}
-          <span className="spacer" />
-          <span className="t-micro muted num" style={{ padding: "0 12px" }}>Charter {typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : ""}</span>
+          <span className="t-label num" style={{ padding: "16px 12px" }}>Charter {typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : ""}</span>
         </nav>
-        <div className="col grow" style={{ minWidth: 0, position: "relative" }} key={pane}>
-          <button className="v4-x" aria-label="关闭设置" title="关闭（Esc）" onClick={close} style={{ position: "absolute", right: 14, top: 14, zIndex: 2 }}><Icon name="xmark" size={12} /></button>
+        <div className="col" style={{ minWidth: 0 }} key={pane}>
           {pane === "groups" ? <GroupsSettings /> : pane === "archiveItems" ? <ArchiveItemsSettings /> : pane === "purposes" ? <PacketSettings /> : pane === "rules" ? <RulesSettings /> : <GeneralSettings pane={pane} />}
         </div>
       </div>
-    </div>
+    </div></div>
+  );
+}
+
+/** 设备与同步：数据文件夹、同步状态、这台电脑、外观偏好。 */
+export function SyncView() {
+  const { store, sync } = useApp();
+  const density = useDensity();
+  const [confirmFolder, setConfirmFolder] = useState(false);
+  const p = platform();
+  const root = store.folder.root;
+  const s = sync.state;
+  const cloud = s.kind !== "local";
+  const warn = syncNeedsAttention(s);
+  const finder = p.os === "windows" ? "在资源管理器中显示" : "在访达中显示";
+  const theme = (() => { try { return localStorage.getItem("charter.theme") ?? "system"; } catch { return "system"; } })();
+  const [th, setTh] = useState(theme);
+  const setTheme = (v: string) => {
+    setTh(v);
+    try { if (v === "system") localStorage.removeItem("charter.theme"); else localStorage.setItem("charter.theme", v); } catch { /* 忽略 */ }
+    if (v === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
+  };
+  const chooseFolder = async () => {
+    setConfirmFolder(false);
+    const dir = await p.pickFolder({ title: "选择数据文件夹" });
+    if (dir) await store.changeDataRoot(dir);
+  };
+  return (
+    <div className="page"><div className="page-inner">
+      <PageHeader crumb="工作区" title="设备与同步" subtitle="这台电脑是不是最新的，档案存在哪里。" />
+      <Banner tone={warn ? "warn" : "ok"} icon={cloud ? "icloud" : "desktopcomputer"} title={cloud ? syncTitle(s) : "档案只保存在这台电脑上"}
+        actions={<Button onClick={() => void sync.refresh()}>立即检查</Button>}>{syncDetail(s)}</Banner>
+      <div className="two">
+        <div className="col gap24">
+          <Card title="数据文件夹">
+            <div className="device">
+              <span className="ic"><Icon name="folder" size={22} /></span>
+              <div className="col grow" style={{ minWidth: 0, gap: 2 }}>
+                <span className="t-row">{root.split(/[\\/]/).filter(Boolean).pop()}</span>
+                <span className="t-meta muted mono selectable" style={{ overflowWrap: "anywhere" }}>{root}</span>
+              </div>
+            </div>
+            <div className="row gap8 wrap">
+              <Button size="small" onClick={() => void p.openPath(root)}>{finder}</Button>
+              <Button size="small" onClick={() => setConfirmFolder(true)}>更换文件夹…</Button>
+            </div>
+          </Card>
+          <Card title="这台电脑">
+            <div className="device">
+              <span className="ic blue"><Icon name={p.os === "mac" ? "laptopcomputer" : "desktopcomputer"} size={22} /></span>
+              <div className="col grow" style={{ minWidth: 0, gap: 4 }}>
+                <span className="row gap8"><span className="t-row">{store.deviceName}</span><span className="pill info">本机</span>{store.isPrimaryDevice && <span className="pill ok">发提醒的电脑</span>}</span>
+                <span className="t-meta muted">{store.isPrimaryDevice ? "到期提醒由这台电脑发出。" : `到期提醒由“${store.data.settings.primaryDeviceName ?? "另一台电脑"}”发出。`}</span>
+              </div>
+            </div>
+          </Card>
+        </div>
+        <div className="col gap24">
+          <Card title="外观">
+            <div className="pref"><span className="col grow"><span className="t-row">信息密度</span><span className="t-meta muted">紧凑：行更矮，一屏看到更多。</span></span>
+              <Segmented options={[["comfortable", "舒适"], ["compact", "紧凑"]]} value={density} onChange={setDensity} /></div>
+            <div className="hairline" />
+            <div className="pref"><span className="col grow"><span className="t-row">深浅色</span><span className="t-meta muted">默认跟随系统。</span></span>
+              <Segmented options={[["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]]} value={th} onChange={setTheme} /></div>
+          </Card>
+          <div className="info-note"><Icon name="info.circle" size={18} /><p>把数据文件夹放进 iCloud 云盘或 OneDrive，Mac 和 Windows 电脑就能共用同一套档案。</p></div>
+        </div>
+      </div>
+      {confirmFolder && <ConfirmSheet title="更换数据文件夹？" message="Charter 会改用新文件夹里的档案；当前文件夹的内容原样保留，不会移动或删除。" confirmTitle="选择文件夹…" onClose={() => setConfirmFolder(false)} onConfirm={() => void chooseFolder()} />}
+    </div></div>
   );
 }
 
@@ -65,7 +123,7 @@ function PaneHeader({ title, detail, children }: { title: string; detail?: strin
   return (
     <div className="row start gap12" style={{ paddingRight: 36 }}>
       <div className="col grow" style={{ gap: 4, minWidth: 0 }}>
-        <span className="ellipsis" style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.4 }}>{title}</span>
+        <h2 className="t-title ellipsis">{title}</h2>
         {detail && <span className="t-meta muted">{detail}</span>}
       </div>
       {children}
@@ -91,18 +149,18 @@ export function SRow({ title, detail, children, danger }: { title: ReactNode; de
 }
 
 const Scroll = ({ children }: { children: ReactNode; max?: number }) => (
-  <div className="scroll grow"><div className="col" style={{ gap: 22, padding: "28px 36px 32px" }}>{children}</div></div>
+  <div className="col" style={{ gap: 20 }}>{children}</div>
 );
 
 /** 列表 + 详情：左列表 250px，右详情；两栏等高，各自内部滚动。 */
 function Split({ header, list, detail, scope }: { header: ReactNode; list: ReactNode; detail: ReactNode; scope?: string }) {
   const box = useChildMotion<HTMLDivElement>(scope);
   return (
-    <div className="col grow" style={{ minHeight: 0, padding: "28px 36px 28px", gap: 18 }}>
+    <div className="col" style={{ gap: 20 }}>
       {header}
-      <div className="row grow" style={{ gap: 16, minHeight: 0, alignItems: "stretch" }}>
-        <div ref={box} className="s4-card scroll" style={{ position: "relative", width: 250, flex: "none", padding: 6 }}>{list}</div>
-        <div className="scroll grow col" style={{ minWidth: 0, gap: 14 }}>{detail}</div>
+      <div className="row" style={{ gap: 16, alignItems: "flex-start" }}>
+        <div ref={box} className="s4-card scroll" style={{ position: "sticky", top: 0, width: 250, flex: "none", padding: 6, maxHeight: "calc(100vh - 180px)" }}>{list}</div>
+        <div className="grow col" style={{ minWidth: 0, gap: 14 }}>{detail}</div>
       </div>
     </div>
   );
@@ -131,8 +189,6 @@ const paneDetail: Partial<Record<SettingsPane, string>> = {
 
 function GeneralSettings({ pane }: { pane: SettingsPane }) {
   const { store, sync } = useApp();
-  const uiStyle = useUIStyle();
-  const density = useDensity();
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmSample, setConfirmSample] = useState(false);
   const [restoring, setRestoring] = useState<DataSnapshot | null>(null);
@@ -164,21 +220,6 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
   return (
     <Scroll>
       <PaneHeader title={settingsPaneTitle[pane]} detail={paneDetail[pane]} />
-      {pane === "sync" && <>
-        <SGroup footer="柔和：集团色铺底、事项做成票据样式、信息卡分块。只改外观，按这台电脑记住。">
-          <SRow title="界面风格"><Segmented options={[["grove", "Charter 5"], ["soft", "柔和"], ["classic", "经典"]]} value={uiStyle} onChange={setUIStyle} /></SRow>
-          <SRow title="信息密度" detail="紧凑：行更矮、标题和数字条更小，一屏看到更多行。与界面风格无关。"><Segmented options={[["comfortable", "舒适"], ["compact", "紧凑"]]} value={density} onChange={setDensity} /></SRow>
-        </SGroup>
-        <SGroup footer="把数据文件夹放进 iCloud 云盘或 OneDrive，Mac 和 Windows 电脑就能共用同一套档案。">
-          <SRow title={root.split(/[\\/]/).filter(Boolean).pop()} detail={<span className="selectable mono" title={root}>{root}</span>}>
-            <Button size="small" onClick={() => void p.openPath(root)}>{finder}</Button>
-            <Button size="small" onClick={() => setConfirmFolder(true)}>更换…</Button>
-          </SRow>
-          <SRow title={<span className="row gap6"><span className="v4-dot" style={{ background: syncNeedsAttention(s) ? "var(--amber)" : cloud ? "#B5D334" : "var(--muted)" }} />{cloud ? syncTitle(s) : "仅保存在这台电脑上"}</span>} detail={syncDetail(s)}>
-            <Button size="small" onClick={() => void sync.refresh()}>立即检查</Button>
-          </SRow>
-        </SGroup>
-      </>}
       {pane === "reminders" && <>
         <SGroup>
           <SRow title="提前提醒" detail="到期前这些天各提醒一次。">
@@ -293,7 +334,7 @@ function GroupsSettings() {
       header={<PaneHeader title="集团" detail="结构图顶部的分组。删除集团只删除分组，公司和持股不受影响。"><Button kind="primary" icon="plus" onClick={create}>新建集团</Button></PaneHeader>}
       list={<>
         {groups.map((g) => <ListItem key={g.id} mid={g.id} on={g.id === sel?.id} onClick={() => router.set("settingsGroupID", g.id)}
-          lead={isSoft() ? <span className="v4-code" style={{ width: 26, height: 26, ...codeTint(store.brandColor(g)) }}>{[...g.name.trim()][0] ?? "集"}</span> : <span className="v4-dot" style={{ background: store.brandColor(g) }} />} title={g.name} sub={`${store.companyIDsIn(g).size} 家公司`} />)}
+          lead={<span className="v4-code" style={{ width: 28, height: 28, ...groupRing(store.brandColor(g)) }}>{[...g.name.trim()][0] ?? "集"}</span>} title={g.name} sub={`${store.companyIDsIn(g).size} 家公司`} />)}
         {!groups.length && <span className="muted t-meta" style={{ padding: 12 }}>还没有集团。</span>}
         {loose > 0 && <><div className="hairline" style={{ margin: "6px 8px" }} /><span className="row gap8 t-meta muted" style={{ padding: "10px 12px" }}><span className="v4-dot" style={{ boxShadow: "inset 0 0 0 1.5px var(--muted)" }} />不属于任何集团 · {loose} 家</span></>}
       </>}

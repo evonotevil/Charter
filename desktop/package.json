@@ -1,7 +1,7 @@
 {
   "name": "charter-desktop",
   "private": true,
-  "version": "5.0.0",
+  "version": "5.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -70,10 +70,14 @@
     "afterPack": "scripts/after-pack.cjs",
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dir",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
-      "artifactName": "Charter-${version}-Mac-${arch}.${ext}",
       "icon": "electron/resources/icon.icns",
       "category": "public.app-category.business",
       "identity": null,
@@ -98,7 +102,6 @@
           ]
         }
       ],
-      "artifactName": "Charter-${version}-Windows-${arch}.${ext}",
       "icon": "electron/resources/icon.ico",
       "signAndEditExecutable": false
     },

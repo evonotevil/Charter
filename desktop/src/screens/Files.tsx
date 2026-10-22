@@ -53,7 +53,7 @@ export function FilesView() {
   // Ctrl/⌘ A 全选、Esc 取消、Ctrl/⌘ F 搜索
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (router.sheet || router.settings) return;
+      if (router.sheet) return;
       const editing = (e.target as HTMLElement)?.closest("input, textarea, [contenteditable]");
       const cmd = e.metaKey || e.ctrlKey;
       if (cmd && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); return; }
@@ -129,9 +129,9 @@ export function FilesView() {
           {owner ? <>
             {c ? <JurisdictionBadge code={c.jurisdiction} size={26} tint={companyTint(store, c.id)} /> : <Avatar name={title} size={26} />}
             <button className="row gap4" onClick={() => (owner.kind === "company" ? router.openCompany(owner.id) : router.openPerson(owner.id))}>
-              <span className="t-section">{title}</span><Icon name="arrow.up.right" size={10} className="muted" />
+              <span className="t-card">{title}</span><Icon name="arrow.up.right" size={10} className="muted" />
             </button>
-          </> : <span className="t-section">{title}</span>}
+          </> : <span className="t-card">{title}</span>}
           <span className="t-meta muted">{list.length} 份</span>
           {bad > 0 && <Pill text={`${bad} 份需处理`} kind={list.some((d) => freshnessPill(store.freshness(d)) === "bad") ? "bad" : "warn"} />}
         </div>
@@ -140,8 +140,8 @@ export function FilesView() {
             {list.map((d) => <FileCard key={d.id} d={d} showOwner={!owner} selected={selected.has(d.id)} extraMenu={batchMenu(d.id)} onClick={(e) => click(e, d.id)} />)}
           </div>
         ) : (
-          <div className="surface" style={{ padding: "4px 8px 8px", overflow: "hidden" }}>
-            <table className="ftable" aria-label={`${title}的文件`}>
+          <div className="card flush" style={{ overflowX: "auto" }}>
+            <table className="table" aria-label={`${title}的文件`}>
               <thead><tr><th style={{ width: 28 }} aria-label="选择" /><th>文件</th>{!owner && <th>归属</th>}<th>签发</th><th>到期</th><th>状态</th><th style={{ width: 120 }} aria-label="操作" /></tr></thead>
               <tbody>{list.map((d) => <FileTableRow key={d.id} d={d} showOwner={!owner} selected={selected.has(d.id)} extraMenu={batchMenu(d.id)} onSelect={(e) => click(e, d.id)}
                 onToggle={() => { const s2 = new Set(selected); if (s2.has(d.id)) s2.delete(d.id); else s2.add(d.id); setSelected(s2); setAnchor(d.id); }} />)}</tbody>
@@ -162,10 +162,10 @@ export function FilesView() {
 
   return (
     <DropTarget message="松开以开始识别" radius={20} onDrop={(paths) => router.startImport(paths, null)} style={{ flex: 1, minHeight: 0, display: "flex" }}>
-      <div className="scroll grow">
-        <div className="col" style={{ gap: 24, padding: "var(--page-edge)", paddingBottom: selectedDocs.length ? 96 : undefined }}>
+      <div className="page">
+        <div className="page-inner" style={{ paddingBottom: selectedDocs.length ? 96 : undefined }}>
           <div className="col gap12">
-            <PageHeader title="文件" scope={[ownerKind === "company" ? "公司材料" : ownerKind === "person" ? "个人材料" : "公司与人员", router.groupFilter ? store.filterName(router.groupFilter) : "", q ? `搜索“${query.trim()}”` : ""].filter(Boolean).join(" · ")} stats={[
+            <PageHeader title="文件" scope={[ownerKind === "company" ? "公司文件" : ownerKind === "person" ? "个人文件" : "公司与人员", router.groupFilter ? store.filterName(router.groupFilter) : "", q ? `搜索“${query.trim()}”` : ""].filter(Boolean).join(" · ")} stats={[
               { label: "现行文件", value: scoped.length, unit: "份" },
               { label: "已过期", value: scoped.filter((x) => x.f.kind === "expired").length, unit: "份", tone: scoped.some((x) => x.f.kind === "expired") ? "bad" : undefined },
               { label: "需处理", value: attention, unit: "份", tone: attention ? "warn" : undefined, onClick: attention ? () => router.set("filesFilter", 2) : undefined },
@@ -175,21 +175,20 @@ export function FilesView() {
             </PageHeader>
             <div className="row gap10 wrap">
               <span className="row gap6" title="按归属筛选：公司材料或个人材料"><span className="t-meta muted">范围</span>
-                <SelectField options={[[0, "公司与人员"], [1, "公司材料"], [2, "个人材料（全部人员）"]]} value={ownerKind === "company" ? 1 : ownerKind === "person" ? 2 : 0}
+                <SelectField options={[[0, "公司与人员"], [1, "公司文件"], [2, "个人文件"]]} value={ownerKind === "company" ? 1 : ownerKind === "person" ? 2 : 0}
                   onChange={(v) => router.set("filesOwnerKind", v === 1 ? "company" : v === 2 ? "person" : null)} minWidth={130} />
               </span>
               <Segmented options={[[0, "全部"], [1, "即将到期"], [2, `需处理 ${attention}`], [3, "最近添加"]]} value={filter} onChange={(v) => router.set("filesFilter", v)} />
               {filter === 1 && <Segmented options={[[30, "30 天"], [60, "60 天"], [90, "90 天"], [183, "半年"]]} value={horizon} onChange={(v) => router.set("filesHorizon", v)} />}
               <span className="spacer" />
-              <label className="row gap8" style={{ minWidth: 150, maxWidth: 240, flex: "1 1 150px", height: 36, padding: "0 14px", borderRadius: 999, background: "var(--surface)" }} title="搜索文件（Ctrl/⌘ F）">
-                <Icon name="magnifyingglass" className="muted" />
-                <input ref={search} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索类型、公司或文件名" className="grow" style={{ border: 0, outline: "none", background: "transparent", font: "inherit", color: "inherit", minWidth: 0 }} />
-                {query && <button className="muted" aria-label="清除" onClick={() => setQuery("")}><Icon name="xmark.circle.fill" /></button>}
+              <label className="search" style={{ minWidth: 150, maxWidth: 260, flex: "1 1 150px" }} title="搜索文件（Ctrl/⌘ F）">
+                <Icon name="magnifyingglass" size={14} />
+                <input ref={search} className="field" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索类型、公司、人员或文件名" />
               </label>
               <Segmented options={[[false, "列表"], [true, "缩略图"]]} value={grid} onChange={setGrid} />
             </div>
             {pending && !router.isImportOpen && (
-              <div className="row gap12 surface" style={{ padding: "12px 16px" }} aria-label={`上次导入还有 ${pendingRemaining(pending)} 份文件未完成`}>
+              <div className="row gap12 card" style={{ padding: "12px 16px" }} aria-label={`上次导入还有 ${pendingRemaining(pending)} 份文件未完成`}>
                 <span className="amber-text" style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--band)", display: "grid", placeItems: "center", flex: "none" }}><Icon name="tray.and.arrow.down" /></span>
                 <div className="col grow" style={{ gap: 2, minWidth: 0 }}>
                   <span className="t-row">上次导入还有 {pendingRemaining(pending)} 份文件未完成</span>
@@ -200,8 +199,8 @@ export function FilesView() {
               </div>
             )}
           </div>
-          {!store.data.documents.length ? <div className="surface"><EmptyStateView symbol="doc.on.doc" title="还没有文件" message="把 PDF、照片或按公司分好的文件夹拖进窗口，Charter 会识别类型、公司和日期，你确认后才归档。" actionTitle="导入文件" action={() => void router.chooseFiles(null)} /></div>
-            : !docs.length ? <div className="surface">{empty()}</div>
+          {!store.data.documents.length ? <div className="card"><EmptyStateView symbol="doc.on.doc" title="还没有文件" message="把 PDF、照片或按公司分好的文件夹拖进窗口，Charter 会识别类型、公司和日期，你确认后才归档。" actionTitle="导入文件" action={() => void router.chooseFiles(null)} /></div>
+            : !docs.length ? <div className="card">{empty()}</div>
               : filter === 1 || filter === 3 ? section(filter === 1 ? "按到期日排列" : "最近 30 天添加", null, docs)
                 : grouped.map((g) => section(store.nameOf(g.owner), g.owner, g.docs))}
         </div>
@@ -237,8 +236,8 @@ function FileCard({ d, showOwner, selected, extraMenu, onClick }: { d: Document;
   ];
   return (
     <button className="col gap12 file-card" onClick={onClick} onContextMenu={(e) => ctx.open(e, menu)} title={d.originalFileName} aria-label={`${store.docType(d.typeID)?.name ?? "文件"}，${freshnessLabel(f)}`} aria-pressed={selected}
-      style={{ padding: 12, borderRadius: "var(--r-surface)", background: "var(--surface)", textAlign: "left", position: "relative", boxShadow: selected ? "inset 0 0 0 2.5px var(--ink)" : undefined }}>
-      <span className="thumb" style={{ height: 172, borderRadius: "var(--r-field)", background: "var(--band)", display: "grid", placeItems: "center", width: "100%" }}>
+      style={{ padding: 12, borderRadius: "var(--r-tile)", background: "var(--surface)", textAlign: "left", position: "relative", borderColor: selected ? "var(--green)" : undefined }}>
+      <span className="thumb" style={{ height: 172, borderRadius: "var(--r-control)", background: "var(--surface-sunken)", display: "grid", placeItems: "center", width: "100%" }}>
         <FileThumb doc={d} alert={freshnessPill(f) === "bad"} width={120} height={150} />
       </span>
       <span className="col" style={{ gap: 2, minWidth: 0, width: "100%" }}>

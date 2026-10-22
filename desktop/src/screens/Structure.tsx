@@ -1,22 +1,26 @@
-// 股权结构图：按层排列、正交连线、点选高亮控制链、时间回放、核对股东、向上穿透。移植自 StructureView.swift。
+// 股权结构（5.1）：按设计系统的 StructureChart 重做。
+// 节点是带 4px 底边的立体卡片，点阵背景；公司用方形法域徽章（按集团着色），个人用圆形紫色头像；
+// 连线 2px 圆角折线，比例写在浅绿小胶囊里；待核实为虚线，代持为琥珀色。
+// 点选节点高亮整条控制链并在右侧出摘要；双击打开。搜索并居中、折叠、以它为中心、键盘切换、导出图片；另有缩进列表视图。
 
-import { SlideBg, reducedMotion } from "../ui/motion";
-import { CompanyChips } from "./PropChips";
-import { isSoft, softBg, softInk, companyTint } from "../ui/uistyle";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Day } from "../domain/day";
 import * as D from "../domain/day";
-import { type Company, type Holding, type NodeRef, companyStatusLabel, isActiveOn, ref, refKey, latinPad, latinPadStart } from "../domain/models";
-import { activeHoldings, percentLabel, portfolio } from "../domain/engine";
-import { type Pt, type Route, type StructureSnapshot, buildSnapshot, clampZoom, companySize, focusChain, personSize, routeEdges, routePath, sizeOf, timelineStops } from "../domain/graph";
-import { isMember, sourceLabel } from "../domain/groups";
+import { type Company, type Holding, type NodeRef, isActiveOn, ref, refKey, latinPad } from "../domain/models";
+import { percentLabel, portfolio } from "../domain/engine";
+import { buildSnapshot, focusChain, timelineStops } from "../domain/graph";
+import { NODE_H, NODE_W, type TreeLayout, chainOf, layoutTree, pathLength } from "../domain/tree";
 import { useApp } from "../state/hooks";
 import type { ShareholderStatus, Store } from "../state/store";
 import { platform } from "../platform/platform";
 import { installSampleData } from "../state/sample";
+import { reducedMotion } from "../ui/motion";
 import { Icon } from "../ui/Icon";
-import { ActionMenu, Button, EmptyStateView, JurisdictionBadge, PageHeader, Pill, Segmented, Spinner, Switch, item } from "../ui/kit";
-import { InfoCard } from "./InfoCard";
+import { ActionMenu, Avatar, shortcutLabel, Button, Card, EmptyStateView, JurisdictionBadge, PageHeader, Pill, item, divider } from "../ui/kit";
+import { companyTint } from "../ui/uistyle";
+import { CompanyChips } from "./PropChips";
+import { GroupFilter } from "./Companies";
+import { leftText } from "./InfoCard";
 
 // MARK: - 股东核对的展示
 
@@ -24,638 +28,486 @@ export const holderStatusLabel = (s: ShareholderStatus) => (s.kind === "missing"
 export const holderStatusDetail = (s: ShareholderStatus) => s.kind === "missing" ? "还没有录入任何股东。"
   : s.kind === "partial" ? `已录入的股东合计 ${percentLabel(s.total)}，另有 ${percentLabel(Math.max(0, 100 - s.total))} 未录入。`
     : s.kind === "pending" ? s.reasons.join("；") + "。" : "股东比例合计 100%，信息齐全。";
-export const holderStatusColor = (s: ShareholderStatus) => ({ missing: "var(--danger)", partial: "var(--amber)", pending: "var(--amber-text)", complete: "var(--lime)" })[s.kind];
-const holderStatusRank = (s: ShareholderStatus) => ({ missing: 0, partial: 1, pending: 2, complete: 3 })[s.kind];
+export const holderStatusColor = (s: ShareholderStatus) => ({ missing: "var(--red)", partial: "var(--amber)", pending: "var(--amber-text)", complete: "var(--green)" })[s.kind];
+const holderStatusTone = (s: ShareholderStatus) => (s.kind === "missing" ? "bad" : s.kind === "complete" ? "valid" : "warn") as "bad" | "valid" | "warn";
 
-const zoomKey = "structure.zoom";
-const readZoom = () => { const z = parseFloat(platform().prefGet(zoomKey) ?? "0"); return Number.isFinite(z) ? z : 0; };
+const viewKey = "structure.view";
+const LEVEL_MS = 440;
+
+type Xf = { x: number; y: number; k: number };
+const clampK = (k: number) => Math.min(2.5, Math.max(0.25, k));
 
 export function StructureView() {
   const { store, router } = useApp();
-  const [stopIndex, setStopIndex] = useState<number | null>(null);
-  const [hover, setHover] = useState<NodeRef | null>(null);
-  // 选中公司与路由同步（搜索、信息卡里的跳转都会改它）；选中人只在本页
-  const [personSel, setPersonSel] = useState<NodeRef | null>(null);
+  const [view, setViewState] = useState<"chart" | "list">(() => (platform().prefGet(viewKey) === "list" ? "list" : "chart"));
+  const setView = (v: "chart" | "list") => { setViewState(v); platform().prefSet(viewKey, v); };
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [center, setCenter] = useState<string | null>(null);
+  const [personSel, setPersonSel] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const [showHistory, setShowHistory] = useState(false);
-  const [drag, setDrag] = useState<{ key: string; dx: number; dy: number } | null>(null);
-  const [savedZoom, setSavedZoomState] = useState(readZoom);
-  const [playing, setPlaying] = useState(false);
-  const [viewport, setViewport] = useState({ width: 900, height: 600 });
-  const scroller = useRef<HTMLDivElement>(null);
-  const setSavedZoom = (z: number) => { setSavedZoomState(z); platform().prefSet(zoomKey, String(z)); };
+  const [stopIndex, setStopIndex] = useState<number | null>(null);
+  const search = useRef<HTMLInputElement>(null);
+  const chartApi = useRef<{ centerOn: (k: string) => void; fit: () => void } | null>(null);
 
   const group = router.groupFilter;
-  const upward: string | null = null;
-  const scope = (day?: Day) => (upward ? store.upwardScope(upward, day) : store.brandScope(group, day));
   const dataVersion = [store.data.companies, store.data.holdings, store.data.groups, store.data.people, store.today] as const;
-
-  const stops = useMemo(() => timelineStops(store.data.holdings, scope() ?? new Set(store.data.companies.map((c) => c.id)), store.today),
-    [group, upward, ...dataVersion]);
-  useEffect(() => { setStopIndex(null); setPlaying(false); }, [group, upward]);
-  const asOf = stops.length ? stops[Math.min(stopIndex ?? stops.length - 1, stops.length - 1)] : store.today;
+  const scope = (day?: Day) => store.brandScope(group, day);
+  const stops = useMemo(() => timelineStops(store.data.holdings, scope() ?? new Set(store.data.companies.map((c) => c.id)), store.today), [group, ...dataVersion]);
+  useEffect(() => { setStopIndex(null); setCenter(null); setCollapsed(new Set()); }, [group]);
+  useEffect(() => { if (!showHistory) setStopIndex(null); }, [showHistory]);
+  const asOf = showHistory && stops.length ? stops[Math.min(stopIndex ?? stops.length - 1, stops.length - 1)] : store.today;
   const isToday = asOf === store.today;
 
-  const snapshot: StructureSnapshot = useMemo(() => {
-    const names = new Map<string, string>(), saved = new Map<string, { x: number; y: number }>();
-    for (const c of store.data.companies) { names.set(refKey(ref("company", c.id)), c.name); if (c.position) saved.set(refKey(ref("company", c.id)), c.position); }
-    for (const p of store.data.people) { names.set(refKey(ref("person", p.id)), p.name); if (p.position) saved.set(refKey(ref("person", p.id)), p.position); }
-    return buildSnapshot({ companies: store.data.companies, holdings: store.data.holdings, scope: scope(asOf), asOf, names, savedPositions: saved });
-  }, [asOf, group, upward, ...dataVersion]);
-
-  // 拖动中的位置
-  // #11 历史回放：换年份时节点位置在 panel 档内逐帧补间，连线按中间位置一起重画。
-  const [tweenPos, setTweenPos] = useState<Map<string, Pt> | null>(null);
-  const shown = useRef(snapshot.positions);
-  const lastAsOf = useRef(asOf);
-  const tweenRaf = useRef(0);
-  useLayoutEffect(() => {
-    if (lastAsOf.current === asOf) return;
-    lastAsOf.current = asOf;
-    cancelAnimationFrame(tweenRaf.current);
-    const from = shown.current, to = snapshot.positions;
-    if (reducedMotion() || from === to) { setTweenPos(null); return; }
-    const t0 = performance.now(), ms = 280;
-    const step = (t: number) => {
-      const k = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - k, 3);
-      if (k >= 1) { setTweenPos(null); return; }
-      const m = new Map(to);
-      for (const [key, b] of to) { const a = from.get(key); if (a) m.set(key, { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e }); }
-      setTweenPos(m);
-      tweenRaf.current = requestAnimationFrame(step);
-    };
-    step(t0);
-  }, [snapshot]);
-  useEffect(() => () => cancelAnimationFrame(tweenRaf.current), []);
-  const positions = useMemo(() => {
-    const base = tweenPos ?? snapshot.positions;
-    if (!drag) return base;
-    const m = new Map(base);
-    const b = m.get(drag.key);
-    if (b) m.set(drag.key, { x: b.x + drag.dx, y: b.y + drag.dy });
+  const names = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of store.data.companies) m.set("company:" + c.id, c.name);
+    for (const p of store.data.people) m.set("person:" + p.id, p.name);
     return m;
-  }, [snapshot, drag, tweenPos]);
-  shown.current = positions;
-  const routes = useMemo(() => routeEdges(snapshot.activeHoldings, positions), [snapshot, positions]);
-  const nodeKeys = new Set(snapshot.nodes.map(refKey));
-  const selected: NodeRef | null = personSel ?? (router.selectedCompanyID && nodeKeys.has("company:" + router.selectedCompanyID) ? ref("company", router.selectedCompanyID) : null);
-  const setSelected = (n: NodeRef | null) => {
-    if (n?.kind === "person") { setPersonSel(n); router.set("selectedCompanyID", null); }
-    else { setPersonSel(null); router.set("selectedCompanyID", n ? n.id : null); }
+  }, [store.data.companies, store.data.people]);
+  const snapshot = useMemo(() => buildSnapshot({ companies: store.data.companies, holdings: store.data.holdings, scope: scope(asOf), asOf, names, savedPositions: new Map() }), [asOf, group, ...dataVersion]);
+  const allKeys = new Set(snapshot.nodes.map(refKey));
+  const centerKey = center && allKeys.has(center) ? center : null;
+  const layout = useMemo(() => layoutTree({ nodes: snapshot.nodes, holdings: snapshot.activeHoldings, collapsed, names, only: centerKey ? chainOf(centerKey, snapshot.activeHoldings) : null }),
+    [snapshot, collapsed, centerKey, names]);
+
+  const selectedKey = personSel && layout.nodes.has(personSel) ? personSel
+    : router.selectedCompanyID && allKeys.has("company:" + router.selectedCompanyID) ? "company:" + router.selectedCompanyID : null;
+  const select = (k: string | null) => {
+    if (k?.startsWith("person:")) { setPersonSel(k); router.set("selectedCompanyID", null); }
+    else { setPersonSel(null); router.set("selectedCompanyID", k ? k.slice(8) : null); }
   };
-  useEffect(() => { if (!showHistory) { setStopIndex(null); setPlaying(false); } }, [showHistory]);
-  useEffect(() => {
-    if (personSel && !nodeKeys.has(refKey(personSel))) setPersonSel(null);
-    if (hover && !nodeKeys.has(refKey(hover))) setHover(null);
-  }, [snapshot]);
+  const selRef = selectedKey ? toRef(selectedKey) : null;
+  const chain = useMemo(() => focusChain(selRef, snapshot.activeHoldings), [selectedKey, snapshot]);
+  const open = (k: string) => { const r = toRef(k); if (r.kind === "company") { router.companyTab = 0; router.openCompany(r.id); } else router.openPerson(r.id); };
+  const toggleFold = (k: string) => setCollapsed((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
-  // 回放
-  useEffect(() => {
-    if (!playing) return;
-    let i = 0;
-    setStopIndex(0);
-    const t = setInterval(() => { i++; if (i >= stops.length) { setPlaying(false); clearInterval(t); return; } setStopIndex(i); }, 1400);
-    return () => clearInterval(t);
-  }, [playing]);
-
-  useEffect(() => {
-    const el = scroller.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => setViewport({ width: e.contentRect.width, height: e.contentRect.height }));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [store.data.companies.length > 0]);
-
-  const fit = clampZoom(Math.min((viewport.width - 24) / snapshot.canvas.width, (viewport.height - 24) / snapshot.canvas.height, 1.2));
-  const z = savedZoom > 0 ? savedZoom : fit;
-
-  // Ctrl/⌘ + 滚轮（或触控板捏合）缩放，锚定在鼠标位置
-  useEffect(() => {
-    const el = scroller.current;
-    if (!el) return;
-    const wheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      const rect = el.getBoundingClientRect();
-      const ax = e.clientX - rect.left, ay = e.clientY - rect.top;
-      const gx = (el.scrollLeft + ax) / z, gy = (el.scrollTop + ay) / z;
-      const next = clampZoom(z * Math.exp(-e.deltaY * 0.01));
-      setSavedZoom(next);
-      requestAnimationFrame(() => { el.scrollLeft = gx * next - ax; el.scrollTop = gy * next - ay; });
-    };
-    el.addEventListener("wheel", wheel, { passive: false });
-    return () => el.removeEventListener("wheel", wheel);
-  });
-
-  const focus = hover ?? selected;
-  const chain = focusChain(focus, snapshot.activeHoldings);
-  const focused = !!focus;
-
-  const reveal = (n: NodeRef) => {
-    const el = scroller.current, p = snapshot.positions.get(refKey(n));
-    if (!el || !p) return;
-    const s = sizeOf(n);
-    const f = { x: (p.x - s.width / 2) * z, y: (p.y - s.height / 2) * z, w: s.width * z, h: s.height * z };
-    const v = { x: el.scrollLeft + 24, y: el.scrollTop + 24, w: el.clientWidth - 48, h: el.clientHeight - 48 };
-    if (f.x >= v.x && f.y >= v.y && f.x + f.w <= v.x + v.w && f.y + f.h <= v.y + v.h) return;
-    // 减少动态效果：不自动滚动视野（只高亮）；否则平滑滚动，用户一滚动就被浏览器取消
-    if (reducedMotion()) return;
-    el.scrollTo({ left: Math.max(0, f.x + f.w / 2 - el.clientWidth / 2), top: Math.max(0, f.y + f.h / 2 - el.clientHeight / 2), behavior: "smooth" });
-  };
-  useEffect(() => { if (selected) { const r = requestAnimationFrame(() => reveal(selected)); return () => cancelAnimationFrame(r); } }, [selected?.id]);
-
-  // 筛选（切集团）后适配视野：回到“适合窗口”并滚回左上，避免筛选后的节点在视野外。
-  const lastGroup = useRef(group);
-  useEffect(() => {
-    if (lastGroup.current === group) return;
-    lastGroup.current = group;
-    setSavedZoom(0);
-    scroller.current?.scrollTo({ left: 0, top: 0 });
-  }, [group]);
-
-  // #9 用按钮缩放：比例与滚动位置一起过渡（standard），以视口中心为锚点。
-  const zoomAnim = useRef(0);
-  const animateZoom = (to: number) => {
-    const el = scroller.current;
-    cancelAnimationFrame(zoomAnim.current);
-    if (!el || reducedMotion()) { setSavedZoom(to); return; }
-    const from = z, ax = el.clientWidth / 2, ay = el.clientHeight / 2;
-    const gx = (el.scrollLeft + ax) / from, gy = (el.scrollTop + ay) / from;
-    const t0 = performance.now(), ms = 200;
-    const step = (t: number) => {
-      const k = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - k, 3), v = from + (to - from) * e;
-      setSavedZoom(k < 1 ? v : to);
-      requestAnimationFrame(() => { el.scrollLeft = gx * v - ax; el.scrollTop = gy * v - ay; });
-      if (k < 1) zoomAnim.current = requestAnimationFrame(step);
-    };
-    zoomAnim.current = requestAnimationFrame(step);
+  // 搜索：名称、别名、注册编号
+  const q = query.trim().toLowerCase();
+  const matches = useMemo(() => !q ? [] : snapshot.nodes.map(refKey).filter((k) => {
+    const r = toRef(k);
+    if (r.kind === "company") { const c = store.company(r.id); return !!c && [c.name, ...c.formerNames, ...c.aliases, c.registrationNumber].join(" ").toLowerCase().includes(q); }
+    const p = store.person(r.id); return !!p && [p.name, ...p.aliases].join(" ").toLowerCase().includes(q);
+  }), [q, snapshot]);
+  const jump = (k: string) => {
+    // 被折叠藏起来的：展开它的上级；不在“以它为中心”范围内的：退出中心模式
+    if (centerKey && !chainOf(centerKey, snapshot.activeHoldings).has(k)) setCenter(null);
+    setCollapsed((s) => { const n = new Set(s); for (const h of snapshot.activeHoldings) if ("company:" + h.companyID === k) n.delete(refKey(h.holder)); return n; });
+    select(k);
+    requestAnimationFrame(() => requestAnimationFrame(() => chartApi.current?.centerOn(k)));
   };
 
-  const saveNode = (n: NodeRef, p: Pt) => store.commit((d) => {
-    const list = n.kind === "company" ? d.companies : d.people;
-    const x = list.find((y) => y.id === n.id);
-    if (x) x.position = { x: p.x, y: p.y };
-  });
-  const resetLayout = () => store.commit((d) => {
-    const keys = new Set(snapshot.nodes.map(refKey));
-    for (const c of d.companies) if (keys.has(`company:${c.id}`)) delete c.position;
-    for (const p of d.people) if (keys.has(`person:${p.id}`)) delete p.position;
-  });
-
-  const startDrag = (e: React.PointerEvent, n: NodeRef) => {
-    if (e.button !== 0) return;
-    const key = refKey(n), sx = e.clientX, sy = e.clientY;
-    let moved = false;
-    const target = e.currentTarget as HTMLElement;
-    target.setPointerCapture(e.pointerId);
-    const move = (ev: PointerEvent) => {
-      const dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
-      if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
-      moved = true;
-      setDrag({ key, dx, dy });
-    };
-    const up = (ev: PointerEvent) => {
-      target.removeEventListener("pointermove", move);
-      target.removeEventListener("pointerup", up);
-      if (!moved) setSelected(n);
-      else {
-        const b = snapshot.positions.get(key);
-        if (b) saveNode(n, { x: b.x + (ev.clientX - sx) / z, y: b.y + (ev.clientY - sy) / z });
-      }
-      setDrag(null);
-    };
-    target.addEventListener("pointermove", move);
-    target.addEventListener("pointerup", up);
-  };
-
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); search.current?.select(); } };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
 
   if (!store.data.companies.length) return (
-    <div className="col grow" style={{ justifyContent: "center" }}>
-      <EmptyStateView symbol="point.3.connected.trianglepath.dotted" title="还没有公司" message="从最上层的控股公司开始建，下面的公司选它做股东，结构图会自己连起来。" actionTitle="新建公司" action={() => router.open({ kind: "newCompany" })} />
-      <div className="row gap8" style={{ justifyContent: "center", marginTop: 8 }}><Button onClick={() => void installSampleData(store)}>先看示例数据</Button></div>
-    </div>
+    <div className="page"><div className="page-inner">
+      <PageHeader title="股权结构" />
+      <Card>
+        <EmptyStateView symbol="point.3.connected.trianglepath.dotted" title="还没有公司" message="从最上层的控股公司开始建，下面的公司选它做股东，结构图会自己连起来。" actionTitle="新建公司" action={() => router.open({ kind: "newCompany" })} />
+        <div className="row" style={{ justifyContent: "center" }}><Button onClick={() => void installSampleData(store)}>先看示例数据</Button></div>
+      </Card>
+    </div></div>
   );
 
   const g = store.group(group);
   const excluded = g?.excludedCompanyIDs?.length ?? 0;
-  const labels = edgeLabels(store, routes, chain.edges, snapshot.activeHoldings);
   const checkOn = router.structureCheck;
-
+  const unchecked = checkOn ? snapshot.companies.filter((c) => store.shareholderCheckApplies(c) && store.shareholderStatus(c.id, asOf).kind !== "complete").length : 0;
   return (
-    <div className="row grow" style={{ alignItems: "stretch", minHeight: 0 }}>
-      <div className="col grow" style={{ minWidth: 0, position: "relative" }}>
-        <div className="col gap8" style={{ padding: "var(--page-edge) var(--page-edge) 8px" }}>
-          <PageHeader title="结构" scope={`${store.filterName(group)} · ${snapshot.companies.length} 家`} stats={isToday ? (() => {
-            const ids = new Set(snapshot.companies.map((c) => c.id));
-            const mine = store.openObligations.filter((o) => ids.has(o.company.id));
-            const over = mine.filter((o) => o.due < store.today).length, soon = mine.filter((o) => o.due >= store.today && D.daysBetween(store.today, o.due) <= 30).length;
-            const unv = store.unverified.filter((x) => ids.has(x.item.companyID)).length;
-            return [
-              { label: "已逾期", value: over, unit: "件", tone: over ? "bad" as const : undefined, onClick: over ? () => router.go("due") : undefined },
-              { label: "30 天内", value: soon, unit: "件", tone: soon ? "warn" as const : undefined, onClick: soon ? () => router.go("due") : undefined },
-              { label: "待核实", value: unv, unit: "条", tone: unv ? "accent" as const : undefined, onClick: () => router.go("verify") },
-            ];
-          })() : undefined}>
-            <Button kind="primary" icon="plus" onClick={() => router.open({ kind: "newCompany" })}>新建公司</Button>
-          </PageHeader>
-          <div className="row gap8 wrap">
-            <BrandPills />
-            {g && excluded > 0 && <button className="link t-meta" title={`这些公司股权能推导到，但你把它们排除在${latinPad(g.name)}之外`} onClick={() => router.open({ kind: "groupMembers", group: g.id })}>已排除 {excluded} 家</button>}
-            <span className="spacer" />
-            <button className={`v4-toggle ${checkOn ? "on" : ""}`} aria-pressed={checkOn} title="按股东录入情况给公司标色，并列出需要补充的公司" onClick={() => router.set("structureCheck", !checkOn)}>核对股东</button>
-            <span className="seg-group row">
-              <Button kind="quiet" size="small" icon="minus" title="缩小" onClick={() => animateZoom(clampZoom(z - 0.1))} />
-              <Button kind="quiet" size="small" title="适合窗口" onClick={() => { scroller.current?.scrollTo({ left: 0, top: 0, behavior: reducedMotion() ? "auto" : "smooth" }); setSavedZoom(0); }}><span className="num">{savedZoom === 0 ? "适合窗口" : `${Math.round(z * 100)}%`}</span></Button>
-              <Button kind="quiet" size="small" icon="plus" title="放大" onClick={() => animateZoom(clampZoom(z + 0.1))} />
-            </span>
-            <button className={`v4-toggle ${showHistory ? "on" : ""}`} aria-pressed={showHistory} title="显示时间轴，回看历年的持股结构" onClick={() => setShowHistory(!showHistory)}>历史</button>
-            <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" entries={[
-              item("查询链条…", "arrow.triangle.branch", () => router.open({ kind: "chainQuery", from: selected?.kind === "person" ? selected : undefined, to: selected?.kind === "company" ? selected.id : undefined })),
-              item("重新排列", "rectangle.3.group", resetLayout),
-              item("导出 PDF…", "doc.text", () => void exportStructurePNG(store, snapshot, positions, routes, store.filterName(group), true)),
-              item("导出图片（PNG）…", "square.and.arrow.up", () => void exportStructurePNG(store, snapshot, positions, routes, store.filterName(group))),
-            ]} />
-          </div>
-          {isToday ? <span className="t-body muted">按住 {platform().os === "mac" ? "⌘" : "Ctrl"} 滚动或双指捏合缩放。点选固定链路，拖动调整位置。虚线是待核实的持股。</span>
-            : <span className="t-body amber-text" style={{ fontWeight: 500 }}>历史视图：{D.year(asOf)} 年末的持股。不显示当前的截止日和文件提醒。{(() => { const n = snapshot.activeHoldings.filter((h) => !h.from).length; return n ? `其中 ${n} 条生效日期未知，按资料截至日期显示为“最晚自”。` : ""; })()}</span>}
+    <div className="page-fill">
+      <PageHeader crumb={store.filterName(group)} title="股权结构"
+        subtitle={isToday ? `${snapshot.companies.length} 家公司 · ${snapshot.activeHoldings.length} 条持股${centerKey ? ` · 只看“${names.get(centerKey)}”的上下游` : ""}`
+          : <span className="amber-text" style={{ fontWeight: 700 }}>历史视图：{D.year(asOf)} 年末的持股。</span>}>
+        <Button icon="plus" onClick={() => router.open({ kind: "newCompany" })}>新建公司</Button>
+      </PageHeader>
+      <div className="toolbar">
+        {store.data.groups.length > 0 && <GroupFilter />}
+        {g && excluded > 0 && <button className="link t-meta" title={`这些公司股权能推导到，但你把它们排除在${latinPad(g.name)}之外`} onClick={() => router.openSettings("groups", g.id)}>已排除 {excluded} 家</button>}
+        <span className="spacer" />
+        <div className="search" style={{ width: 190 }}>
+          <Icon name="magnifyingglass" size={14} />
+          <input ref={search} className="field" value={query} placeholder={`搜索并定位（${shortcutLabel("F")}）`} aria-label="在结构图中搜索"
+            onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && matches[0]) jump(matches[0]); if (e.key === "Escape") { e.stopPropagation(); setQuery(""); } }} />
+          {q && <span className="t-meta muted" style={{ position: "absolute", right: 10 }}>{matches.length ? `${matches.length} 个` : "没有"}</span>}
         </div>
-        <div ref={scroller} className={`grow dotgrid ${isToday ? "" : "tween"}`} style={{ overflow: "auto", minHeight: 0, position: "relative" }} onClick={(e) => { if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.bg) setSelected(null); }}>
-          <div data-bg="1" style={{ width: Math.max(snapshot.canvas.width * z, viewport.width), height: Math.max(snapshot.canvas.height * z, viewport.height), position: "relative" }}>
-            <div data-bg="1" key={group ?? "all"} className="swap-in" style={{ position: "absolute", left: 0, top: 0, width: snapshot.canvas.width, height: snapshot.canvas.height, transform: `scale(${z})`, transformOrigin: "0 0" }}>
-              <svg width={snapshot.canvas.width} height={snapshot.canvas.height} style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible" }} aria-hidden>
-                {snapshot.activeHoldings.filter((h) => !chain.edges.has(h.id)).map((h) => { const r = routes.get(h.id); return r && (
-                  <path key={h.id} d={routePath(r)} fill="none" stroke={h.isNominee ? "var(--amber)" : "var(--edge)"} strokeOpacity={focused ? 0.22 : 1}
-                    strokeWidth={1.4 / z} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={h.isNominee ? `${6 / z} ${4 / z}` : !h.verified ? `${4 / z} ${4 / z}` : undefined} />); })}
-                {!isSoft() && snapshot.activeHoldings.filter((h) => chain.edges.has(h.id)).map((h) => { const r = routes.get(h.id); return r && <path key={h.id + "u"} d={routePath(r)} fill="none" stroke="var(--lime)" strokeOpacity={0.85} strokeWidth={8 / z} strokeLinecap="round" strokeLinejoin="round" />; })}
-                {snapshot.activeHoldings.filter((h) => chain.edges.has(h.id)).map((h) => { const r = routes.get(h.id); return r && (
-                  <path key={h.id + "h"} d={routePath(r)} fill="none" stroke={h.isNominee ? "var(--amber-text)" : isSoft() ? "var(--ink)" : "var(--on-lime)"} strokeWidth={2 / z} strokeLinecap="round" strokeLinejoin="round"
-                    strokeDasharray={h.isNominee ? `${6 / z} ${4 / z}` : !h.verified ? `${4 / z} ${4 / z}` : undefined} />); })}
-              </svg>
-              {labels.map((l) => (
-                <span key={l.id} className="t-micro num ellipsis" title={l.text} aria-label={l.text}
-                  style={{ position: "absolute", left: l.x - l.width / 2, top: l.y - 11, width: l.width, height: 22, lineHeight: "20px", padding: "0 9px", borderRadius: 999, fontWeight: 600, textAlign: "center", pointerEvents: "none",
-                    background: l.hot ? (l.nominee ? "var(--amber)" : isSoft() ? "var(--ink)" : "var(--lime)") : l.nominee ? "var(--amber-soft)" : "var(--surface)",
-                    color: l.hot ? (isSoft() && !l.nominee ? "var(--on-ink)" : "var(--on-lime)") : l.nominee ? "var(--amber-text)" : "var(--ink)",
-                    border: `1px solid ${l.hot ? "color-mix(in srgb, var(--on-lime) 25%, transparent)" : "var(--hairline)"}`, opacity: focused && !l.hot ? 0.3 : 1 }}>{l.text}</span>
-              ))}
-              {snapshot.companies.filter((c) => (snapshot.totalsByCompany.get(c.id) ?? 0) < 99.5).map((c) => {
-                const total = snapshot.totalsByCompany.get(c.id) ?? 0;
-                const p = positions.get(`company:${c.id}`);
-                if (!p) return null;
-                return <span key={c.id} className="t-micro muted" style={{ position: "absolute", left: p.x + 70, top: p.y + companySize.height / 2 + 14, transform: "translate(-50%, -50%)", height: 22, lineHeight: "20px", padding: "0 9px",
-                  borderRadius: 999, border: "1px dashed color-mix(in srgb, var(--muted) 60%, transparent)", fontWeight: 600, whiteSpace: "nowrap", pointerEvents: "none", opacity: focused ? 0.3 : 1 }}>
-                  {total === 0 ? "股东未录入" : `另有 ${percentLabel(100 - total)} 股东未录入`}</span>;
-              })}
-              {snapshot.nodes.map((n) => {
-                const k = refKey(n), p = positions.get(k), s = sizeOf(n);
-                if (!p) return null;
-                const hot = chain.nodes.has(k) && focused;
-                return (
-                  <div key={k} className="v4-node-wrap" role="button" tabIndex={0} aria-label={store.nameOf(n)} aria-pressed={selected ? refKey(selected) === k : false}
-                    onPointerDown={(e) => startDrag(e, n)} onPointerEnter={() => setHover(n)} onPointerLeave={() => setHover((h) => (h && refKey(h) === k ? null : h))}
-                    onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) setSelected(n); }}
-                    onDoubleClick={() => (n.kind === "company" ? router.openCompany(n.id) : router.openPerson(n.id))}
-                    style={{ position: "absolute", left: p.x - s.width / 2, top: p.y - s.height / 2, width: s.width, height: s.height, cursor: "default", touchAction: "none" }}>
-                    <NodeView n={n} highlighted={hot} selected={!!selected && refKey(selected) === k} dimmed={focused && !chain.nodes.has(k)}
-                      showNext={isToday && ((!!hover && refKey(hover) === k) || (!!selected && refKey(selected) === k))} showAlerts={isToday} />
-                  </div>
-                );
-              })}
-              {checkOn && isToday && snapshot.companies.filter((c) => store.shareholderCheckApplies(c)).map((c) => {
-                const st = store.shareholderStatus(c.id, snapshot.asOf);
-                const p = positions.get(`company:${c.id}`);
-                if (!p) return null;
-                const col = holderStatusColor(st);
-                return <div key={c.id} style={{ position: "absolute", left: p.x - companySize.width / 2 - 4, top: p.y - companySize.height / 2 - 4, width: companySize.width + 8, height: companySize.height + 8,
-                  borderRadius: 26, border: `${st.kind === "complete" ? 1.5 : 3}px solid ${col}`, pointerEvents: "none" }}>
-                  <span className="t-micro" style={{ position: "absolute", right: -6, top: -10, height: 20, lineHeight: "20px", padding: "0 8px", borderRadius: 999, fontWeight: 700,
-                    background: col, color: st.kind === "complete" ? "var(--on-lime)" : "var(--on-ink)", whiteSpace: "nowrap" }}>{holderStatusLabel(st)}</span>
-                </div>;
-              })}
+        <div className="seg" role="tablist" aria-label="视图">
+          <button role="tab" className={view === "chart" ? "on" : ""} aria-selected={view === "chart"} onClick={() => setView("chart")} style={view === "chart" ? { background: "var(--surface)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}><Icon name="point.3.connected.trianglepath.dotted" size={13} />结构图</button>
+          <button role="tab" className={view === "list" ? "on" : ""} aria-selected={view === "list"} onClick={() => setView("list")} style={view === "list" ? { background: "var(--surface)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}><Icon name="list.bullet.indent" size={13} />列表</button>
+        </div>
+        <button className={`v4-toggle ${checkOn ? "on" : ""}`} aria-pressed={checkOn} title="按股东录入情况给公司标注，列出需要补充的公司" onClick={() => router.set("structureCheck", !checkOn)}>核对股东{checkOn && unchecked ? ` · ${unchecked}` : ""}</button>
+        {stops.length > 1 && <button className={`v4-toggle ${showHistory ? "on" : ""}`} aria-pressed={showHistory} title="回看历年的持股结构" onClick={() => setShowHistory(!showHistory)}>历史</button>}
+        <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" showsChevron={false} entries={[
+          item("查询链条…", "arrow.triangle.branch", () => router.open({ kind: "chainQuery", from: selRef?.kind === "person" ? selRef : undefined, to: selRef?.kind === "company" ? selRef.id : undefined })),
+          ...(centerKey ? [item("显示全部", "arrow.up.left.and.arrow.down.right", () => setCenter(null))] : []),
+          ...(collapsed.size ? [item("全部展开", "chevron.down", () => setCollapsed(new Set()))] : []),
+          divider,
+          item("导出图片（PNG）…", "square.and.arrow.up", () => void exportChart(store, layout, store.filterName(group), false)),
+          item("导出 PDF…", "doc.text", () => void exportChart(store, layout, store.filterName(group), true)),
+        ]} />
+      </div>
+      {showHistory && stops.length > 1 && <div className="seg" style={{ alignSelf: "flex-start", maxWidth: "100%", overflowX: "auto" }} role="tablist" aria-label="历史年份">
+        {stops.map((d, i) => { const on = d === asOf; return (
+          <button key={d} role="tab" aria-selected={on} className={`num ${on ? "on" : ""}`} onClick={() => setStopIndex(i)} style={on ? { background: "var(--surface)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}>{d === store.today ? "今天" : D.year(d)}</button>); })}
+      </div>}
+      <div className="row grow" style={{ gap: 16, alignItems: "stretch", minHeight: 0 }}>
+        {view === "chart"
+          ? <Chart layout={layout} snapshotKey={`${group ?? "all"}|${centerKey ?? ""}|${asOf}`} chain={chain} selectedKey={selectedKey} select={select} open={open} toggleFold={toggleFold}
+              matches={new Set(matches)} checkOn={checkOn && isToday} asOf={asOf} totals={snapshot.totalsByCompany} api={chartApi} isToday={isToday} />
+          : <TreeList layout={layout} holdings={snapshot.activeHoldings} collapsed={collapsed} toggleFold={toggleFold} selectedKey={selectedKey} select={select} open={open} matches={new Set(matches)} checkOn={checkOn && isToday} asOf={asOf} />}
+        {selectedKey && <aside className="chart-side" aria-label="摘要">
+          <Summary key={selectedKey} k={selectedKey} asOf={asOf} isToday={isToday} centered={centerKey === selectedKey}
+            onCenter={() => { setCenter(centerKey === selectedKey ? null : selectedKey); setCollapsed(new Set()); }} onClose={() => select(null)} open={() => open(selectedKey)} />
+          {checkOn && <CheckList companies={snapshot.companies} asOf={asOf} onPick={(c) => jump("company:" + c.id)} />}
+        </aside>}
+        {!selectedKey && checkOn && <aside className="chart-side"><CheckList companies={snapshot.companies} asOf={asOf} onPick={(c) => jump("company:" + c.id)} /></aside>}
+      </div>
+    </div>
+  );
+}
+
+const toRef = (k: string): NodeRef => { const i = k.indexOf(":"); return ref(k.slice(0, i) as "company" | "person", k.slice(i + 1)); };
+
+// MARK: - 结构图
+
+function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFold, matches, checkOn, asOf, totals, api, isToday }: {
+  layout: TreeLayout; snapshotKey: string; chain: { nodes: Set<string>; edges: Set<string> }; selectedKey: string | null; select: (k: string | null) => void; open: (k: string) => void;
+  toggleFold: (k: string) => void; matches: Set<string>; checkOn: boolean; asOf: Day; totals: Map<string, number>; api: React.MutableRefObject<{ centerOn: (k: string) => void; fit: () => void } | null>; isToday: boolean;
+}) {
+  const { store } = useApp();
+  const wrap = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 800, h: 500 });
+  const [xf, setXf] = useState<Xf>({ x: 0, y: 0, k: 1 });
+  const [animating, setAnimating] = useState(false);
+  const userMoved = useRef(false);
+  const xfRef = useRef(xf); xfRef.current = xf;
+
+  useLayoutEffect(() => {
+    const el = wrap.current; if (!el) return;
+    const ro = new ResizeObserver(([e]) => setSize({ w: e.contentRect.width, h: e.contentRect.height }));
+    ro.observe(el);
+    setSize({ w: el.clientWidth, h: el.clientHeight });
+    return () => ro.disconnect();
+  }, []);
+
+  const smooth = (next: Xf) => {
+    if (reducedMotion()) { setXf(next); return; }
+    setAnimating(true); setXf(next);
+    window.setTimeout(() => setAnimating(false), 340);
+  };
+  const fitXf = (): Xf => {
+    // 太大的图不缩到看不清：最小 55%，从顶层居中开始，其余拖动或滚动查看
+    const k = Math.max(0.55, clampK(Math.min((size.w - 48) / layout.width, (size.h - 72) / layout.height, 1.1)));
+    const top = layout.roots.map((r) => layout.nodes.get(r)!).filter(Boolean);
+    const cx = layout.width * k <= size.w ? (size.w - layout.width * k) / 2
+      : size.w / 2 - (top.length ? (Math.min(...top.map((n) => n.x)) + Math.max(...top.map((n) => n.x))) / 2 : layout.width / 2) * k;
+    return { k, x: Math.min(24, Math.max(size.w - layout.width * k - 24, cx)) === cx ? cx : Math.min(24, Math.max(size.w - layout.width * k - 24, cx)), y: Math.max(36, (size.h - layout.height * k) / 2) };
+  };
+  const fit = (anim = true) => { userMoved.current = false; anim ? smooth(fitXf()) : setXf(fitXf()); };
+  const centerOn = (k: string) => {
+    const n = layout.nodes.get(k); if (!n) return;
+    const z = Math.max(xfRef.current.k, 0.8);
+    userMoved.current = true;
+    smooth({ k: z, x: size.w / 2 - n.x * z, y: size.h / 2 - n.y * z });
+  };
+  api.current = { centerOn, fit };
+
+  // 筛选、切换中心后自动缩放到合适视野；用户手动缩放或拖动过就不再自动调整（直到下次筛选）。
+  const lastKey = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (lastKey.current !== snapshotKey) { lastKey.current = snapshotKey; userMoved.current = false; setXf(fitXf()); return; }
+    if (!userMoved.current) setXf(fitXf());
+  }, [snapshotKey, layout, size.w, size.h]);
+
+  // 生长动画：首次打开和切换集团后整棵树按层生长；之后只让新增的节点和连线生长。
+  const [grow, setGrow] = useState<Map<string, number> | null>(null);
+  const seen = useRef<{ key: string; nodes: Set<string> } | null>(null);
+  useLayoutEffect(() => {
+    const keys = new Set(layout.nodes.keys());
+    const group = snapshotKey.split("|")[0];
+    const prev = seen.current;
+    let m: Map<string, number>;
+    if (!prev || prev.key !== group) {
+      const maxL = Math.max(0, ...[...layout.nodes.values()].map((n) => n.layer));
+      m = new Map([...layout.nodes.values()].map((n) => [n.key, maxL > 3 ? Math.min(n.layer, 2) : n.layer]));
+    } else m = new Map([...keys].filter((k) => !prev.nodes.has(k)).map((k) => [k, 0]));
+    seen.current = { key: group, nodes: keys };
+    if (!m.size || reducedMotion()) { setGrow(null); return; }
+    setGrow(m);
+    const total = (Math.max(...m.values()) + 1) * LEVEL_MS + 400;
+    const t = window.setTimeout(() => setGrow(null), total);
+    return () => window.clearTimeout(t);
+  }, [layout]);
+
+  // 滚轮：按住 ⌘/Ctrl 或双指捏合缩放（以鼠标为锚点），否则平移。
+  useEffect(() => {
+    const el = wrap.current; if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      e.preventDefault();
+      userMoved.current = true;
+      const cur = xfRef.current;
+      if (e.ctrlKey || e.metaKey) {
+        const r = el.getBoundingClientRect(), ax = e.clientX - r.left, ay = e.clientY - r.top;
+        const k = clampK(cur.k * Math.exp(-e.deltaY * 0.01));
+        setXf({ k, x: ax - ((ax - cur.x) / cur.k) * k, y: ay - ((ay - cur.y) / cur.k) * k });
+      } else setXf({ ...cur, x: cur.x - e.deltaX, y: cur.y - e.deltaY });
+    };
+    el.addEventListener("wheel", wheel, { passive: false });
+    return () => el.removeEventListener("wheel", wheel);
+  }, []);
+  const zoomBy = (f: number) => { userMoved.current = true; const k = clampK(xf.k * f); smooth({ k, x: size.w / 2 - ((size.w / 2 - xf.x) / xf.k) * k, y: size.h / 2 - ((size.h / 2 - xf.y) / xf.k) * k }); };
+
+  const panStart = (e: React.PointerEvent) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest(".node, .chart-tools, .chart-legend")) return;
+    const sx = e.clientX, sy = e.clientY, start = xf;
+    let moved = false;
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
+      moved = true; userMoved.current = true;
+      setXf({ ...start, x: start.x + ev.clientX - sx, y: start.y + ev.clientY - sy });
+    };
+    const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); if (!moved) select(null); };
+    el.addEventListener("pointermove", move); el.addEventListener("pointerup", up);
+  };
+
+  // 键盘：↑ 上级、↓ 下级、← → 同层相邻；回车打开，Esc 取消选择，空格折叠。
+  const onKey = (e: React.KeyboardEvent) => {
+    if ((e.target as HTMLElement).closest("input")) return;
+    const cur = selectedKey ? layout.nodes.get(selectedKey) : undefined;
+    const go = (k?: string) => { if (!k) return; e.preventDefault(); select(k); const n = layout.nodes.get(k)!; const sx = xf.x + n.x * xf.k, sy = xf.y + n.y * xf.k; if (sx < 60 || sy < 60 || sx > size.w - 60 || sy > size.h - 60) centerOn(k); };
+    if (!cur) { if (e.key.startsWith("Arrow")) go(layout.roots[0]); return; }
+    const row = layout.layers[cur.layer];
+    const near = (list: string[]) => list.sort((a, b) => Math.abs(layout.nodes.get(a)!.x - cur.x) - Math.abs(layout.nodes.get(b)!.x - cur.x))[0];
+    if (e.key === "ArrowUp") go(near([...cur.parents]));
+    else if (e.key === "ArrowDown") go(near([...cur.children]));
+    else if (e.key === "ArrowLeft") go(row[row.indexOf(cur.key) - 1]);
+    else if (e.key === "ArrowRight") go(row[row.indexOf(cur.key) + 1]);
+    else if (e.key === "Enter") { e.preventDefault(); open(cur.key); }
+    else if (e.key === " ") { e.preventDefault(); if (cur.children.length || cur.hiddenBelow) toggleFold(cur.key); }
+    else if (e.key === "Escape") { e.preventDefault(); select(null); }
+  };
+
+  const focusing = !!selectedKey;
+  const hasKids = (k: string) => layout.nodes.get(k)!.children.length > 0 || layout.nodes.get(k)!.hiddenBelow > 0;
+  const lvl = (k: string) => grow?.get(k);
+  return (
+    <div ref={wrap} className={`chart-wrap ${animating ? "animating" : ""} ${focusing ? "focusing" : ""}`} tabIndex={0} onKeyDown={onKey} onPointerDown={panStart}
+      role="application" aria-label="股权结构图。方向键在节点间移动，回车打开，空格折叠。" style={{ cursor: "grab" }}>
+      <div className="chart-canvas" style={{ width: layout.width, height: layout.height, transform: `translate(${xf.x}px, ${xf.y}px) scale(${xf.k})` }}>
+        <svg className="edges" width={layout.width} height={layout.height} style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none" }} aria-hidden>
+          {layout.edges.map((e) => {
+            const hl = chain.edges.has(e.holding.id);
+            const l = lvl(e.to);
+            const len = pathLength(e.points);
+            const growing = l !== undefined;
+            return <path key={e.id} d={e.path} className={`${!e.holding.verified ? "pending" : ""} ${e.holding.isNominee ? "nominee" : ""} ${hl ? "hl" : ""} ${growing ? "grow" : ""}`}
+              style={growing ? { ["--len" as any]: len, animationDelay: `${Math.max(0, l - 1) * LEVEL_MS + (l ? 80 : 0)}ms` } : undefined} />;
+          })}
+          {layout.edges.map((e) => {
+            const hl = chain.edges.has(e.holding.id);
+            const text = e.holding.isNominee ? `代持 ${percentLabel(e.holding.percent)}` : percentLabel(e.holding.percent);
+            const w = [...text].reduce((a, ch) => a + (ch.codePointAt(0)! > 0x2e80 ? 11 : 7), 16);
+            const l = lvl(e.to);
+            return <g key={e.id + "l"} className={`lbl ${hl ? "hl" : ""} ${e.holding.isNominee ? "nominee" : ""} ${l !== undefined ? "grow" : ""}`} style={l !== undefined ? { animationDelay: `${l * LEVEL_MS}ms` } : undefined}>
+              <rect x={e.label.x - w / 2} y={e.label.y - 10} width={w} height={20} rx={10} />
+              <text x={e.label.x} y={e.label.y + 4} textAnchor="middle">{text}</text>
+            </g>;
+          })}
+        </svg>
+        {[...layout.nodes.values()].map((n) => {
+          const sel = n.key === selectedKey;
+          const l = lvl(n.key);
+          return (
+            <div key={n.key} className={`node ${chain.nodes.has(n.key) && focusing ? "chain" : ""} ${matches.has(n.key) ? "match" : ""} ${l !== undefined ? "grow" : ""}`} aria-selected={sel}
+              role="button" tabIndex={-1} aria-label={store.nameOf(n.ref)}
+              style={{ left: n.x - NODE_W / 2, top: n.y - NODE_H / 2, width: NODE_W, height: NODE_H, ...(l !== undefined ? { animationDelay: `${l * LEVEL_MS}ms` } : null) }}
+              onClick={(e) => { e.stopPropagation(); select(n.key); wrap.current?.focus({ preventScroll: true }); }} onDoubleClick={() => open(n.key)}>
+              <NodeBody n={n.ref} isToday={isToday} />
+              {hasKids(n.key) && <button className="fold" title={n.hiddenBelow ? `展开下面 ${n.hiddenBelow} 家` : "收起下级"} aria-label={n.hiddenBelow ? "展开" : "收起"}
+                onClick={(e) => { e.stopPropagation(); toggleFold(n.key); }}>{n.hiddenBelow ? <><Icon name="plus" size={8} strokeWidth={3} />{n.hiddenBelow}</> : <Icon name="minus" size={8} strokeWidth={3} />}</button>}
+              {checkOn && n.ref.kind === "company" && (() => { const c = store.company(n.ref.id); if (!c || !store.shareholderCheckApplies(c)) return null; const st = store.shareholderStatus(c.id, asOf);
+                return st.kind !== "complete" && <span className={`pill ${holderStatusTone(st)}`} style={{ position: "absolute", right: -8, top: -11, height: 20 }}>{holderStatusLabel(st)}</span>; })()}
+              {n.ref.kind === "company" && (totals.get(n.ref.id) ?? 0) < 99.5 && (totals.get(n.ref.id) ?? 0) > 0 && !n.children.length && <span className="t-label" style={{ position: "absolute", left: 0, right: 0, bottom: -20, textAlign: "center" }}>另有 {percentLabel(100 - (totals.get(n.ref.id) ?? 0))} 未录入</span>}
             </div>
-          </div>
-        </div>
-        {checkOn && <CheckList snapshot={snapshot} onPick={(c) => { const r = ref("company", c.id); setSelected(r); reveal(r); }} />}
-        {showHistory && <div className="row" style={{ justifyContent: "center", padding: "12px 0" }}>
-          <div className="slide-host row gap4 floating" style={{ padding: 6, borderRadius: 26, overflowX: "auto", maxWidth: "calc(100% - 24px)" }}>
-            <SlideBg />
-            <button onClick={() => setPlaying(!playing)} title={playing ? "暂停" : "回放结构变化"} aria-label={playing ? "暂停结构回放" : "回放结构变化"}
-              style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--ink)", color: "var(--on-ink)", display: "grid", placeItems: "center", flex: "none" }}>
-              <Icon name={playing ? "pause.fill" : "play.fill"} size={12} />
-            </button>
-            {stops.map((d, i) => {
-              const on = d === asOf;
-              return <button key={d} onClick={() => { setPlaying(false); setStopIndex(i); }} aria-pressed={on} aria-label={d === store.today ? "今天" : `${D.year(d)} 年末`}
-                className={`num ${on ? "on" : ""}`} style={{ width: 62, height: 36, borderRadius: 999, flex: "none", fontWeight: on ? 700 : 500, color: on ? "var(--on-selection)" : "var(--muted)" }}>
-                {d === store.today ? "今天" : D.year(d)}</button>;
-            })}
-          </div>
-        </div>}
+          );
+        })}
       </div>
-      {selected?.kind === "company" && isToday && <InfoCard store={store} router={router} id={selected.id} />}
-      {selected && !(selected.kind === "company" && isToday) && (
-        <div className="col inspector" style={{ width: 340, flex: "none", background: "var(--surface)", borderLeft: "1px solid var(--hairline)", position: "relative", minHeight: 0 }}>
-          <button className="close-x" aria-label="关闭详情" title="关闭" onClick={() => setSelected(null)}><Icon name="xmark" size={11} /></button>
-          <Inspector key={refKey(selected)} n={selected} asOf={snapshot.asOf} />
-        </div>
-      )}
+      <div className="chart-legend" aria-hidden><span><i />已核实</span><span><i className="pending" />待核实</span><span><i className="nominee" />代持</span></div>
+      <div className="chart-tools">
+        <Button size="small" icon="minus" ariaLabel="缩小" onClick={() => zoomBy(1 / 1.2)} />
+        <Button size="small" onClick={() => fit()} title="缩放到合适视野"><span className="num">{Math.round(xf.k * 100)}%</span></Button>
+        <Button size="small" icon="plus" ariaLabel="放大" onClick={() => zoomBy(1.2)} />
+      </div>
     </div>
   );
 }
 
-interface EdgeLabel { id: string; text: string; x: number; y: number; width: number; hot: boolean; nominee: boolean }
-function edgeLabels(store: Store, routes: Map<string, Route>, hot: Set<string>, holdings: Holding[]): EdgeLabel[] {
-  const est = (t: string) => Math.min(companySize.width - 10, [...t].reduce((a, ch) => a + (ch.codePointAt(0)! > 0x2e80 ? 12 : 8.5), 28));
-  const labels: EdgeLabel[] = [];
-  for (const h of holdings) {
-    const r = routes.get(h.id);
-    if (!r) continue;
-    const text = h.isNominee ? `${store.nameOf(h.holder)}代${h.beneficialOwner ? store.nameOf(h.beneficialOwner) : "他人"}持有 ${percentLabel(h.percent)}` : percentLabel(h.percent);
-    labels.push({ id: h.id, text, x: r.label.x, y: r.label.y, width: est(text), hot: hot.has(h.id), nominee: h.isNominee });
+function NodeBody({ n, isToday }: { n: NodeRef; isToday: boolean }) {
+  const { store } = useApp();
+  if (n.kind === "person") {
+    const p = store.person(n.id);
+    const nominee = store.data.holdings.some((h) => h.holder.kind === "person" && h.holder.id === n.id && h.isNominee);
+    return <>
+      <Avatar name={p?.name ?? "?"} size={36} dashed={nominee} />
+      <span className="col" style={{ minWidth: 0 }}><span className="nm name-2">{p?.name}</span><span className="sub">{nominee ? "名义股东" : "个人股东"}</span></span>
+    </>;
   }
-  const rows = new Map<number, EdgeLabel[]>();
-  for (const l of labels) { const k = Math.round(l.y / 8); rows.set(k, [...(rows.get(k) ?? []), l]); }
-  for (const row of rows.values()) {
-    row.sort((a, b) => a.x - b.x);
-    for (let i = 1; i < row.length; i++) { const min = row[i - 1].x + row[i - 1].width / 2 + 6 + row[i].width / 2; if (row[i].x < min) row[i].x = min; }
-  }
-  return labels;
+  const c = store.company(n.id);
+  const g = store.brandOf(n.id);
+  const color = g ? store.brandColor(g) : null;
+  const next = isToday ? store.openObligations.find((o) => o.company.id === n.id) : undefined;
+  const left = next ? D.daysBetween(store.today, next.due) : 999;
+  const sub = left < 0 ? `逾期：${next!.rule.name}` : left <= 30 ? `${left} 天后：${next!.rule.name}` : store.jurisdictionName(c?.jurisdiction ?? "");
+  return <>
+    <span className="jbadge" title={g ? g.name : "各集团共用"} style={{ width: 36, height: 36, borderRadius: 10, fontSize: 11.5, ...(color ? { background: `color-mix(in srgb, ${color} 22%, var(--surface))`, color: `color-mix(in srgb, ${color} 55%, var(--ink))` } : null) }}>{c?.jurisdiction}</span>
+    <span className="col" style={{ minWidth: 0 }}>
+      <span className="nm name-2" title={c?.name}>{c?.name}</span>
+      <span className="sub ellipsis" style={left <= 30 ? { color: left < 0 ? "var(--red-text)" : "var(--amber-text)", fontWeight: 700 } : undefined}>{sub}</span>
+    </span>
+  </>;
 }
 
-function CheckList({ snapshot, onPick }: { snapshot: StructureSnapshot; onPick: (c: Company) => void }) {
+// MARK: - 列表视图（缩进）
+
+function TreeList({ layout, holdings, collapsed, toggleFold, selectedKey, select, open, matches, checkOn, asOf }: {
+  layout: TreeLayout; holdings: Holding[]; collapsed: Set<string>; toggleFold: (k: string) => void; selectedKey: string | null; select: (k: string) => void; open: (k: string) => void;
+  matches: Set<string>; checkOn: boolean; asOf: Day;
+}) {
   const { store } = useApp();
-  const items = snapshot.companies.filter((c) => store.shareholderCheckApplies(c)).map((c) => [c, store.shareholderStatus(c.id, snapshot.asOf)] as const)
-    .filter(([, s]) => s.kind !== "complete").sort((a, b) => holderStatusRank(a[1]) - holderStatusRank(b[1]) || a[0].name.localeCompare(b[0].name, "zh"));
+  const rows: { key: string; depth: number; via?: Holding; path: string; repeat: boolean }[] = [];
+  const shown = new Set<string>();
+  const walk = (k: string, depth: number, via: Holding | undefined, path: Set<string>, pk: string) => {
+    const repeat = shown.has(k);
+    shown.add(k);
+    rows.push({ key: k, depth, via, path: pk, repeat });
+    if (collapsed.has(k) || repeat || path.has(k)) return;
+    const next = new Set(path); next.add(k);
+    const kids = holdings.filter((h) => refKey(h.holder) === k && layout.nodes.has("company:" + h.companyID))
+      .sort((a, b) => b.percent - a.percent || store.nameOf(ref("company", a.companyID)).localeCompare(store.nameOf(ref("company", b.companyID)), "zh"));
+    for (const h of kids) walk("company:" + h.companyID, depth + 1, h, next, pk + ">" + h.id);
+  };
+  for (const r of layout.roots) walk(r, 0, undefined, new Set(), r);
+  for (const k of layout.nodes.keys()) if (!shown.has(k)) walk(k, 0, undefined, new Set(), k);
   return (
-    <div className="col floating appear" style={{ position: "absolute", left: 16, bottom: 76, width: 280, borderRadius: 16, background: "var(--surface)", zIndex: 3 }}>
-      <div style={{ padding: "10px 14px", fontSize: 13, fontWeight: 600 }}>{items.length ? `${items.length} 家需要补充` : "股东都已录入完整"}</div>
-      {items.length > 0 && <><div className="hairline" />
-        <div className="scroll" style={{ maxHeight: 240 }}>
-          {items.map(([c, s]) => (
-            <button key={c.id} className="row gap8 hover-band" style={{ width: "100%", height: 30, padding: "0 14px", textAlign: "left" }} title={holderStatusDetail(s)} onClick={() => onPick(c)}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: holderStatusColor(s), flex: "none" }} />
-              <span className="t-meta ellipsis grow">{c.name}</span>
-              <span className="t-micro muted">{holderStatusLabel(s)}</span>
-            </button>
-          ))}
-        </div></>}
+    <div className="card flush grow scroll" style={{ minHeight: 0 }} role="tree" aria-label="股权结构列表">
+      {rows.map((r) => {
+        const n = toRef(r.key);
+        const kids = holdings.some((h) => refKey(h.holder) === r.key);
+        const c = n.kind === "company" ? store.company(n.id) : undefined;
+        const st = checkOn && c && store.shareholderCheckApplies(c) ? store.shareholderStatus(c.id, asOf) : null;
+        return (
+          <div key={r.path} role="treeitem" aria-selected={r.key === selectedKey} aria-expanded={kids && !r.repeat ? !collapsed.has(r.key) : undefined} tabIndex={0}
+            className="tree-row" style={{ ["--depth" as any]: r.depth, cursor: "pointer", background: matches.has(r.key) && r.key !== selectedKey ? "var(--blue-soft)" : undefined }}
+            onClick={() => select(r.key)} onDoubleClick={() => open(r.key)}
+            onKeyDown={(e) => { if (e.key === "Enter") open(r.key); if (e.key === " " && kids) { e.preventDefault(); toggleFold(r.key); } }}>
+            {kids && !r.repeat ? <button className="tw" aria-label={collapsed.has(r.key) ? "展开" : "收起"} onClick={(e) => { e.stopPropagation(); toggleFold(r.key); }}>
+              <Icon name="chevron.right" size={11} className={`chev ${collapsed.has(r.key) ? "" : "open"}`} /></button> : <span className="tw" />}
+            {n.kind === "company" ? <JurisdictionBadge code={c?.jurisdiction ?? ""} size={28} tint={companyTint(store, n.id)} /> : <Avatar name={store.nameOf(n)} size={28} />}
+            <span className="col" style={{ minWidth: 0 }}>
+              <span className="ellipsis" style={{ fontWeight: 700 }}>{store.nameOf(n)}</span>
+              {r.repeat && <span className="t-meta muted">同一家公司，已在上面列出</span>}
+            </span>
+            {r.via && !r.via.verified && <Pill text="待核实" kind="warn" />}
+            {r.via?.isNominee && <Pill text="代持" kind="warn" />}
+            {st && st.kind !== "complete" && <Pill text={holderStatusLabel(st)} kind={holderStatusTone(st)} />}
+            {r.via && <span className="pctc">{percentLabel(r.via.percent)}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function NodeView({ n, highlighted, selected, dimmed, showNext, showAlerts }: { n: NodeRef; highlighted: boolean; selected: boolean; dimmed: boolean; showNext: boolean; showAlerts: boolean }) {
-  const { store } = useApp();
-  const soft = isSoft();
-  // 柔和风格：链路上的节点不加描边和 lime 光晕（靠其余节点变淡来突出），选中的节点用 2px 墨色描边 + 抬起阴影。
-  if (soft) highlighted = false;
-  const ring = selected ? "2px solid var(--ink)" : highlighted ? "2px solid color-mix(in srgb, var(--on-lime) 70%, transparent)" : "1px solid var(--hairline)";
-  const halo = highlighted || selected ? "0 0 0 4px var(--lime)" : "none";
-  const base: React.CSSProperties = { width: "100%", height: "100%", background: "var(--surface)", border: ring, opacity: dimmed ? 0.4 : 1, filter: dimmed ? "saturate(.2)" : undefined,
-    transition: "opacity var(--fast) var(--ease), box-shadow var(--fast) var(--ease), border-color var(--fast) var(--ease)", display: "flex", alignItems: "center" };
-  if (n.kind === "company") {
-    const c = store.company(n.id);
-    const next = store.complianceOn ? store.openObligations.find((o) => o.company.id === n.id) : undefined;
-    const alert = showAlerts && store.ownedDocuments(n).some((d) => { const f = store.freshness(d); return f.kind === "expired" || f.kind === "expiring" || f.kind === "needsUpdate" || f.kind === "unknown"; });
-    let detail: string, warn = false;
-    if (showNext && next) { const left = Math.round(D.daysBetween(store.today, next.due)); detail = left < 0 ? `逾期 ${-left} 天：${next.rule.name}` : `${left} 天后：${next.rule.name}`; }
-    else if (showAlerts && !store.directShareholders(n.id).length) { detail = "股东待补"; warn = true; }
-    else if (alert) { detail = "有文件需要更新"; warn = true; }
-    else {
-      const dirs = [...new Set(store.officers(n.id).map((a) => store.person(a.personID)?.name ?? ""))].filter(Boolean);
-      detail = store.jurisdictionName(c?.jurisdiction ?? "") + (dirs.length ? " · 董事 " + dirs.join("、") : "");
-    }
-    const brand = store.brandOf(n.id);
-    const soon = showAlerts && !!next && D.daysBetween(store.today, next.due) <= 30;
-    const tint = soft && brand ? store.brandColor(brand) : null;
+// MARK: - 摘要
+
+function Summary({ k, asOf, isToday, centered, onCenter, onClose, open }: { k: string; asOf: Day; isToday: boolean; centered: boolean; onCenter: () => void; onClose: () => void; open: () => void }) {
+  const { store, router } = useApp();
+  const n = toRef(k);
+  const close = <button className="v4-x" aria-label="关闭摘要" title="关闭（Esc）" onClick={onClose}><Icon name="xmark" size={11} /></button>;
+  const actions = <div className="row gap8 wrap">
+    <Button kind="primary" onClick={open}>{n.kind === "company" ? "打开公司" : "打开人员"}</Button>
+    <Button onClick={onCenter} title="只看它的上下游">{centered ? "显示全部" : "以它为中心"}</Button>
+  </div>;
+  if (n.kind === "person") {
+    const p = store.person(n.id);
+    const owned = portfolio(n, store.data.companies, store.data.holdings, asOf);
+    const roles = store.data.appointments.filter((a) => a.personID === n.id && isActiveOn(a, asOf));
     return (
-      <div className={tint ? "tinted" : undefined} style={{ ...base, ...(soft ? { background: tint ? softBg(tint) : "var(--surface)", border: selected ? ring : `1px solid ${tint ? "transparent" : "var(--hairline)"}` } : null), gap: 12, padding: "0 14px", borderRadius: 22, boxShadow: `${halo}, 0 ${selected ? 8 : 3}px ${selected ? 16 : 8}px rgba(0,0,0,${selected ? 0.16 : 0.06})` }}>
-        <JurisdictionBadge code={c?.jurisdiction ?? "?"} size={42} highlighted={highlighted} />
-        <span className="col grow" style={{ minWidth: 0 }}>
-          <span className="t-row" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c?.name ?? ""}</span>
-          <span className="t-meta num ellipsis" style={{ color: warn ? "var(--amber-text)" : tint ? softInk(tint) : "var(--muted)", fontWeight: warn ? 600 : 400 }}>{detail}</span>
-        </span>
-        <span className="col" style={{ gap: 6, alignItems: "center", flex: "none" }}>
-          {!tint && <span className="v4-dot" title={brand ? brand.name : "各集团共用"} style={{ background: brand ? store.brandColor(brand) : "transparent", boxShadow: brand ? undefined : "inset 0 0 0 1.5px var(--muted)" }} />}
-          {soon && <span className="v4-dot" title="30 天内有事项到期" style={{ background: next && next.due < store.today ? "var(--danger)" : "var(--amber)" }} />}
-        </span>
-      </div>
+      <Card>
+        <div className="row start gap12"><Avatar name={p?.name ?? "?"} size={44} /><span className="col grow" style={{ minWidth: 0 }}><span className="t-title">{p?.name}</span><span className="t-meta muted">个人</span></span>{close}</div>
+        {actions}
+        <div className="col gap6"><span className="t-label">穿透后持有</span>
+          {owned.length ? owned.map((x) => <div key={x.company.id} className="row gap8"><span className="ellipsis grow">{x.company.name}</span>{x.viaNominee && <Pill text="含代持" kind="warn" />}<span className="pct">{percentLabel(x.percent)}</span></div>) : <span className="muted">没有持股</span>}</div>
+        {roles.length > 0 && <div className="col gap6"><span className="t-label">任职</span>{roles.map((a) => <div key={a.id} className="row gap8"><span className="ellipsis grow">{store.company(a.companyID)?.name}</span><span className="t-meta muted">{a.title}</span></div>)}</div>}
+      </Card>
     );
   }
-  const p = store.person(n.id);
-  const nominee = store.data.holdings.some((h) => h.holder.kind === "person" && h.holder.id === n.id && h.isNominee);
-  return (
-    <div style={{ ...base, gap: 10, padding: "0 18px 0 6px", borderRadius: 999, boxShadow: `${halo}, 0 8px 12px rgba(0,0,0,.12)` }}>
-      <span style={{ width: 44, height: 44, borderRadius: "50%", flex: "none", display: "grid", placeItems: "center", fontSize: 16, fontWeight: 700,
-        color: highlighted || !nominee ? "var(--on-ink)" : "var(--ink)", background: highlighted ? "var(--ink)" : nominee ? "transparent" : "color-mix(in srgb, var(--ink) 85%, transparent)",
-        border: nominee && !highlighted ? "1.5px dashed var(--muted)" : "none" }}>{[...(p?.name ?? "?")][0]}</span>
-      <span className="col" style={{ minWidth: 0, gap: 1 }}>
-        <span className="t-row" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{p?.name ?? ""}</span>
-        <span className="t-meta muted">{nominee ? "名义股东" : "股东"}</span>
-      </span>
-    </div>
-  );
-}
-
-// MARK: - 详情栏
-
-const palette = ["var(--ink)", "var(--lime)", "color-mix(in srgb, var(--muted) 50%, transparent)"];
-const holderColor = (h: Holding, i: number) => (h.isNominee ? "var(--amber)" : palette[i % palette.length]);
-
-function Donut({ values, colors, size = 64 }: { values: number[]; colors: string[]; size?: number }) {
-  const total = values.reduce((a, b) => a + b, 0) || 1;
-  const r = size / 2, ir = r * 0.62, gap = 1.5 * Math.PI / 180;
-  let a0 = -Math.PI / 2;
-  const arcs = values.map((v, i) => {
-    const a1 = a0 + (v / total) * Math.PI * 2;
-    const s = a0 + (values.length > 1 ? gap / 2 : 0), e = a1 - (values.length > 1 ? gap / 2 : 0);
-    a0 = a1;
-    if (values.length === 1) return <circle key={i} cx={r} cy={r} r={(r + ir) / 2} fill="none" stroke={colors[i]} strokeWidth={r - ir} />;
-    const large = e - s > Math.PI ? 1 : 0;
-    const p = (rad: number, ang: number) => `${r + rad * Math.cos(ang)} ${r + rad * Math.sin(ang)}`;
-    return <path key={i} fill={colors[i]} d={`M ${p(r, s)} A ${r} ${r} 0 ${large} 1 ${p(r, e)} L ${p(ir, e)} A ${ir} ${ir} 0 ${large} 0 ${p(ir, s)} Z`} />;
-  });
-  return <svg width={size} height={size} aria-hidden style={{ flex: "none" }}>{arcs}</svg>;
-}
-
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
-  return <div><div className="hairline" /><div className="col gap12" style={{ padding: "20px 24px" }}><span className="t-section" role="heading" aria-level={3}>{title}</span>{children}</div></div>;
-}
-
-function Inspector({ n, asOf }: { n: NodeRef; asOf: Day }) {
-  const { store, router } = useApp();
-  return (
-    <>
-      <div className="scroll grow appear" style={{ fontSize: 13.5 }}>{n.kind === "company" ? <CompanyInspector id={n.id} asOf={asOf} /> : <PersonInspector id={n.id} asOf={asOf} />}</div>
-      <div className="row gap8" style={{ padding: "16px 24px", borderTop: "1px solid var(--hairline)", flex: "none" }}>
-        {n.kind === "company" ? <>
-          <Button size="small" onClick={() => router.open({ kind: "addRelation", companyID: n.id, upward: true })}>添加上级…</Button>
-          <Button size="small" onClick={() => router.open({ kind: "addRelation", companyID: n.id, upward: false })}>添加下级…</Button>
-          <span className="spacer" />
-          <Button kind="primary" size="small" onClick={() => { router.companyTab = 0; router.openCompany(n.id); }}>打开档案</Button>
-        </> : <><span className="spacer" /><Button kind="primary" onClick={() => router.openPerson(n.id)}>打开档案</Button></>}
-      </div>
-      {void store}
-    </>
-  );
-}
-
-function ChangeMenu({ companyID, appointmentID, holdingID }: { companyID: string; appointmentID?: string; holdingID?: string }) {
-  const { router } = useApp();
-  return <ActionMenu icon="ellipsis" kind="quiet" size="small" align="end" ariaLabel="更多操作" entries={[
-    item(holdingID ? "记录变更（股权转让）…" : "记录变更（离任或变更）…", "arrow.triangle.2.circlepath",
-      () => router.open({ kind: "changeFrom", companyID, changeKind: holdingID ? "shareholderChange" : "directorChange", appointmentID, holdingID })),
-  ]} />;
-}
-
-function CompanyInspector({ id, asOf }: { id: string; asOf: Day }) {
-  const { store, router } = useApp();
-  const c = store.company(id);
-  const holders = activeHoldings(store.data.holdings, asOf).filter((h) => h.companyID === id).sort((a, b) => b.percent - a.percent);
-  const b = store.breakdownOf(id, asOf);
-  const officers = store.officers(id, asOf);
-  const chains = store.chainsFromTops(id, asOf);
-  const groupedOfficers: { personID: string; titles: string[]; first: string }[] = [];
-  for (const a of officers) { const g = groupedOfficers.find((x) => x.personID === a.personID); if (g) g.titles.push(a.title); else groupedOfficers.push({ personID: a.personID, titles: [a.title], first: a.id }); }
-  const memberships = store.data.groups.map((g) => [g, store.membership(id, g)] as const).filter(([, m]) => m.kind !== "none");
-  const fact = (label: string, value: string, mono: boolean) => (
-    <div className="col grow" style={{ gap: 6, padding: "16px 24px" }}>
-      <span className="t-meta muted">{label}</span>
-      <span className={`selectable ${mono ? "mono" : ""}`} style={{ fontSize: 14, fontWeight: 500, color: value ? "var(--ink)" : "var(--muted)" }}>{value || "未填写"}</span>
-    </div>
-  );
-  const next = store.complianceOn && asOf === store.today ? store.openObligations.find((o) => o.company.id === id) : undefined;
+  const c = store.company(n.id);
+  if (!c) return null;
+  const holders = store.data.holdings.filter((h) => h.companyID === c.id && isActiveOn(h, asOf)).sort((a, b) => b.percent - a.percent);
+  const subs = store.data.holdings.filter((h) => h.holder.kind === "company" && h.holder.id === c.id && isActiveOn(h, asOf));
+  const b = store.breakdownOf(c.id, asOf);
+  const officers = store.officers(c.id, asOf);
+  const people = [...new Set(officers.map((a) => a.personID))];
+  const next = isToday ? store.openObligations.find((o) => o.company.id === c.id) : undefined;
   const left = next ? D.daysBetween(store.today, next.due) : 0;
   return (
-    <div className="col">
-      <div className="col gap16" style={{ padding: "24px 40px 24px 24px" }}>
-        <JurisdictionBadge code={c?.jurisdiction ?? "?"} size={48} highlighted />
-        <div className="col gap6">
-          <span className="t-title selectable" style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c?.name}</span>
-          <div className="row gap6 wrap">{c && <CompanyChips c={c} />}</div>
-        </div>
+    <Card>
+      <div className="row start gap12">
+        <JurisdictionBadge code={c.jurisdiction} size={44} tint={companyTint(store, c.id)} />
+        <span className="col grow" style={{ minWidth: 0, gap: 6 }}><span className="t-card name-2">{c.name}</span><span className="row gap6 wrap"><CompanyChips c={c} /></span></span>
+        {close}
       </div>
-      <div className="hairline" />
-      <div className="row" style={{ alignItems: "stretch" }}>{fact("注册编号", c?.registrationNumber ?? "", true)}<span className="vrule" />{fact("成立日期", c?.incorporationDate ?? "", true)}</div>
-      <div className="hairline" />
-      {fact("注册地址", c?.registeredAddress ?? "", false)}
-      {router.structureCheck && c && store.shareholderCheckApplies(c) && (() => {
-        const st = store.shareholderStatus(c.id, asOf);
-        return <Block title="股东核对">
-          <span className="row gap8"><span style={{ width: 9, height: 9, borderRadius: "50%", background: holderStatusColor(st) }} /><b>{holderStatusLabel(st)}</b></span>
-          <span className="muted">{holderStatusDetail(st)}</span>
-          <span className="row gap8">
-            <Button size="small" onClick={() => router.open({ kind: "addRelation", companyID: c.id, upward: true })}>添加股东…</Button>
-            <Button kind="quiet" size="small" onClick={() => router.open({ kind: "editCompany", companyID: c.id })}>编辑股东…</Button>
-          </span>
-        </Block>;
-      })()}
-      <Block title="集团归属">
-        {!memberships.length && <span className="muted">不属于任何集团</span>}
-        {memberships.map(([g, m]) => (
-          <div key={g.id} className="col gap4">
-            <div className="row gap6">
-              <span style={{ fontWeight: 600, color: m.kind === "excluded" ? "var(--muted)" : "var(--ink)" }}>{g.name}</span>
-              <Pill text={sourceLabel(m)} kind={m.kind === "manual" || m.kind === "excluded" ? "outline" : "neutral"} />
-              <span className="spacer" />
-              {m.kind === "excluded" ? <Button kind="quiet" size="small" onClick={() => { store.restoreToGroup(id, g.id); store.showToast(`已恢复为按股权归入${latinPadStart(g.name)}`); }}>恢复</Button>
-                : m.kind !== "top" && <Button kind="quiet" size="small" onClick={() => {
-                  let text = "";
-                  const u = store.undoable("移出集团", () => { text = store.moveOut(id, g.id); });
-                  store.showToast(text, u ? () => store.undoID(u) : undefined);
-                }}>移出</Button>}
-            </div>
-            <span className="t-meta muted">{store.membershipExplanation(id, g)}</span>
-          </div>
-        ))}
-        {memberships.filter(([, m]) => isMember(m)).length > 1 && <span className="t-meta amber-text">同时属于多个集团。如果只应归入其中一个，把其他的移出即可。</span>}
-        
-      </Block>
-      <Block title="任职人员">
-        {!officers.length && <span className="muted">未录入</span>}
-        {groupedOfficers.map((a) => (
-          <div key={a.personID} className="row gap8">
-            <button className="row gap4" onClick={() => router.openPerson(a.personID)}><b>{store.nameOf(ref("person", a.personID))}</b><Icon name="arrow.up.right" size={9} className="muted" /></button>
-            <span className="spacer" /><span className="muted" style={{ textAlign: "right" }}>{a.titles.join("、")}</span>
-            <ChangeMenu companyID={id} appointmentID={a.first} />
-          </div>
-        ))}
-      </Block>
-      {holders.length > 0 && <Block title="直接股东">
-        <div className="row start gap14">
-          <Donut values={holders.map((h) => h.percent)} colors={holders.map(holderColor)} />
-          <div className="col gap6 grow" style={{ minWidth: 0 }}>
-            {holders.map((h, i) => (
-              <div key={h.id} className="row gap6">
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: holderColor(h, i), flex: "none" }} />
-                <span className="col grow" style={{ minWidth: 0, gap: 1 }}>
-                  <span className="ellipsis">{store.nameOf(h.holder)}</span>
-                  {h.isNominee && <span className="amber-text" style={{ fontSize: 11.5 }}>名义股东，代{h.beneficialOwner ? store.nameOf(h.beneficialOwner) : "他人"}持有</span>}
-                </span>
-                <b className="num">{percentLabel(h.percent)}</b>
-                <ChangeMenu companyID={id} holdingID={h.id} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </Block>}
-      <Block title="最终受益（穿透）">
-        {!b.owners.length && b.unknown < 0.005 && <span className="muted">股东未录入</span>}
-        {b.owners.map((u) => (
-          <div key={refKey(u.owner)} className="row gap6">
-            <span style={{ fontWeight: 500 }}>{store.nameOf(u.owner)}</span>
-            {u.viaNominee && <Pill text="含代持" kind="warn" />}{u.isTopCompany && <Pill text="上层未录入" />}
-            <span className="spacer" /><b className="num">{percentLabel(u.percent)}</b>
-          </div>
-        ))}
-        {b.unknown > 0.005 && <div className="col" style={{ gap: 2 }}>
-          <div className="row amber-text"><span style={{ fontWeight: 500 }}>未识别</span><span className="spacer" /><b className="num">{percentLabel(b.unknown)}</b></div>
-          {b.gaps.map((g) => <span key={g.companyID} className="muted" style={{ fontSize: 12 }}>{store.nameOf(ref("company", g.companyID))} 有 {percentLabel(g.missing)} 股东未录入</span>)}
-          {b.cyclicCompanyIDs.length > 0 && <span className="t-meta amber-text">存在循环持股，相关比例暂列未识别，需单独核算。</span>}
-          {b.unresolvedNominees.map((h) => <span key={h.id} className="amber-text" style={{ fontSize: 12 }}>{store.nameOf(h.holder)} 的代持受益人尚未确认</span>)}
-        </div>}
-      </Block>
-      {chains.length > 0 && <Block title="所在链条">
-        {chains.slice(0, 6).map((x) => <div key={x.group.id + x.chain.id} className="col" style={{ gap: 1 }}><span className="muted" style={{ fontSize: 12 }}>{x.group.name}</span><span className="selectable">{store.chainText(x.chain)}</span></div>)}
-      </Block>}
-      {next && <Block title="下一项截止">
-        <div className="row baseline"><span style={{ fontWeight: 500 }}>{next.rule.name}</span><span className="spacer" />
-          <b className="num" style={{ color: left < 0 ? "var(--danger)" : left <= 7 ? "var(--amber-text)" : "var(--ink)" }}>{left < 0 ? `逾期 ${-left} 天` : `${left} 天后`}</b></div>
-      </Block>}
-      {c && <><div className="hairline" /><div style={{ padding: 24 }}>
-        <Button kind="accent" icon="doc.on.doc" title="公司名称、注册编号、成立日期、地址、董事、股东、穿透和链条，可直接发给同事或中介"
-          onClick={() => { void platform().copyText(store.companySummary(c, asOf)); store.showToast("公司资料摘要已复制。"); }}>复制公司资料摘要</Button>
-      </div></>}
-    </div>
+      {actions}
+      {next && <button className="row gap10" style={{ padding: "10px 12px", borderRadius: 12, background: left < 0 ? "var(--red-soft)" : left <= 30 ? "var(--amber-soft)" : "var(--surface-sunken)", textAlign: "left" }} onClick={() => router.openDue(next.key)}>
+        <Icon name="clock" size={14} /><span className="grow ellipsis" style={{ fontWeight: 700 }}>{next.rule.name}</span><span className="t-meta" style={{ fontWeight: 700 }}>{leftText(left)}</span></button>}
+      <div className="col gap6"><span className="t-label">直接股东</span>
+        {holders.length ? holders.map((h) => (
+          <div key={h.id} className="row gap8">
+            <button className="ellipsis grow" style={{ textAlign: "left", fontWeight: 600 }} onClick={() => h.holder.kind === "company" ? router.update((r) => { r.selectedCompanyID = h.holder.id; }) : router.openPerson(h.holder.id)}>{store.nameOf(h.holder)}</button>
+            {!h.verified && <Pill text="待核实" kind="warn" />}{h.isNominee && <Pill text="代持" kind="warn" />}
+            <span className="pct">{percentLabel(h.percent)}</span>
+          </div>)) : <span className="muted">未录入</span>}
+      </div>
+      {b.owners.length > 0 && <div className="col gap6"><span className="t-label">最终受益（穿透）</span>
+        {b.owners.slice(0, 6).map((u) => <div key={refKey(u.owner)} className="row gap8"><span className="ellipsis grow">{store.nameOf(u.owner)}</span>{u.viaNominee && <Pill text="含代持" kind="warn" />}<span className="pct">{percentLabel(u.percent)}</span></div>)}
+        {b.unknown > 0.005 && <div className="row gap8 amber-text"><span className="grow">未识别</span><span className="pct">{percentLabel(b.unknown)}</span></div>}
+      </div>}
+      <div className="col gap6"><span className="t-label">下属公司</span>
+        {subs.length ? <span className="row gap6 wrap">{subs.map((h) => <button key={h.id} className="v4-chip btnlike" onClick={() => router.update((r) => { r.selectedCompanyID = h.companyID; })}>{store.company(h.companyID)?.jurisdiction} {store.company(h.companyID)?.name} · {percentLabel(h.percent)}</button>)}</span> : <span className="muted">没有</span>}
+      </div>
+      {people.length > 0 && <div className="col gap6"><span className="t-label">董事和高管</span>
+        {people.map((pid) => <div key={pid} className="row gap8"><button className="ellipsis grow" style={{ textAlign: "left", fontWeight: 600 }} onClick={() => router.openPerson(pid)}>{store.person(pid)?.name}</button><span className="t-meta muted">{officers.filter((a) => a.personID === pid).map((a) => a.title).join("、")}</span></div>)}
+      </div>}
+      <div className="row gap8 wrap">
+        <Button size="small" onClick={() => router.open({ kind: "addRelation", companyID: c.id, upward: true })}>添加上级…</Button>
+        <Button size="small" onClick={() => router.open({ kind: "addRelation", companyID: c.id, upward: false })}>添加下级…</Button>
+        <Button size="small" kind="quiet" icon="doc.on.doc" onClick={() => { void platform().copyText(store.companySummary(c, asOf)); store.showToast("公司资料摘要已复制。"); }}>复制摘要</Button>
+      </div>
+    </Card>
   );
 }
 
-function PersonInspector({ id, asOf }: { id: string; asOf: Day }) {
-  const { store, router } = useApp();
-  const p = store.person(id);
-  const owned = portfolio(ref("person", id), store.data.companies, store.data.holdings, asOf);
-  const roles = store.data.appointments.filter((a) => a.personID === id && isActiveOn(a, asOf));
+function CheckList({ companies, asOf, onPick }: { companies: Company[]; asOf: Day; onPick: (c: Company) => void }) {
+  const { store } = useApp();
+  const rank = (s: ShareholderStatus) => ({ missing: 0, partial: 1, pending: 2, complete: 3 })[s.kind];
+  const items = companies.filter((c) => store.shareholderCheckApplies(c)).map((c) => [c, store.shareholderStatus(c.id, asOf)] as const)
+    .filter(([, s]) => s.kind !== "complete").sort((a, b) => rank(a[1]) - rank(b[1]) || a[0].name.localeCompare(b[0].name, "zh"));
   return (
-    <div className="col">
-      <div className="col gap16" style={{ padding: "24px 40px 24px 24px" }}>
-        <span aria-hidden style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--ink)", color: "var(--on-ink)", display: "grid", placeItems: "center", fontSize: 20, fontWeight: 700 }}>{[...(p?.name ?? "?")][0]}</span>
-        <div className="col gap6"><span className="t-title selectable">{p?.name}</span>{p?.notes && <span className="muted">{p.notes}</span>}</div>
-      </div>
-      <Block title="穿透后持有">
-        {!owned.length && <span className="muted">没有持股</span>}
-        {owned.map((x) => (
-          <button key={x.company.id} className="row gap10" style={{ textAlign: "left" }} onClick={() => router.openCompany(x.company.id)}>
-            <JurisdictionBadge code={x.company.jurisdiction} size={30} tint={companyTint(store, x.company.id)} /><span className="ellipsis">{x.company.name}</span>
-            {x.viaNominee && <Pill text="含代持" kind="warn" />}<span className="spacer" /><b className="num">{percentLabel(x.percent)}</b>
-          </button>
-        ))}
-      </Block>
-      {roles.length > 0 && <Block title="任职">
-        {roles.map((a) => <div key={a.id} className="row gap8"><span className="ellipsis">{store.company(a.companyID)?.name ?? ""}</span><span className="spacer" /><span className="muted">{a.title}</span></div>)}
-      </Block>}
-    </div>
+    <Card title={items.length ? `${items.length} 家需要补充股东` : "股东都已录入完整"}>
+      {items.map(([c, s]) => (
+        <button key={c.id} className="row gap8" style={{ textAlign: "left" }} title={holderStatusDetail(s)} onClick={() => onPick(c)}>
+          <span className="gdot" style={{ background: holderStatusColor(s) }} /><span className="ellipsis grow">{c.name}</span><span className="t-meta muted">{holderStatusLabel(s)}</span>
+        </button>
+      ))}
+    </Card>
   );
 }
-
-void Spinner; void personSize;
 
 // MARK: - 导出图片
 
@@ -681,47 +533,48 @@ function jpegPDF(jpeg: Uint8Array, w: number, h: number, pageW: number, pageH: n
   return out;
 }
 
-async function exportStructurePNG(store: Store, snap: StructureSnapshot, positions: Map<string, Pt>, routes: Map<string, Route>, title: string, pdf = false) {
+async function exportChart(store: Store, layout: TreeLayout, title: string, pdf: boolean) {
   const p = platform();
-  const name = `${title} 结构图 ${store.today}.${pdf ? "pdf" : "png"}`;
+  const name = `${title} 股权结构 ${store.today}.${pdf ? "pdf" : "png"}`;
   const path = await p.saveDialog({ defaultName: name, extensions: [pdf ? "pdf" : "png"], title: "导出结构图" });
   if (!path) return;
-  const pad = 40, head = 56, scale = 2;
-  const W = snap.canvas.width + pad * 2, H = snap.canvas.height + pad * 2 + head;
+  const head = 64, scale = 2;
+  const W = layout.width, H = layout.height + head;
   const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale;
   const g = cv.getContext("2d")!; g.scale(scale, scale);
-  const font = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", sans-serif';
+  const sans = 'Inter, "PingFang SC", "Microsoft YaHei UI", sans-serif', display = 'Nunito, "PingFang SC", "Microsoft YaHei UI", sans-serif';
   g.fillStyle = "#FFFFFF"; g.fillRect(0, 0, W, H);
-  g.fillStyle = "#121212"; g.font = `700 20px ${font}`; g.fillText(name.replace(/\.(png|pdf)$/, ""), pad, pad + 6);
-  g.translate(pad, pad + head);
-  for (const h of snap.activeHoldings) {
-    const r = routes.get(h.id); if (!r) continue;
-    g.strokeStyle = h.isNominee ? "#E3A21A" : "#B0B0B8"; g.lineWidth = 1.4; g.setLineDash(h.isNominee ? [6, 4] : []);
-    g.stroke(new Path2D(routePath(r)));
+  g.fillStyle = "#E0E7DD"; for (let x = 10; x < W; x += 20) for (let y = head + 10; y < H; y += 20) { g.beginPath(); g.arc(x, y, 1.2, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = "#25352C"; g.font = `900 22px ${display}`; g.fillText(name.replace(/\.(png|pdf)$/, ""), 48, 40);
+  g.translate(0, head);
+  for (const e of layout.edges) {
+    g.strokeStyle = e.holding.isNominee ? "#F4D36B" : "#87947F"; g.lineWidth = 2; g.lineCap = "round"; g.setLineDash(e.holding.verified ? [] : [6, 5]);
+    g.stroke(new Path2D(e.path));
   }
   g.setLineDash([]);
-  for (const l of edgeLabels(store, routes, new Set(), snap.activeHoldings)) {
-    g.font = `600 11px ${font}`; const w = l.width;
-    g.beginPath(); g.roundRect(l.x - w / 2, l.y - 10, w, 20, 10); g.fillStyle = l.nominee ? "#FCEFD3" : "#FFFFFF"; g.fill(); g.strokeStyle = "#E4E4E8"; g.stroke();
-    g.fillStyle = l.nominee ? "#8A5A00" : "#121212"; g.textAlign = "center"; g.fillText(l.text, l.x, l.y + 4); g.textAlign = "left";
+  for (const e of layout.edges) {
+    const text = e.holding.isNominee ? `代持 ${percentLabel(e.holding.percent)}` : percentLabel(e.holding.percent);
+    g.font = `800 11px ${sans}`; const w = g.measureText(text).width + 16;
+    g.beginPath(); g.roundRect(e.label.x - w / 2, e.label.y - 10, w, 20, 10); g.fillStyle = e.holding.isNominee ? "#FFF3CF" : "#EDFAE2"; g.fill();
+    g.fillStyle = e.holding.isNominee ? "#8A5B00" : "#2F7A00"; g.textAlign = "center"; g.fillText(text, e.label.x, e.label.y + 4); g.textAlign = "left";
   }
   const clip = (t: string, w: number) => { if (g.measureText(t).width <= w) return t; let x = t; while (x && g.measureText(x + "…").width > w) x = x.slice(0, -1); return x + "…"; };
-  for (const n of snap.nodes) {
-    const c = positions.get(refKey(n)); if (!c) continue;
-    const s = sizeOf(n), x = c.x - s.width / 2, y = c.y - s.height / 2;
-    g.beginPath(); g.roundRect(x, y, s.width, s.height, n.kind === "company" ? 22 : s.height / 2); g.fillStyle = "#FFFFFF"; g.fill(); g.strokeStyle = "#D6D6DB"; g.lineWidth = 1; g.stroke();
-    if (n.kind === "company") {
-      const co = store.company(n.id)!;
-      g.beginPath(); g.roundRect(x + 14, y + s.height / 2 - 21, 42, 42, 12); g.fillStyle = "#F4F4F6"; g.fill();
-      g.fillStyle = "#121212"; g.font = `700 13px ${font}`; g.textAlign = "center"; g.fillText(co.jurisdiction, x + 35, y + s.height / 2 + 5); g.textAlign = "left";
-      g.font = `600 14px ${font}`; g.fillText(clip(co.name, s.width - 90), x + 68, y + s.height / 2 - 3);
-      const dirs = [...new Set(store.officers(n.id).map((a) => store.person(a.personID)?.name ?? ""))].filter(Boolean);
-      g.fillStyle = "#6B6B73"; g.font = `12px ${font}`; g.fillText(clip(store.jurisdictionName(co.jurisdiction) + (dirs.length ? " · 董事 " + dirs.join("、") : ""), s.width - 90), x + 68, y + s.height / 2 + 15);
-      const b = store.brandOf(n.id); if (b) { g.beginPath(); g.arc(x + s.width - 16, y + s.height / 2, 4, 0, Math.PI * 2); g.fillStyle = store.brandColor(b); g.fill(); }
+  for (const n of layout.nodes.values()) {
+    const x = n.x - NODE_W / 2, y = n.y - NODE_H / 2;
+    g.beginPath(); g.roundRect(x, y + 4, NODE_W, NODE_H, 12); g.fillStyle = "#E0E7DD"; g.fill();
+    g.beginPath(); g.roundRect(x, y, NODE_W, NODE_H, 12); g.fillStyle = "#FFFFFF"; g.fill(); g.strokeStyle = "#E0E7DD"; g.lineWidth = 2; g.stroke();
+    if (n.ref.kind === "company") {
+      const co = store.company(n.ref.id)!;
+      const b = store.brandOf(n.ref.id);
+      g.beginPath(); g.roundRect(x + 12, y + 12, 36, 36, 10); g.fillStyle = b ? store.brandColor(b) + "38" : "#F2F5EF"; g.fill();
+      g.fillStyle = "#25352C"; g.font = `800 11px ${sans}`; g.textAlign = "center"; g.fillText(co.jurisdiction, x + 30, y + 34); g.textAlign = "left";
+      g.font = `700 12.5px ${sans}`; g.fillText(clip(co.name, NODE_W - 72), x + 58, y + 27);
+      g.fillStyle = "#5F6D66"; g.font = `11px ${sans}`; g.fillText(clip(store.jurisdictionName(co.jurisdiction), NODE_W - 72), x + 58, y + 44);
     } else {
-      g.fillStyle = "#121212"; g.beginPath(); g.arc(x + 28, y + s.height / 2, 20, 0, Math.PI * 2); g.fill();
-      g.fillStyle = "#FFFFFF"; g.font = `700 15px ${font}`; g.textAlign = "center"; g.fillText([...store.nameOf(n)][0] ?? "", x + 28, y + s.height / 2 + 5); g.textAlign = "left";
-      g.fillStyle = "#121212"; g.font = `600 14px ${font}`; g.fillText(clip(store.nameOf(n), s.width - 70), x + 56, y + s.height / 2 + 5);
+      g.fillStyle = "#F0EBFC"; g.beginPath(); g.arc(x + 30, y + 30, 18, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#6F4F9E"; g.font = `800 15px ${sans}`; g.textAlign = "center"; g.fillText([...store.nameOf(n.ref)][0] ?? "", x + 30, y + 35); g.textAlign = "left";
+      g.fillStyle = "#25352C"; g.font = `700 12.5px ${sans}`; g.fillText(clip(store.nameOf(n.ref), NODE_W - 72), x + 58, y + 27);
+      g.fillStyle = "#5F6D66"; g.font = `11px ${sans}`; g.fillText("个人股东", x + 58, y + 44);
     }
   }
   if (pdf) {
@@ -731,27 +584,5 @@ async function exportStructurePNG(store: Store, snap: StructureSnapshot, positio
     const blob: Blob = await new Promise((res) => cv.toBlob((b) => res(b!), "image/png"));
     await p.writeBytes(path, new Uint8Array(await blob.arrayBuffer()));
   }
-  store.showToast("结构图已导出。", () => void p.reveal(path), "在访达中显示");
-}
-
-/** 集团切换：结构页和公司页共用 router.groupFilter。 */
-export function BrandPills() {
-  const { store, router } = useApp();
-  const group = router.groupFilter;
-  return (
-    <div className="v4-pills slide-host" role="group" aria-label="按集团筛选">
-      <SlideBg />
-      <button aria-pressed={!group} className={!group ? "on" : ""} onClick={() => router.set("groupFilter", null)}>全部</button>
-      {[...store.data.groups].sort((a, b) => a.name.localeCompare(b.name)).map((x) => (
-        <button key={x.id} aria-pressed={group === x.id} className={group === x.id ? "on" : ""} onClick={() => router.set("groupFilter", x.id)}>
-          <span className="v4-dot" style={{ background: store.brandColor(x) }} />{x.name}
-        </button>
-      ))}
-      <ActionMenu icon="ellipsis" ariaLabel="集团" align="end" showsChevron={false} kind="quiet" size="small" entries={[
-        ...(store.group(group) ? [item(`编辑“${store.group(group)!.name}”…`, "pencil", () => router.openSettings("groups", group))] : []),
-        item("新建集团…", "plus", () => router.openSettings("groups", "new")),
-        item("管理全部集团…", "square.stack.3d.up", () => router.openSettings("groups")),
-      ]} />
-    </div>
-  );
+  store.showToast("结构图已导出。", () => void p.reveal(path), p.os === "windows" ? "在资源管理器中显示" : "在访达中显示");
 }

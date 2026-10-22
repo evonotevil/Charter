@@ -19,6 +19,23 @@ protocol.registerSchemesAsPrivileged([
   { scheme: "charter-file", privileges: { secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, bypassCSP: true } },
 ]);
 
+// MARK: - 日志（Windows：%APPDATA%\\Charter\\logs；Mac：~/Library/Logs/Charter）
+
+let logFile = null;
+function log(level, ...msg) {
+  try {
+    if (!logFile) {
+      const dir = app.getPath("logs");
+      fs.mkdirSync(dir, { recursive: true });
+      logFile = path.join(dir, "main.log");
+      try { if (fs.statSync(logFile).size > 2 * 1048576) fs.renameSync(logFile, logFile + ".1"); } catch { /* 新文件 */ }
+    }
+    fs.appendFileSync(logFile, `${new Date().toISOString()} [${level}] ${msg.join(" ")}\n`);
+  } catch { /* 写不了日志也不影响使用 */ }
+}
+process.on("uncaughtException", (e) => log("error", "主进程异常", e && e.stack || e));
+process.on("unhandledRejection", (e) => log("error", "主进程未处理", e && e.stack || e));
+
 // MARK: - 文件
 
 async function writeAtomic(p, data) {
@@ -27,7 +44,14 @@ async function writeAtomic(p, data) {
   const tmp = path.join(dir, `.charter-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.tmp`);
   const fh = await fsp.open(tmp, "w");
   try { await fh.writeFile(data); await fh.sync(); } finally { await fh.close(); }
-  try { await fsp.rename(tmp, p); } catch (e) { await fsp.rm(tmp, { force: true }); throw e; }
+  // Windows：目标文件被 OneDrive、杀毒软件或预览占用时，替换会被拒绝（EPERM/EBUSY/EACCES），稍等再试
+  for (let i = 0; ; i++) {
+    try { await fsp.rename(tmp, p); return; }
+    catch (e) {
+      if (isWin && ["EPERM", "EBUSY", "EACCES"].includes(e.code) && i < 8) { await new Promise((r) => setTimeout(r, 100 * (i + 1))); continue; }
+      await fsp.rm(tmp, { force: true }); log("warn", "写入失败", p, e.code || e.message); throw e;
+    }
+  }
 }
 const mtime = (st) => (st ? st.mtimeMs : null);
 
@@ -40,10 +64,12 @@ function describe(e) {
 function handle(name, fn) {
   ipcMain.handle(name, async (_e, ...args) => {
     try { return { ok: true, value: await fn(...args) }; }
-    catch (e) { return { ok: false, error: describe(e), raw: String(e && e.message || e) }; }
+    catch (e) { if (name !== "stat") log("warn", name, String(e && e.message || e)); return { ok: false, error: describe(e), raw: String(e && e.message || e) }; }
   });
 }
 
+handle("log", (level, msg) => log(level === "error" ? "renderer-error" : "renderer", msg));
+handle("log_path", () => (logFile || path.join(app.getPath("logs"), "main.log")));
 handle("platform_name", () => (isMac ? "mac" : isWin ? "windows" : "linux"));
 handle("default_root", () => defaultRoot());
 handle("read_text", (p) => fsp.readFile(p, "utf8"));
@@ -214,6 +240,10 @@ function resourcePath(name) {
   return app.isPackaged ? path.join(process.resourcesPath, name) : path.join(__dirname, "..", "src", "assets", name);
 }
 
+const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+  ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".wasm": "application/wasm", ".pdf": "application/pdf" };
+const mime = (f) => MIME[path.extname(f).toLowerCase()] || "application/octet-stream";
+
 // MARK: - 窗口
 
 let mainWindow = null;
@@ -229,6 +259,11 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false },
   });
   mainWindow.once("ready-to-show", () => mainWindow.show());
+  // 万一 ready-to-show 没来（渲染进程卡住），3 秒后也显示窗口，至少能看到错误页
+  setTimeout(() => { if (mainWindow && !mainWindow.isVisible()) { log("warn", "ready-to-show 超时，强制显示窗口"); mainWindow.show(); } }, 3000);
+  mainWindow.webContents.on("did-fail-load", (_e, code, desc, url) => log("error", "页面载入失败", code, desc, url));
+  mainWindow.webContents.on("render-process-gone", (_e, d) => log("error", "渲染进程退出", JSON.stringify(d)));
+  mainWindow.webContents.on("console-message", (_e, level, message) => { if (level >= 3) log("renderer-console", message); });
   // 外部链接用系统浏览器打开；界面内不跳转
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url); return { action: "deny" }; });
   mainWindow.webContents.on("will-navigate", (e, url) => { if (!url.startsWith("app://")) e.preventDefault(); });
@@ -236,6 +271,18 @@ function createWindow() {
   const dev = process.env.CHARTER_DEV_URL;
   void mainWindow.loadURL(dev || "app://charter/index.html");
   mainWindow.on("closed", () => { mainWindow = null; });
+  // 打包后的启动自检：charter --smoke-test=<结果文件>。界面画出来（侧栏或错误页）就写 ok，然后退出。
+  const smoke = process.argv.find((x) => x.startsWith("--smoke-test="))?.slice(13);
+  if (smoke) {
+    const done = (r) => { try { fs.writeFileSync(smoke, JSON.stringify(r)); } catch { /* 忽略 */ } app.exit(r.ok ? 0 : 1); };
+    setTimeout(() => done({ ok: false, reason: "超时：20 秒内界面没有画出来" }), 20000);
+    mainWindow.webContents.on("did-finish-load", () => setTimeout(async () => {
+      try {
+        const r = await mainWindow.webContents.executeJavaScript(`({ app: !!document.querySelector(".app .side"), fatal: document.querySelector(".fatal")?.innerText ?? null, text: document.body.innerText.slice(0, 200) })`);
+        done({ ok: r.app && !r.fatal, ...r });
+      } catch (e) { done({ ok: false, reason: String(e) }); }
+    }, 5000));
+  }
 }
 
 function menu() {
@@ -249,17 +296,25 @@ function menu() {
 }
 
 app.whenReady().then(() => {
+  log("info", `启动 Charter ${app.getVersion()} · ${process.platform} ${process.arch} · Electron ${process.versions.electron}`);
   protocol.handle("app", (req) => {
     const u = new URL(req.url);
     const rel = decodeURIComponent(u.pathname).replace(/^\/+/, "") || "index.html";
     const file = path.normalize(path.join(DIST, rel));
     if (!file.startsWith(DIST)) return new Response("禁止访问", { status: 403 });
-    return net.fetch(pathToFileURL(file).toString());
+    // 直接读文件返回，不依赖 net.fetch(file://)（Windows 上对 asar 内路径不稳定）
+    return fsp.readFile(file).then((buf) => new Response(buf, { headers: { "content-type": mime(file) } }))
+      .catch((e) => { log("error", "界面文件读取失败", file, e.code || e.message); return new Response("找不到界面文件", { status: 404 }); });
   });
   // 本地文件预览（PDF、图片）：charter-file://local/<编码后的完整路径>
   protocol.handle("charter-file", (req) => {
-    const p = decodeURIComponent(new URL(req.url).pathname.replace(/^\/+/, ""));
-    return net.fetch(pathToFileURL(isWin ? p : "/" + p.replace(/^\/+/, "")).toString());
+    const raw = decodeURIComponent(new URL(req.url).pathname.replace(/^\/+/, ""));
+    const p = isWin ? raw.replace(/\//g, "\\") : "/" + raw.replace(/^\/+/, "");
+    try {
+      const st = fs.statSync(p);
+      const { Readable } = require("node:stream");
+      return new Response(Readable.toWeb(fs.createReadStream(p)), { headers: { "content-type": mime(p), "content-length": String(st.size) } });
+    } catch (e) { return new Response("找不到文件", { status: 404 }); }
   });
   menu();
   createWindow();

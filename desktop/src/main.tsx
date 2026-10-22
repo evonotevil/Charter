@@ -12,6 +12,7 @@ import { Store, ungrouped } from "./state/store";
 import { Router } from "./state/router";
 import { SyncMonitor } from "./state/sync";
 import { Ctx, useApp } from "./state/hooks";
+import { sectionShortcuts } from "./state/router";
 import { Shell } from "./screens/Shell";
 import { startReminderLoop, writeCalendarFile } from "./services/packets";
 import { installSampleData } from "./state/sample";
@@ -116,9 +117,9 @@ function App() {
       if (k === "z" && !editing) { e.preventDefault(); if (e.shiftKey) store.redo(); else store.undo(); return; }
       if (k === "y" && !editing && platform().os === "windows") { e.preventDefault(); store.redo(); return; }
       if (k === "k") { e.preventDefault(); router.open({ kind: "quickSearch" }); return; }
-      if (k === ",") { e.preventDefault(); router.openSettings("sync"); return; }
-      if (router.sheet || router.settings) return;
-      if (/^[1-6]$/.test(k)) { e.preventDefault(); router.go((["structure", "due", "agents", "companies", "files", "people"] as const)[+k - 1]); return; }
+      if (k === ",") { e.preventDefault(); router.openSettings("reminders"); return; }
+      if (router.sheet) return;
+      if (/^[1-5]$/.test(k)) { e.preventDefault(); router.go(sectionShortcuts[+k - 1]); return; }
       if (blocked) return;
       if (k === "n" && e.shiftKey) { e.preventDefault(); router.open({ kind: "newCompany" }); return; }
       if (k === "n") {
@@ -139,4 +140,21 @@ function App() {
   return <Shell />;
 }
 
-void boot();
+/** 启动失败时也要有界面：显示原因，而不是一片空白。 */
+function fatal(e: unknown) {
+  const msg = e instanceof Error ? e.message : String(e);
+  try { (window as any).charter?.invoke("log", "error", "启动失败：" + (e instanceof Error ? e.stack || msg : msg)); } catch { /* 忽略 */ }
+  const el = document.getElementById("root")!;
+  el.innerHTML = "";
+  const box = document.createElement("div");
+  box.className = "fatal-box";
+  el.className = "fatal";
+  box.style.cssText = "max-width:520px;margin:15vh auto;padding:32px;border-radius:20px;border:2px solid #E0E7DD;background:#fff;font-family:Inter,'PingFang SC','Microsoft YaHei UI',sans-serif;color:#25352C";
+  box.innerHTML = '<h1 style="font:900 24px Nunito,Inter,sans-serif;margin:0 0 8px">Charter 没能打开</h1><p style="margin:0 0 16px;color:#5F6D66">请把下面的原因发给维护的人。你的档案没有被改动。</p><pre style="white-space:pre-wrap;background:#F2F5EF;padding:12px;border-radius:10px;font-size:12px"></pre><button style="margin-top:16px;height:40px;padding:0 18px;border-radius:12px;border:0;background:#58CC02;color:#1B3608;font-weight:800;box-shadow:0 4px 0 #368A00">重新打开</button>';
+  box.querySelector("pre")!.textContent = msg;
+  box.querySelector("button")!.addEventListener("click", () => location.reload());
+  el.appendChild(box);
+}
+window.addEventListener("error", (e) => { try { (window as any).charter?.invoke("log", "error", String(e.error?.stack || e.message)); } catch { /* 忽略 */ } });
+window.addEventListener("unhandledrejection", (e) => { try { (window as any).charter?.invoke("log", "error", String((e.reason as any)?.stack || e.reason)); } catch { /* 忽略 */ } });
+boot().catch(fatal);

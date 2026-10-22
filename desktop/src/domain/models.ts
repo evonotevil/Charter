@@ -176,6 +176,8 @@ export interface Document {
   signedOn?: Day;
   /** 与原件核对过的日期（文件层面的“已核实”）。 */
   verifiedOn?: Day;
+  /** 个人文件同时关联的公司（例如某家公司的董事同意书）。 */
+  relatedCompanyID?: string;
 }
 
 

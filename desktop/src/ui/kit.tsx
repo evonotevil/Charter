@@ -5,9 +5,13 @@ import { createPortal } from "react-dom";
 import * as D from "../domain/day";
 import type { Day } from "../domain/day";
 import { SlideBg, TweenNumber, reducedMotion } from "./motion";
-import { isSoft } from "./uistyle";
 import { Icon } from "./Icon";
 import { platform } from "../platform/platform";
+
+/** 快捷键的显示：Mac 用 ⌘ / ⇧，Windows 用 Ctrl+ / Ctrl+Shift+。 */
+export function shortcutLabel(key: string, shift = false) {
+  return platform().os === "mac" ? `${shift ? "⇧" : ""}⌘${key}` : `${shift ? "Ctrl+Shift+" : "Ctrl+"}${key}`;
+}
 
 export type BtnKind = "primary" | "secondary" | "accent" | "quiet" | "danger";
 export type BtnSize = "small" | "regular" | "large";
@@ -19,7 +23,7 @@ export function Button(p: {
   const iconOnly = !p.children && !!p.icon;
   return (
     <button type={p.type ?? "button"} className={`btn ${p.kind ?? "secondary"} ${p.size === "regular" || !p.size ? "" : p.size} ${iconOnly ? "icon" : ""} ${p.className ?? ""}`}
-      onClick={p.onClick} disabled={p.disabled} title={p.title} style={p.style} autoFocus={p.autoFocus} aria-label={p.ariaLabel ?? p.title}>
+      onClick={p.onClick} disabled={p.disabled} title={p.title} style={p.style} autoFocus={p.autoFocus} aria-label={p.ariaLabel ?? (iconOnly ? p.title : undefined)}>
       {p.icon && <Icon name={p.icon} size={p.size === "small" ? 13 : 15} />}
       {p.children}
     </button>
@@ -30,13 +34,13 @@ export type PillKind = "neutral" | "valid" | "warn" | "bad" | "strong" | "lime" 
 export const Pill = ({ text, kind = "neutral", title }: { text: string; kind?: PillKind; title?: string }) =>
   <span className={`pill ${kind}`} title={title}>{text}</span>;
 
-export const CountBadge = ({ count, inverted }: { count: number; inverted?: boolean }) =>
-  <span className="badge" style={inverted ? { background: "color-mix(in srgb, var(--on-selection) 18%, transparent)", color: "var(--on-selection)" } : undefined}>{count}</span>;
+export const CountBadge = ({ count, tone }: { count: number; inverted?: boolean; tone?: "bad" | "neutral" }) =>
+  <span className={`badge ${tone ?? ""}`}>{count}</span>;
 
 export function Avatar({ name, size = 30, dashed, highlighted }: { name: string; size?: number; dashed?: boolean; highlighted?: boolean }) {
   return (
     <span className={`avatar ${dashed ? "dashed" : ""}`} aria-hidden
-      style={{ width: size, height: size, fontSize: size * 0.42, ...(highlighted ? { background: dashed ? "transparent" : "color-mix(in srgb, var(--on-selection) 16%, transparent)", color: "var(--on-selection)" } : {}) }}>
+      style={{ width: size, height: size, fontSize: size * 0.42, ...(highlighted ? { boxShadow: "0 0 0 2px var(--green)" } : {}) }}>
       {[...name][0] ?? ""}
     </span>
   );
@@ -49,7 +53,7 @@ export const ProgressCapsule = ({ value, style }: { value: number; style?: CSSPr
   <div className="progress" style={style}><div style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }} /></div>;
 
 export function Spinner({ size = 14 }: { size?: number }) {
-  return <span style={{ width: size, height: size, borderRadius: "50%", border: "2px solid var(--hairline)", borderTopColor: "var(--ink)", display: "inline-block", animation: "spin .8s linear infinite" }} />;
+  return <span style={{ width: size, height: size, borderRadius: "50%", border: "2.5px solid var(--line)", borderTopColor: "var(--green)", display: "inline-block", animation: "spin .8s linear infinite" }} />;
 }
 
 // MARK: - 浮层
@@ -583,39 +587,84 @@ export const Skeleton = ({ width, height = 12 }: { width?: number | string; heig
 
 
 
-/** 页头：标题与右侧操作在同一行垂直居中，说明文字放在下一行。所有页面共用，保证位置一致。 */
-export type PageStat = { label: string; value: number; unit?: string; tone?: "bad" | "warn" | "accent"; onClick?: () => void };
+/** 页头：面包屑 → 大标题 + 右侧操作 → 一行说明 → 数字卡（可选）。所有页面共用。 */
+export type PageStat = { label: string; value: number; unit?: string; tone?: "bad" | "warn" | "accent" | "ok"; icon?: string; onClick?: () => void };
 
-/** 页面标题。柔和风格下，subtitle 换成一排大数字卡（stats）；经典风格显示 subtitle。 */
-export function PageHeader({ title, subtitle, children, stats, scope }: { title: string; subtitle?: ReactNode; children?: ReactNode; stats?: PageStat[]; scope?: string }) {
-  const has = !!stats?.length;
+export function PageHeader({ title, subtitle, children, stats, scope, crumb }: { title: ReactNode; subtitle?: ReactNode; children?: ReactNode; stats?: PageStat[]; scope?: string; crumb?: ReactNode }) {
   return (
-    <div className="col page-head">
-      <div className="row gap16 page-head-row" data-tauri-drag-region>
-        <h1 className="t-page ellipsis" data-tauri-drag-region>{title}</h1>
-        <span className="spacer" data-tauri-drag-region />
+    <div className="page-head">
+      {crumb && <div className="crumb">{crumb}</div>}
+      <div className="page-head-row">
+        <h1 className="t-page ellipsis grow">{title}</h1>
         {children}
       </div>
-      {has ? (
-        <div className={`stat-row ${isSoft() ? "" : "classic"}`}>
-          {stats!.map((st) => {
-            const body = <>
-              <span className="stat-label">{st.label}</span>
-              <span className="stat-value"><span className="big-num"><TweenNumber value={st.value} /></span>{st.unit && <span className="big-unit">{st.unit}</span>}</span>
-            </>;
-            return st.onClick
-              ? <button key={st.label} className={`stat-tile ${st.tone ?? ""}`} onClick={st.onClick} title={`查看${st.label}`}>{body}</button>
-              : <div key={st.label} className={`stat-tile ${st.tone ?? ""}`}>{body}</div>;
-          })}
-          {scope && <span className="stat-scope" title="数字统计的范围">范围：{scope}</span>}
-        </div>
-      ) : subtitle && <span className="t-body muted">{subtitle}</span>}
+      {(subtitle || scope) && <div className="sub">{subtitle ?? `范围：${scope}`}</div>}
+      {!!stats?.length && <div style={{ marginTop: 12 }}><Metrics stats={stats} /></div>}
     </div>
   );
 }
 
+/** 数字卡：一排等宽小卡，值用大号圆体字；可点的卡去到对应页面。 */
+export function Metrics({ stats }: { stats: PageStat[] }) {
+  return (
+    <div className="metrics">
+      {stats.map((st) => {
+        const tone = st.tone === "bad" && st.value ? "bad" : st.tone === "warn" && st.value ? "warn" : "";
+        const icon = st.icon ?? (tone === "bad" ? "exclamationmark.circle.fill" : tone === "warn" ? "clock" : "checkmark.circle.fill");
+        const body = <>
+          <span className="v"><Icon name={icon} size={20} /><TweenNumber value={st.value} />{st.unit && <span className="big-unit" style={{ alignSelf: "flex-end", paddingBottom: 6 }}>{st.unit}</span>}</span>
+          <span className="t-label">{st.label}</span>
+        </>;
+        return st.onClick
+          ? <button key={st.label} className={`metric ${tone}`} onClick={st.onClick} title={`查看${st.label}`}>{body}</button>
+          : <div key={st.label} className={`metric ${tone}`}>{body}</div>;
+      })}
+    </div>
+  );
+}
+
+/** 页签：绿色下划线。 */
+export function Tabs<V extends string | number>({ tabs, value, onChange }: { tabs: [V, string, number?][]; value: V; onChange: (v: V) => void }) {
+  return (
+    <div className="tabs" role="tablist">
+      {tabs.map(([v, label, count]) => (
+        <button key={String(v)} role="tab" aria-selected={v === value} onClick={() => onChange(v)}>
+          {label}{count !== undefined && <span className="count">{count}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** 状态横幅：左边立体徽章，右边一句结论和说明。 */
+export function Banner({ tone = "ok", icon, title, children, actions }: { tone?: "ok" | "warn" | "bad"; icon?: string; title: ReactNode; children?: ReactNode; actions?: ReactNode }) {
+  const [wiggle, setWiggle] = useState(false);
+  return (
+    <div className={`banner ${tone === "ok" ? "" : tone}`}>
+      <button className={`emblem ${tone === "ok" ? "" : tone} ${wiggle ? "wiggle" : ""}`} aria-hidden tabIndex={-1} onClick={() => { setWiggle(false); requestAnimationFrame(() => setWiggle(true)); }} onAnimationEnd={() => setWiggle(false)}>
+        <Icon name={icon ?? (tone === "ok" ? "checkmark" : tone === "warn" ? "clock" : "exclamationmark")} size={30} strokeWidth={3} />
+      </button>
+      <div className="banner-body">
+        <div className="t-headline">{title}</div>
+        {children && <p>{children}</p>}
+      </div>
+      {actions}
+    </div>
+  );
+}
+
+/** 卡片：白底 2px 描边，圆角 20。 */
+export function Card({ title, action, children, tone, flush, style, className }: { title?: ReactNode; action?: ReactNode; children?: ReactNode; tone?: "amber" | "red" | "blue" | "green-card"; flush?: boolean; style?: CSSProperties; className?: string }) {
+  return (
+    <section className={`card ${flush ? "flush" : ""} ${tone ?? ""} ${className ?? ""}`} style={style}>
+      {(title || action) && <div className={`card-head ${flush ? "pad" : ""}`}>{typeof title === "string" ? <h2 className="t-card">{title}</h2> : title}{action}</div>}
+      {children}
+    </section>
+  );
+}
+
 export function ProgressTrack({ value, width = 48 }: { value: number; width?: number }) {
-  return <span aria-hidden style={{ display: "block", width, height: 5, borderRadius: 3, background: "var(--band)", overflow: "hidden" }}>
-    <span style={{ display: "block", height: "100%", width: `${Math.max(0, Math.min(1, value)) * 100}%`, background: "var(--lime)", borderRadius: 3 }} />
+  return <span aria-hidden style={{ display: "block", width, height: 8, borderRadius: 4, background: "var(--line)", overflow: "hidden", flex: "none" }}>
+    <span style={{ display: "block", height: "100%", width: `${Math.max(0, Math.min(1, value)) * 100}%`, background: value >= 1 ? "var(--green)" : "var(--amber)", borderRadius: 4 }} />
   </span>;
 }

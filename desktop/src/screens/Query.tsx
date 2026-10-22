@@ -71,7 +71,7 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
       { act: { kind: "newGroup" }, title: "新建集团", symbol: "square.stack.3d.up" },
       { act: { kind: "uploadAny" }, title: "上传材料", symbol: "tray.and.arrow.down" },
       { act: { kind: "calendar" } as Act, title: "查看全部到期", symbol: "calendar" },
-      { act: { kind: "settings", pane: "sync" }, title: "设置", symbol: "gearshape" },
+      { act: { kind: "settings", pane: "reminders" }, title: "设置", symbol: "gearshape" },
     ];
     if (text == null) return all;
     for (const p of settingsPanes) if (p !== "sync" && (p !== "rules" || store.complianceOn)) all.push({ act: { kind: "settings", pane: p }, title: `设置：${settingsPaneTitle[p]}`, symbol: settingsPaneSymbol[p] });

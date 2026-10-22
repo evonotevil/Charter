@@ -1,4 +1,4 @@
-// 人员：任职、直接持股、代持、穿透后持有；新建、编辑、合并、删除。移植自 PeopleView.swift。
+// 人员与中介：人员页签（任职、持股、代持、个人文件；新建、编辑、合并、删除）和中介页签。
 
 import { companyTint } from "../ui/uistyle";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -7,7 +7,9 @@ import { percentLabel, portfolio } from "../domain/engine";
 import { useApp } from "../state/hooks";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { Avatar, Button, CountBadge, EmptyStateView, FieldRow, FormGroup, JurisdictionBadge, ListField, Modal, Pill, SelectField, SheetScaffold, TextField, PageHeader } from "../ui/kit";
+import { Avatar, Button, Card, CountBadge, EmptyStateView, FieldRow, FormGroup, JurisdictionBadge, ListField, Metrics, Modal, Pill, SelectField, SheetScaffold, TextField, PageHeader, Tabs } from "../ui/kit";
+import { AgentsView } from "./Agents";
+import { PersonFiles } from "./PersonFiles";
 import { ChangeRowMenu } from "./Companies";
 
 export function PeopleView() {
@@ -23,7 +25,7 @@ export function PeopleView() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); return; }
-      if (router.sheet || router.settings || (e.target as HTMLElement)?.closest("input, textarea")) return;
+      if (router.sheet || (e.target as HTMLElement)?.closest("input, textarea")) return;
       if ((e.key !== "ArrowUp" && e.key !== "ArrowDown") || !list.length) return;
       e.preventDefault();
       const cur = list.findIndex((p) => p.id === router.selectedPersonID);
@@ -34,39 +36,35 @@ export function PeopleView() {
     return () => window.removeEventListener("keydown", h);
   });
   const selected = store.person(router.selectedPersonID);
+  const agents = router.section === "agents" || router.section === "parties";
   return (
-    <div className="col grow" style={{ minHeight: 0 }}>
-      <div style={{ padding: "var(--page-edge) var(--page-edge) 24px" }}>
-        <PageHeader title="人员" stats={[
-          { label: "人员", value: store.data.people.length, unit: "人" },
-          { label: "在任董事和高管", value: new Set(store.data.appointments.filter((a) => !a.to || a.to >= store.today).map((a) => a.personID)).size, unit: "人" },
-          { label: "任职", value: store.data.appointments.filter((a) => !a.to || a.to >= store.today).length, unit: "项" },
-        ]} subtitle="董事、股东和其他相关人员，以及他们在各公司的任职和持股。">
-          <Button kind="primary" icon="plus" onClick={() => setCreating(true)}>新建人员</Button>
-        </PageHeader>
-      </div>
-      <div className="row grow" style={{ alignItems: "stretch", minHeight: 0 }}>
-        <div className="col surface" style={{ width: 300, flex: "none", padding: 12, gap: 8, margin: "0 0 var(--page-edge) var(--page-edge)", minHeight: 0 }}>
-          <label className="row gap8" style={{ height: 38, padding: "0 14px", borderRadius: 999, background: "var(--band)", flex: "none" }} title="搜索人员（Ctrl/⌘ F）">
-            <Icon name="magnifyingglass" className="muted" />
-            <input ref={search} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索姓名或别名" className="grow" style={{ border: 0, outline: "none", background: "transparent", font: "inherit", color: "inherit", minWidth: 0 }} />
-            {query && <button className="muted" aria-label="清除" onClick={() => setQuery("")}><Icon name="xmark.circle.fill" /></button>}
-          </label>
-          <div className="scroll grow col" style={{ gap: 2, paddingTop: 4, minHeight: 0 }}>
-            {list.map((p) => <PersonRow key={p.id} p={p} />)}
-            {!list.length && <span className="t-body muted" style={{ padding: 16, textAlign: "center" }}>{q ? `没有找到“${query}”` : "还没有人员"}</span>}
+    <div className="page"><div className="page-inner">
+      <PageHeader title="人员与中介" subtitle="谁在哪家公司任职、持股多少；哪家中介负责什么。">
+        {!agents && <Button kind="primary" icon="plus" onClick={() => setCreating(true)}>新建人员</Button>}
+      </PageHeader>
+      <Tabs<"p" | "a"> value={agents ? "a" : "p"} onChange={(v) => router.go(v === "a" ? "agents" : "people")}
+        tabs={[["p", "人员", store.data.people.length], ["a", "中介", store.data.parties.length]]} />
+      {agents ? <AgentsView /> : (
+        <div className="row" style={{ gap: 20, alignItems: "flex-start" }}>
+          <Card flush style={{ width: 300, flex: "none", position: "sticky", top: 0 }}>
+            <div style={{ padding: 12 }}>
+              <label className="search" title="搜索人员（Ctrl/⌘ F）"><Icon name="magnifyingglass" size={14} />
+                <input ref={search} className="field" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索姓名或别名" /></label>
+            </div>
+            <div className="col scroll" style={{ gap: 2, padding: "0 8px 8px", maxHeight: "calc(100vh - 300px)" }}>
+              {list.map((p) => <PersonRow key={p.id} p={p} />)}
+              {!list.length && <span className="muted" style={{ padding: 16, textAlign: "center" }}>{q ? `没有找到“${query}”` : "还没有人员"}</span>}
+            </div>
+          </Card>
+          <div className="col grow" style={{ minWidth: 0 }}>
+            {selected ? <PersonDetail key={selected.id} person={selected} /> : (
+              <Card><EmptyStateView symbol="person.crop.rectangle.stack" title="选择人员" message="查看此人的任职、持股、代持情况和个人文件。" /></Card>
+            )}
           </div>
         </div>
-        <div className="col grow" style={{ minWidth: 480, minHeight: 0 }}>
-          {selected ? <PersonDetail key={selected.id} person={selected} /> : (
-            <div className="surface col grow" style={{ margin: "0 var(--page-edge) var(--page-edge) 16px", justifyContent: "center" }}>
-              <EmptyStateView symbol="person.crop.rectangle.stack" title="选择人员" message="查看此人的任职、直接与间接持股，以及代持情况。" />
-            </div>
-          )}
-        </div>
-      </div>
+      )}
       {creating && <NewPersonSheet onClose={() => setCreating(false)} onCreate={(p) => router.set("selectedPersonID", p.id)} />}
-    </div>
+    </div></div>
   );
 }
 
@@ -79,12 +77,11 @@ function PersonRow({ p }: { p: Person }) {
   const caption = [roles ? `任职 ${roles} 家` : null, held.length ? `持股 ${held.length} 家` : null, held.some((h) => h.isNominee) ? "名义股东" : null].filter(Boolean).join("，");
   const anchor = store.anchorCompanyName(p.id);
   return (
-    <button className={`row gap10 ${on ? "" : "hover-band"}`} onClick={() => router.set("selectedPersonID", p.id)} aria-current={on || undefined}
-      style={{ height: 52, padding: "0 8px", borderRadius: "var(--r-row)", textAlign: "left", width: "100%", flex: "none", background: on ? "var(--selection)" : undefined, color: on ? "var(--on-selection)" : "var(--ink)" }}>
-      <Avatar name={p.name} size={34} dashed={held.some((h) => h.isNominee)} highlighted={on} />
+    <button className={`v4-item ${on ? "on" : ""}`} onClick={() => router.set("selectedPersonID", p.id)} aria-current={on || undefined} style={{ flex: "none" }}>
+      <Avatar name={p.name} size={34} dashed={held.some((h) => h.isNominee)} />
       <span className="col grow" style={{ gap: 1, minWidth: 0 }}>
         <span className="t-row ellipsis">{p.name}</span>
-        <span className="ellipsis" style={{ fontSize: 12, opacity: .65 }}>{anchor ? `${caption ? caption + "，" : ""}${anchor}` : "未关联"}</span>
+        <span className="ellipsis t-meta muted">{anchor ? `${caption ? caption + "，" : ""}${anchor}` : "未关联"}</span>
       </span>
     </button>
   );
@@ -142,18 +139,8 @@ function PersonDetail({ person }: { person: Person }) {
   const missing = [companyIDs.length ? null : "现任职务", direct.length ? null : "直接持股", owned.length ? null : "穿透后持股", heldForMe.length ? null : "由他人代持记录", past.length ? null : "曾任职务"].filter(Boolean) as string[];
   const nominee = direct.some((h) => h.isNominee);
   const twins = [person.name, ...person.aliases].flatMap((n) => store.possibleDuplicates(n, person.id)).filter((p, i, a) => a.findIndex((x) => x.id === p.id) === i);
-  const fact = (label: string, n: number) => (
-    <div className="col" style={{ gap: 6, padding: "16px 24px", minWidth: 140 }}>
-      <span className="t-meta muted">{label}</span><span className="num" style={{ fontSize: 15, fontWeight: 500, color: n ? "var(--ink)" : "var(--muted)" }}>{n ? `${n} 家` : "无"}</span>
-    </div>
-  );
   const section = (title: string, count: number, children: ReactNode) => (
-    <div><div className="hairline" />
-      <div className="col gap8" style={{ padding: "24px 24px 16px" }}>
-        <div className="row"><span className="t-section">{title}</span><span className="spacer" /><CountBadge count={count} /></div>
-        <div className="col">{children}</div>
-      </div>
-    </div>
+    <Card title={<span className="row gap8"><h2 className="t-card">{title}</h2><CountBadge count={count} tone="neutral" /></span>}><div className="col">{children}</div></Card>
   );
   const line = (id: string, trailing: string, detail?: string, warn = false, numeric = false, extra?: ReactNode) => (
     <div key={id + trailing + (detail ?? "")} className="row gap12">
@@ -169,18 +156,18 @@ function PersonDetail({ person }: { person: Person }) {
     </div>
   );
   return (
-    <div className="scroll grow">
-      <div className="surface appear" style={{ margin: "0 var(--page-edge) var(--page-edge) 16px", maxWidth: 1000 }}>
-        <div className="col gap16" style={{ padding: 24 }}>
+    <div className="col gap20 appear">
+      <Card>
+        <div className="col gap16">
           <div className="row gap16 wrap">
             <Avatar name={person.name} size={56} dashed={nominee} />
             <div className="col gap6 grow" style={{ minWidth: 200 }}>
-              <span className="t-title selectable">{person.name}</span>
+              <h2 className="t-headline selectable">{person.name}</h2>
               {(person.aliases.length > 0 || nominee) && <div className="row gap6 wrap">{person.aliases.map((a) => <Pill key={a} text={a} />)}{nominee && <Pill text="名义股东" kind="warn" />}</div>}
               {person.notes && <span className="t-body muted">{person.notes}</span>}
             </div>
             <div className="row gap8">
-              <Button kind="accent" onClick={() => { void platform().copyText(store.personSummary(person)); store.showToast("人员摘要已复制。"); }}>复制摘要</Button>
+              <Button onClick={() => { void platform().copyText(store.personSummary(person)); store.showToast("人员摘要已复制。"); }}>复制摘要</Button>
               <Button onClick={() => setEditing(true)}>编辑</Button>
               <Button title="把这个人合并到另一个人名下（重复录入时使用）" onClick={() => setMerging(true)}>合并…</Button>
               <Button disabled={!!blockers.length} title={blockers.length ? `不能删除：${blockers.join("，")}` : "删除这个人"}
@@ -196,8 +183,13 @@ function PersonDetail({ person }: { person: Person }) {
             <Button kind="quiet" size="small" onClick={() => setMerging(true)}>合并到…</Button>
           </div>}
         </div>
-        <div className="hairline" />
-        <div className="row" style={{ alignItems: "stretch" }}>{fact("现任职务", companyIDs.length)}<span className="vrule" />{fact("直接持股", direct.length)}<span className="vrule" />{fact("穿透后持有", owned.length)}</div>
+      </Card>
+      <Metrics stats={[
+        { label: "现任职务", value: companyIDs.length, unit: "家", icon: "briefcase" },
+        { label: "直接持股", value: direct.length, unit: "家", icon: "chart.pie" },
+        { label: "穿透后持有", value: owned.length, unit: "家", icon: "point.3.connected.trianglepath.dotted" },
+      ]} />
+      <PersonFiles person={person} />
         {companyIDs.length > 0 && section("现任职务", companyIDs.length, companyIDs.map((cid) => {
           const roles = byCompany.get(cid)!;
           const from = roles.map((x) => x.from).filter(Boolean).sort()[0];
@@ -208,8 +200,7 @@ function PersonDetail({ person }: { person: Person }) {
         {owned.length > 0 && section("穿透后持有", owned.length, owned.map((x) => line(x.company.id, percentLabel(x.percent), x.viaNominee ? "含代持部分" : undefined, false, true)))}
         {heldForMe.length > 0 && section("由他人代持", heldForMe.length, heldForMe.map((h) => line(h.companyID, percentLabel(h.percent), `由 ${store.nameOf(h.holder)} 代为持有`, true, true)))}
         {past.length > 0 && section("曾任职务", past.length, past.map((a) => line(a.companyID, a.title, period(a.from, a.to))))}
-        {missing.length > 0 && <><div className="hairline" /><div className="t-body muted" style={{ padding: "16px 24px" }}>{missingSentence(missing)}</div></>}
-      </div>
+        {missing.length > 0 && <div className="t-body muted" style={{ padding: "0 4px" }}>{missingSentence(missing)}</div>}
       {editing && <EditPersonSheet person={person} onClose={() => setEditing(false)} />}
       {merging && <MergePersonSheet person={person} onClose={() => setMerging(false)} />}
     </div>

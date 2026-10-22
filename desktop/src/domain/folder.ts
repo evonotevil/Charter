@@ -146,7 +146,7 @@ export function safeName(s: string): string {
 
 export function migrateTemplates(old: TemplateLibrary, next: TemplateLibrary): TemplateLibrary {
   const lib: TemplateLibrary = structuredClone(old);
-  const renamed: Record<string, string> = { "在职证明": "董事在职证明" };
+  const renamed: Record<string, string> = { "在职证明": "董事在职证明", "地址证明": "住址证明" };
   for (const t of next.documentTypes) {
     const i = lib.documentTypes.findIndex((x) => x.id === t.id);
     if (i >= 0) {

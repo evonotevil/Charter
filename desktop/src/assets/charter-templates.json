@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "jurisdictions": [
     {
       "code": "HK",
@@ -94,12 +94,13 @@
     },
     {
       "id": "common.address",
-      "name": "地址证明",
-      "category": "地址证明",
+      "name": "住址证明",
+      "category": "住址证明",
       "localNames": [
         "Proof of Address",
         "Utility Bill",
-        "住址证明"
+        "住址证明",
+        "地址证明"
       ],
       "jurisdictions": [],
       "owner": "person",
@@ -1116,6 +1117,146 @@
         "監察人"
       ],
       "builtIn": true
+    },
+    {
+      "id": "person.idcard",
+      "name": "身份证件",
+      "category": "身份证件",
+      "localNames": [
+        "ID Card",
+        "Identity Card",
+        "身份证",
+        "居民身份证",
+        "身份證"
+      ],
+      "jurisdictions": [],
+      "owner": "person",
+      "validity": "expiryOnDocument",
+      "hints": [
+        "identity card",
+        "id no",
+        "有效期限"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "person.cv",
+      "name": "简历",
+      "category": "简历",
+      "localNames": [
+        "CV",
+        "Resume",
+        "Curriculum Vitae",
+        "简历",
+        "履歷"
+      ],
+      "jurisdictions": [],
+      "owner": "person",
+      "validity": "permanent",
+      "hints": [
+        "curriculum vitae",
+        "experience",
+        "education"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "person.consent",
+      "name": "董事同意书",
+      "category": "任职文件",
+      "localNames": [
+        "Consent to Act",
+        "Consent to Act as Director",
+        "董事同意书",
+        "出任董事同意書"
+      ],
+      "jurisdictions": [],
+      "owner": "person",
+      "validity": "permanent",
+      "hints": [
+        "consent to act",
+        "hereby consent"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "person.appointment",
+      "name": "委任书",
+      "category": "任职文件",
+      "localNames": [
+        "Letter of Appointment",
+        "Appointment Letter",
+        "委任书",
+        "委任書"
+      ],
+      "jurisdictions": [],
+      "owner": "person",
+      "validity": "permanent",
+      "hints": [
+        "appointment",
+        "appointed"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "person.resignation",
+      "name": "辞任书",
+      "category": "任职文件",
+      "localNames": [
+        "Resignation Letter",
+        "Letter of Resignation",
+        "辞任书",
+        "辭職信"
+      ],
+      "jurisdictions": [],
+      "owner": "person",
+      "validity": "permanent",
+      "hints": [
+        "resign",
+        "resignation"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "person.declaration",
+      "name": "个人声明",
+      "category": "声明",
+      "localNames": [
+        "Declaration",
+        "Statutory Declaration",
+        "个人声明",
+        "聲明"
+      ],
+      "jurisdictions": [],
+      "owner": "person",
+      "validity": "permanent",
+      "hints": [
+        "declare",
+        "declaration"
+      ],
+      "builtIn": true
+    },
+    {
+      "id": "person.kyc",
+      "name": "背景调查",
+      "category": "背景调查",
+      "localNames": [
+        "Background Check",
+        "KYC",
+        "Due Diligence",
+        "背景调查",
+        "背景審查"
+      ],
+      "jurisdictions": [],
+      "owner": "person",
+      "validity": "monthsAfterIssue",
+      "hints": [
+        "background",
+        "screening",
+        "kyc"
+      ],
+      "builtIn": true,
+      "validityMonths": 12
     }
   ],
   "rules": [

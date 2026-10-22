@@ -2,7 +2,7 @@
 
 管理海外子公司的跨平台桌面应用：股权结构、到期事项、中介、公司档案、文件与人员。
 
-当前版本：**5.0.0**。Charter 5 使用 Electron + React + TypeScript，Mac 与 Windows 共用一套产品代码。
+当前版本：**5.1.0**。Charter 5 使用 Electron + React + TypeScript，Mac 与 Windows 共用一套产品代码。
 
 产品网站：[https://evonotevil.github.io/Charter/](https://evonotevil.github.io/Charter/)
 

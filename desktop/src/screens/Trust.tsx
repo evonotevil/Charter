@@ -1,5 +1,6 @@
 // 4.4 可信台账：录入股权/任职（新发生 / 补录、三种日期、依据、核实）、内联新建公司、出处行、待核实清单。
 
+import type React from "react";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 import { useApp } from "../state/hooks";
 import type { Store } from "../state/store";
@@ -10,7 +11,7 @@ import { percentLabel } from "../domain/engine";
 import { type RoleCategory, roleByID, roleCategoryLabel, roleLabel, rolesFor } from "../domain/roles";
 import { Button, Checkbox, DateField, EmptyStateView, Modal, PageHeader, Popover, PopoverRow, Segmented, SelectField, SheetScaffold } from "../ui/kit";
 import { Icon } from "../ui/Icon";
-import { companyTint, isSoft } from "../ui/uistyle";
+import { companyTint } from "../ui/uistyle";
 
 // MARK: - 出处文字
 
@@ -202,8 +203,8 @@ export function EntrySheet({ company: c, mode, onClose }: { company: Company; mo
                   <div className="row gap6 wrap">
                     {[...store.data.groups].sort((a, b) => a.name.localeCompare(b.name)).map((g) => (
                       <button key={g.id} className={`v4-chip btnlike ${groupID === g.id ? "picked" : ""}`} aria-pressed={groupID === g.id} onClick={() => setGroupID(g.id)}
-                        style={isSoft() ? { background: `color-mix(in srgb, ${store.brandColor(g)} 20%, var(--surface))` } : undefined}>
-                        {!isSoft() && <span className="v4-dot" style={{ background: store.brandColor(g) }} />}{g.name}</button>
+                        >
+                        <span className="v4-dot" style={{ background: store.brandColor(g) }} />{g.name}</button>
                     ))}
                     <button className={`v4-chip btnlike ${groupID === "" ? "picked" : ""}`} aria-pressed={groupID === ""} onClick={() => setGroupID("")}>暂不分组</button>
                   </div>
@@ -248,7 +249,7 @@ export function EntrySheet({ company: c, mode, onClose }: { company: Company; mo
 
 function companyTintFor(store: Store, groupID: string) {
   const g = store.group(groupID);
-  return isSoft() && g ? { background: `color-mix(in srgb, ${store.brandColor(g)} 20%, var(--surface))`, color: `color-mix(in srgb, ${store.brandColor(g)} 62%, var(--ink))` } : undefined;
+  return g ? ({ "--g": store.brandColor(g) } as React.CSSProperties) : undefined;
 }
 
 // MARK: - 待核实清单
@@ -278,7 +279,7 @@ export function VerifyView() {
       </PageHeader>
       {migrated > 0 && <span className="t-meta muted" style={{ margin: "10px 2px 0" }}>升级到 4.4 时，已有的股权和任职都标为待核实，原来的日期当作“资料截至日期”。逐条关联文件后标为已核实。</span>}
       {!order.length ? <EmptyStateView symbol="checkmark.seal" title="全部已核实" message="每条股权和任职都关联了依据文件。" /> : (
-        <div className="col" style={{ gap: isSoft() ? 10 : 16, marginTop: 16 }}>
+        <div className="col" style={{ gap: 12, marginTop: 16 }}>
           {order.map((cid) => {
             const c = store.company(cid);
             if (!c) return null;
@@ -288,7 +289,7 @@ export function VerifyView() {
                 <div className="row gap10" style={{ marginBottom: 6 }}>
                   <span className="v4-code" style={companyTint(store, cid)}>{c.jurisdiction}</span>
                   <button className="v4-link" style={{ fontWeight: 700, fontSize: 15 }} onClick={() => router.openCompany(cid)}>{c.name}</button>
-                  {g && <span className="v4-chip">{!isSoft() && <span className="v4-dot" style={{ background: store.brandColor(g) }} />}{g.name}</span>}
+                  {g && <span className="v4-chip"><span className="v4-dot" style={{ background: store.brandColor(g) }} />{g.name}</span>}
                   <span className="spacer" /><span className="t-meta muted">{groups.get(cid)!.length} 条</span>
                 </div>
                 {groups.get(cid)!.map((x) => <VerifyRow key={x.item.id} x={x} company={c} />)}

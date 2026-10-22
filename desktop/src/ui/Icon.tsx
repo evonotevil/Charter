@@ -8,7 +8,7 @@ import { ArchiveRestore,
   Info, Landmark, Laptop, LayoutGrid, Layers, ListChecks, ListTodo, Lock, Mail, MessageSquareText, Minus, MinusCircle, Network,
   Package, PackageOpen, Paperclip, Pencil, PencilLine, Plus, PlusCircle, PlusSquare, RefreshCw, RefreshCcwDot, RotateCcw, Search,
   Send, Settings, SlidersHorizontal, Square, Table2, Tag, Trash2, Upload, UserCircle, UserPlus, Users, Workflow, X, XCircle,
-  type LucideIcon, Play, Pause, User, PieChart, FileClock, CalendarPlus, Bot, IdCard, History, ShieldQuestion, Download, GitFork, FileDown, ListTree,
+  type LucideIcon, Play, Pause, User, PieChart, FileClock, CalendarPlus, Bot, IdCard, History, ShieldQuestion, Download, GitFork, FileDown, ListTree, Briefcase, ShieldCheck, Monitor, Maximize2,
 } from "lucide-react";
 
 const map: Record<string, LucideIcon> = {
@@ -38,6 +38,7 @@ const map: Record<string, LucideIcon> = {
   "arrow.down.circle": Download, sparkles: Bot, "arrow.triangle.merge": GitFork, "list.bullet.indent": ListTree,
   "person.2.fill": Users, workflow: Workflow, square: Square, "arrow.left": ArrowLeft,
   "icloud.fill": Cloud, "folder.fill": Folder, "person.fill": User, "chart.pie": PieChart, "doc.badge.clock": FileClock, "calendar.badge.plus": CalendarPlus,
+  briefcase: Briefcase, "checkmark.shield": ShieldCheck, desktopcomputer: Monitor, "arrow.up.left.and.arrow.down.right": Maximize2,
 };
 
 export function Icon({ name, size = 15, strokeWidth = 2, className, style }: { name: string; size?: number; strokeWidth?: number; className?: string; style?: React.CSSProperties }) {

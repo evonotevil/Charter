@@ -13,7 +13,7 @@ import { nonArchiveTypeIDs, ungrouped } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import {
-  ActionMenu, Avatar, Button, Checkbox, CountBadge, EmptyStateView, PageHeader, FieldRow, FormGroup, JurisdictionBadge, type MenuEntry, Modal, Pill,
+  ActionMenu, Avatar, Banner, Button, Card, Checkbox, CountBadge, EmptyStateView, Metrics, PageHeader, ProgressTrack, FieldRow, FormGroup, JurisdictionBadge, type MenuEntry, Modal, Pill,
   Popover, ProgressCapsule, RadioGroup, Segmented, SelectField, SheetScaffold, Switch, TextField, divider, header, item, useContextMenu,
 } from "../ui/kit";
 import { DropTarget, DropZone, useDropTarget } from "../ui/drop";
@@ -21,146 +21,172 @@ import { GroupIcon } from "./Shell";
 import {
   CompanyWaitingLine, FileThumb, ObligationRow, ReissueRequestSheet, StatusPill, TrustBadge, stateColor, stateLine, useStageFile,
 } from "./common";
-import { BrandPills } from "./Structure";
+import { SlideBg } from "../ui/motion";
 import { CompanyPage } from "./CompanyPage";
 
 const isForming = (c: Company) => c.status === "forming";
 const searchText = (c: Company) => [c.name, ...c.formerNames, ...c.aliases, c.registrationNumber].join(" ").toLowerCase();
 
-function CompaniesHeader() {
+/** 集团筛选：公司总览、股权结构、文件共用 router.groupFilter。集团色只出现在圆点上。 */
+export function GroupFilter() {
   const { store, router } = useApp();
-  const f = router.groupFilter;
-  const scope = store.companyIDsForFilter(f);
-  const live = store.data.companies.filter((c) => c.status !== "dissolved" && c.status !== "redomiciled" && (!scope || scope.has(c.id)));
-  const miss = store.missingSummary(f);
-  const attention = store.attentionCount(f);
-  const unv = store.unverified.filter((x) => !scope || scope.has(x.item.companyID)).length;
+  const group = router.groupFilter;
+  const gs = [...store.data.groups].sort((a, b) => a.name.localeCompare(b.name));
   return (
-    <PageHeader title="公司" scope={`${store.filterName(f)} · ${live.length} 家`} stats={[
-      { label: "缺件", value: miss.companies, unit: `家 · ${miss.items} 项`, tone: miss.companies ? "warn" : undefined, onClick: miss.companies ? () => router.go("files") : undefined },
-      { label: "文件需处理", value: attention, unit: "份", tone: attention ? "warn" : undefined, onClick: attention ? () => router.update((r) => { r.section = "files"; r.filesFilter = 2; }) : undefined },
-      { label: "待核实", value: unv, unit: "条", tone: unv ? "accent" : undefined, onClick: () => router.go("verify") },
-    ]}><BrandPills /></PageHeader>
+    <div className="row gap8 wrap" role="group" aria-label="按集团筛选">
+      <div className="seg slide-host">
+        <SlideBg />
+        <button aria-pressed={!group} className={!group ? "on" : ""} onClick={() => router.set("groupFilter", null)}>全部</button>
+        {gs.map((x) => (
+          <button key={x.id} aria-pressed={group === x.id} className={group === x.id ? "on" : ""} onClick={() => router.set("groupFilter", x.id)}>
+            <span className="gdot" style={{ background: store.brandColor(x) }} />{x.name}
+          </button>
+        ))}
+        {store.ungroupedCompanies.length > 0 && gs.length > 0 && <button aria-pressed={group === ungrouped} className={group === ungrouped ? "on" : ""} onClick={() => router.set("groupFilter", ungrouped)}>未归入集团</button>}
+      </div>
+      <ActionMenu icon="ellipsis" ariaLabel="集团" align="end" showsChevron={false} kind="quiet" size="small" entries={[
+        ...(store.group(group) ? [item(`编辑“${store.group(group)!.name}”…`, "pencil", () => router.openSettings("groups", group))] : []),
+        item("新建集团…", "plus", () => router.openSettings("groups", "new")),
+        item("管理全部集团…", "square.stack.3d.up", () => router.openSettings("groups")),
+      ]} />
+    </div>
   );
 }
 
 export function CompaniesView() {
-  return (
-    <div className="col grow" style={{ minHeight: 0 }}>
-      <div style={{ padding: "var(--page-edge) var(--page-edge) 24px" }}>
-        <CompaniesHeader />
-      </div>
-      <div className="col grow" style={{ minHeight: 0 }}><CompanyList /></div>
-    </div>
-  );
+  const { store, router } = useApp();
+  const c = router.companyOpen && router.selectedCompanyID ? store.company(router.selectedCompanyID) : undefined;
+  if (c) return <CompanyPage key={c.id} company={c} />;
+  return <Overview />;
 }
 
-// MARK: - 左侧列表
+type Health = { c: Company; severity: 0 | 1 | 2; next?: ReturnType<ReturnType<typeof useApp>["store"]["openObligations"]["find"]>; held: number; total: number; text: string };
 
-function CompanyList() {
+function Overview() {
   const { store, router } = useApp();
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"attention" | "name" | "due">("attention");
   const search = useRef<HTMLInputElement>(null);
+  const f = router.groupFilter;
+  const scope = store.companyIDsForFilter(f);
+  const live = store.data.companies.filter((c) => (!scope || scope.has(c.id)));
+  const active = live.filter((c) => c.status !== "dissolved" && c.status !== "redomiciled");
   const q = query.trim().toLowerCase();
-  const matches = (c: Company) => !q || searchText(c).includes(q) || store.jurisdictionName(c.jurisdiction).toLowerCase().includes(q);
-  const filter = router.groupFilter;
-  const scope = store.companyIDsForFilter(filter);
-  const filtered = store.data.companies.filter((c) => matches(c) && (!scope || scope.has(c.id))).sort((a, b) => a.name.localeCompare(b.name, "zh"));
-
-  const sections: { id: string; title: string; rows: GroupRow[] }[] = [];
-  for (const g of filter == null ? store.data.groups : store.data.groups.filter((g) => g.id === filter)) {
-    const rows = store.rowsOf(g).filter((r) => { const c = store.company(r.companyID); return !!c && matches(c); });
-    if (rows.length) sections.push({ id: g.id, title: g.name, rows });
-  }
-  if (filter == null || filter === ungrouped) {
-    const un = store.ungroupedCompanies.filter(matches).map((c) => ({ companyID: c.id, depth: 0, viaNominee: false, unconnected: false }));
-    if (un.length) sections.push({ id: ungrouped, title: "未归入集团", rows: un });
-  }
-  const firstSection = new Map<string, { id: string; title: string }>();
-  for (const s of sections) for (const r of s.rows) if (!firstSection.has(r.companyID)) firstSection.set(r.companyID, { id: s.id, title: s.title });
-
-  // 默认选中最需要处理的公司
+  const rows: Health[] = useMemo(() => live.map((c) => {
+    const { severity, text } = alertInfo(store, c);
+    const cnt = archiveCounts(store.archive(c));
+    const next = store.openObligations.filter((o) => o.company.id === c.id).sort((a, b) => (a.due < b.due ? -1 : 1))[0];
+    return { c, severity, next, held: cnt.held, total: cnt.total, text };
+  }), [store.data, store.today, f]);
+  const shown = rows.filter((r) => !q || searchText(r.c).includes(q) || store.jurisdictionName(r.c.jurisdiction).toLowerCase().includes(q))
+    .sort((a, b) => sort === "name" ? a.c.name.localeCompare(b.c.name, "zh")
+      : sort === "due" ? (a.next?.due ?? "9999").localeCompare(b.next?.due ?? "9999")
+      : b.severity - a.severity || (a.next?.due ?? "9999").localeCompare(b.next?.due ?? "9999") || a.c.name.localeCompare(b.c.name, "zh"));
   useEffect(() => {
-    const id = router.selectedCompanyID;
-    if (id && store.company(id) && (!scope || scope.has(id))) return;
-    const key = (c: Company): number[] => {
-      const items = store.archive(c);
-      const counted = items.filter((i) => !isNotApplicable(i.state));
-      return [items.some((i) => i.state.kind === "expired") ? 0 : 1, items.some((i) => i.state.kind === "expiring") ? 0 : 1,
-        items.some((i) => i.state.kind === "needsUpdate" || i.state.kind === "noDate") ? 0 : 1, counted.length ? archiveCounts(items).held / counted.length : 2];
-    };
-    const cmp = (a: number[], b: number[]) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
-    let best: Company | undefined, bk: number[] | undefined;
-    for (const c of filtered) { const k = key(c); if (!bk || cmp(k, bk) < 0) { best = c; bk = k; } }
-    router.set("selectedCompanyID", best?.id ?? null);
-  }, [filter]);
-
-  // ⌘F 聚焦搜索；上下键切换
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); return; }
-      if (router.sheet || router.settings) return;
-      if ((e.target as HTMLElement)?.closest("input, textarea, [contenteditable]")) return;
-      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-      if (!filtered.length) return;
-      e.preventDefault();
-      const cur = filtered.findIndex((c) => c.id === router.selectedCompanyID);
-      const start = cur < 0 ? (e.key === "ArrowDown" ? -1 : filtered.length) : cur;
-      const next = Math.min(Math.max(start + (e.key === "ArrowDown" ? 1 : -1), 0), filtered.length - 1);
-      router.set("selectedCompanyID", filtered[next].id);
-    };
+    const h = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  });
+  }, []);
 
-  const selected = router.selectedCompanyID ? store.company(router.selectedCompanyID) : undefined;
-  const group = filter && filter !== ungrouped ? store.group(filter) : undefined;
-  const list = (
-    <div className="col surface" style={{ padding: 12, gap: 8, height: "100%", minHeight: 0 }}>
-      <label className="row gap8" style={{ height: 38, padding: "0 14px", borderRadius: 999, background: "var(--band)", flex: "none" }} title="搜索公司（Ctrl/⌘ F）">
-        <Icon name="magnifyingglass" className="muted" />
-        <input ref={search} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索公司、编号或法域" className="grow" style={{ border: 0, background: "transparent", outline: "none", font: "inherit", color: "inherit", minWidth: 0 }} />
-        {query && <button className="muted" onClick={() => setQuery("")} aria-label="清除"><Icon name="xmark.circle.fill" /></button>}
-      </label>
-      <div className="scroll grow col" style={{ gap: 2, minHeight: 0 }}>
-        {sections.map((sec) => (
-          <div key={sec.id} className="col" style={{ gap: 2 }}>
-            <div className="row gap8" style={{ padding: "16px 8px 4px" }}>
-              <GroupIcon groupID={sec.id} size={18} />
-              <span className="t-micro muted ellipsis grow">{sec.title}</span>
-              {sec.id !== ungrouped && filter === sec.id && <Button kind="quiet" size="small" title={`归档到${sec.title}的公司。拖入文件即可归档到这里`} onClick={() => void router.chooseFiles({ kind: "group", id: sec.id })}>上传材料…</Button>}
-            </div>
-            {sec.rows.map((r) => {
-              const c = store.company(r.companyID);
-              if (!c) return null;
-              const first = firstSection.get(c.id);
-              return <CompanyRailRow key={sec.id + c.id} c={c} r={r} alsoIn={first && first.id !== sec.id ? first.title : undefined} />;
-            })}
-          </div>
-        ))}
-        {!sections.length && (
-          <div className="col gap10" style={{ alignItems: "center", padding: 16 }}>
-            <span className="muted" style={{ fontSize: 13 }}>{q ? `没有找到“${query}”` : `${store.filterName(filter)}还没有公司`}</span>
-            {!q && filter && filter !== ungrouped && <Button size="small" onClick={() => router.open({ kind: "newCompanyInGroup", group: filter })}>在此集团新建公司</Button>}
-            {filter && <Button size="small" onClick={() => router.set("groupFilter", null)}>显示全部公司</Button>}
-          </div>
-        )}
-      </div>
-    </div>
+  const obligations = store.openObligations.filter((o) => !scope || scope.has(o.company.id));
+  const overdue = obligations.filter((o) => o.due < store.today).length;
+  const soon = obligations.filter((o) => o.due >= store.today && D.daysBetween(store.today, o.due) <= 30).length;
+  const miss = store.missingSummary(f);
+  const unv = store.unverified.filter((x) => !scope || scope.has(x.item.companyID)).length;
+  const held = rows.reduce((s, r) => s + r.held, 0), total = rows.reduce((s, r) => s + r.total, 0);
+  const pct = total ? Math.round((held / total) * 100) : 100;
+  const bad = rows.filter((r) => r.severity === 2).length, warn = rows.filter((r) => r.severity === 1).length;
+  const tone = overdue || bad ? "bad" : soon || warn || miss.companies ? "warn" : "ok";
+  const title = tone === "ok" ? "看起来不错！" : overdue ? `${overdue} 件申报已逾期` : bad ? `${bad} 家公司有文件过期` : soon ? `30 天内有 ${soon} 件要申报` : `${warn + miss.companies} 家公司需要留意`;
+  const body = tone === "ok" ? `${active.length} 家公司都在正轨上：没有逾期，文件齐全。` : [overdue ? `${overdue} 件逾期` : "", soon ? `${soon} 件 30 天内到期` : "", miss.companies ? `${miss.companies} 家缺文件（共 ${miss.items} 项）` : ""].filter(Boolean).join("，") + "。";
+
+  if (!store.data.companies.length) return (
+    <div className="page"><div className="page-inner">
+      <PageHeader title="公司总览" />
+      <Card><EmptyStateView symbol="building.2" title="还没有公司" message="新建第一家公司，或上传营业执照、注册证书等材料，Charter 会认出公司信息。" actionTitle="新建公司" action={() => router.open({ kind: "newCompany" })} /></Card>
+    </div></div>
   );
-  return (
-    <div className="row grow" style={{ alignItems: "stretch", minHeight: 0 }}>
-      <div style={{ width: "clamp(240px, calc(100% - 560px), 300px)", flex: "none", margin: "0 0 var(--page-edge) var(--page-edge)", minHeight: 0 }}>
-        {group ? <DropTarget message={`松开即可归档到${latinPadStart(group.name)}`} onDrop={(paths) => router.startImport(paths, { kind: "group", id: group.id })} style={{ height: "100%" }}>{list}</DropTarget> : list}
-      </div>
-      <div className="col grow" style={{ minWidth: 520, minHeight: 0 }}>
-        {selected ? <CompanyPage key={selected.id} company={selected} /> : (
-          <div className="surface col grow" style={{ margin: "0 var(--page-edge) var(--page-edge) 16px" }}>
-            <EmptyStateView symbol="building.2" title="选择公司" message="从左侧列表选择公司，或新建公司。" actionTitle="新建公司" action={() => router.open({ kind: "newCompany" })} />
+  const group = f && f !== ungrouped ? store.group(f) : undefined;
+  const page = (
+    <div className="page"><div className="page-inner">
+      <PageHeader crumb={store.filterName(f)} title="公司总览" subtitle={`范围：${store.filterName(f)} · ${active.length} 家公司`}>
+        <Button icon="square.and.arrow.down" onClick={() => void router.chooseFiles(group ? { kind: "group", id: group.id } : null)}>上传材料</Button>
+        <Button kind="primary" icon="plus" onClick={() => router.open(group ? { kind: "newCompanyInGroup", group: group.id } : { kind: "newCompany" })}>新建公司</Button>
+      </PageHeader>
+      {store.data.groups.length > 0 && <GroupFilter />}
+      <Banner tone={tone} title={title} actions={tone !== "ok" ? <Button onClick={() => router.go(overdue || soon ? "due" : "files")}>{overdue || soon ? "打开申报日历" : "查看缺的文件"}</Button> : undefined}>
+        <span className="col gap10">
+          <span>{body}</span>
+          <span className="segs" aria-label={`${rows.length} 家公司：${bad} 家逾期或过期，${warn} 家需留意`}>
+            {[...rows].sort((a, b) => b.severity - a.severity).map((r) => <span key={r.c.id} className={`seg-bit ${r.severity === 2 ? "bad" : r.severity === 1 ? "warn" : "ok"}`} title={r.c.name} />)}
+          </span>
+        </span>
+      </Banner>
+      <Metrics stats={[
+        { label: "家公司", value: active.length, icon: "building.2", onClick: undefined },
+        { label: "30 天内申报", value: soon + overdue, unit: "件", tone: overdue ? "bad" : "warn", icon: "calendar", onClick: () => router.go("due") },
+        { label: "档案完整度", value: pct, unit: "%", tone: pct < 100 ? "warn" : undefined, icon: "doc.on.doc", onClick: () => router.go("files") },
+        { label: "待核实", value: unv, unit: "条", tone: "warn", icon: "checkmark.shield", onClick: () => router.go("verify") },
+      ]} />
+      <Card flush>
+        <div className="card-head pad">
+          <h2 className="t-card">公司</h2>
+          <div className="toolbar">
+            <label className="search" style={{ width: 240 }} title="搜索公司（Ctrl/⌘ F）">
+              <Icon name="magnifyingglass" size={14} />
+              <input ref={search} className="field" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索公司、编号或法域" />
+            </label>
+            <SelectField<typeof sort> minWidth={140} value={sort} onChange={setSort} options={[["attention", "需处理在前"], ["due", "按到期日"], ["name", "按名称"]]} />
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table className="table">
+            <thead><tr><th>公司</th><th>下一项申报</th><th>档案</th><th>状态</th><th aria-label="打开" /></tr></thead>
+            <tbody>
+              {shown.map((r) => <OverviewRow key={r.c.id} h={r} />)}
+            </tbody>
+          </table>
+          {!shown.length && <div className="muted" style={{ padding: 24, textAlign: "center" }}>没有找到“{query}”</div>}
+        </div>
+        <div className="tfoot"><span>显示 {shown.length} / {rows.length} 家</span><span>点按一行打开公司</span></div>
+      </Card>
+    </div></div>
+  );
+  return group ? <DropTarget message={`松开即可归档到${latinPadStart(group.name)}`} onDrop={(paths) => router.startImport(paths, { kind: "group", id: group.id })} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{page}</DropTarget> : page;
+}
+
+function OverviewRow({ h }: { h: Health }) {
+  const { store, router } = useApp();
+  const ctx = useContextMenu();
+  const { c, next, severity } = h;
+  const left = next ? D.daysBetween(store.today, next.due) : null;
+  const gs = store.groupsContaining(c.id);
+  const menu: MenuEntry[] = [
+    item("打开公司", "building.2", () => router.openCompany(c.id)),
+    item("复制注册编号", "doc.on.doc", () => void platform().copyText(c.registrationNumber)),
+    item("导出材料…", "archivebox", () => router.open({ kind: "exportAll", companyID: c.id })),
+    item("在股权结构中查看", "point.3.connected.trianglepath.dotted", () => router.update((r) => { r.section = "structure"; r.selectedCompanyID = c.id; })),
+  ];
+  const statusPill = c.status !== "active" ? <Pill text={companyStatusLabel[c.status]} kind="neutral" />
+    : severity === 2 ? <Pill text="需处理" kind="bad" /> : severity === 1 ? <Pill text="留意" kind="warn" /> : <Pill text="正常" kind="valid" />;
+  return (
+    <tr className="click" onClick={() => router.openCompany(c.id)} onContextMenu={(e) => ctx.open(e, menu)} title={h.text || c.name}>
+      <td>
+        <span className="row gap12">
+          <JurisdictionBadge code={c.jurisdiction} size={34} tint={companyTint(store, c.id)} />
+          <span className="col" style={{ minWidth: 0 }}>
+            <span className="t-row name-2">{c.name}</span>
+            <span className="t-meta muted row gap6">{gs.map((g) => <span key={g.id} className="gdot" style={{ background: store.brandColor(g) }} title={g.name} />)}{store.jurisdictionName(c.jurisdiction)}{c.registrationNumber ? ` · ${c.registrationNumber}` : ""}</span>
+          </span>
+        </span>
+      </td>
+      <td>{next && left !== null ? <span className="col"><span className="ellipsis" style={{ maxWidth: 240, fontWeight: 600 }}>{next.rule.name}</span>
+        <span className="t-meta num" style={{ color: left < 0 ? "var(--red-text)" : left <= 30 ? "var(--amber-text)" : "var(--muted)", fontWeight: left <= 30 ? 700 : 400 }}>{D.short(next.due)} · {left < 0 ? `逾期 ${-left} 天` : left === 0 ? "今天" : `${left} 天后`}</span></span>
+        : <span className="muted">—</span>}</td>
+      <td><span className="row gap8"><ProgressTrack value={h.total ? h.held / h.total : 1} width={64} /><span className="t-meta num muted">{h.held}/{h.total}</span></span></td>
+      <td>{statusPill}</td>
+      <td className="r"><Icon name="chevron.right" size={14} className="chev-r" /></td>
+    </tr>
   );
 }
 
@@ -178,44 +204,6 @@ function alertInfo(store: ReturnType<typeof useApp>["store"], c: Company): { sev
   const severity = left < 0 || n("expired") ? 2 : items.some((i) => stateNeedsAttention(i.state)) || left <= 30 ? 1 : 0;
   return { severity, text: alerts.join("，") };
 }
-
-function CompanyRailRow({ c, r, alsoIn }: { c: Company; r: GroupRow; alsoIn?: string }) {
-  const { store, router } = useApp();
-  const ctx = useContextMenu();
-  const dup = !!alsoIn;
-  const on = router.selectedCompanyID === c.id && !dup;
-  const { severity, text } = alertInfo(store, c);
-  const cnt = archiveCounts(store.archive(c));
-  const parts = [store.jurisdictionName(c.jurisdiction), isForming(c) ? "设立中" : `档案 ${cnt.held}/${cnt.total}${cnt.missing ? `，缺 ${cnt.missing}` : ""}`];
-  if (r.percent != null) parts.push(`上级持股 ${percentLabel(r.percent)}`);
-  const sub = alsoIn ? `也属于 ${alsoIn}` : parts.join("，");
-  const menu: MenuEntry[] = [
-    item("复制注册编号", "doc.on.doc", () => void platform().copyText(c.registrationNumber)),
-    item("导出材料…", "archivebox", () => router.open({ kind: "exportAll", companyID: c.id })),
-    item("在股权结构中打开", "point.3.connected.trianglepath.dotted", () => { router.groupFilter = store.groupsContaining(c.id)[0]?.id ?? null; router.openStructure(); }),
-  ];
-  return (
-    <button className={`row gap10 ${on ? "" : "hover-band"}`} onClick={() => router.set("selectedCompanyID", c.id)} onContextMenu={(e) => ctx.open(e, menu)}
-      title={c.name} aria-current={on || undefined}
-      style={{ minHeight: 48, padding: `8px 8px 8px ${8 + Math.min(r.depth, 4) * 12}px`, borderRadius: "var(--r-row)", textAlign: "left", width: "100%",
-        background: on ? "var(--selection)" : undefined, color: on ? "var(--on-selection)" : "var(--ink)", opacity: dup ? 0.55 : 1, transition: "background .15s" }}>
-      <span style={{ width: 28, height: 28, borderRadius: 8, flex: "none", display: "grid", placeItems: "center", fontSize: 10.5, fontWeight: 700,
-        background: on ? "color-mix(in srgb, var(--on-selection) 16%, transparent)" : "var(--band)", ...(on ? null : companyTint(store, c.id)) }}>{c.jurisdiction}</span>
-      <span className="col grow" style={{ gap: 1, minWidth: 0 }}>
-        <span style={{ fontSize: 13.5, fontWeight: 600, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{c.name}</span>
-        <span className="ellipsis" style={{ fontSize: 11.5, opacity: on ? 0.72 : 1, color: on ? undefined : "var(--muted)" }}>{sub}</span>
-      </span>
-      {severity > 0 && !dup && <span title={text} aria-label={text} style={{ width: 7, height: 7, borderRadius: "50%", flex: "none", background: severity === 2 ? "var(--danger)" : "var(--amber)" }} />}
-      {ctx.node}
-    </button>
-  );
-}
-
-// MARK: - 公司详情
-
-
-
-
 
 export function ChangeRowMenu({ companyID, appointmentID, holdingID }: { companyID: string; appointmentID?: string; holdingID?: string }) {
   const { router } = useApp();

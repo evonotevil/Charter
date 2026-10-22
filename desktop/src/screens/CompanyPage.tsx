@@ -10,7 +10,7 @@ import { useApp } from "../state/hooks";
 import { quickArchive } from "../state/actions";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { ActionMenu, Button, DateField, Popover, PopoverRow, SelectField, divider, item } from "../ui/kit";
+import { ActionMenu, Avatar, Button, Card as KitCard, DateField, JurisdictionBadge, PageHeader, Pill, Popover, PopoverRow, ProgressTrack, SelectField, Tabs, divider, item } from "../ui/kit";
 import { DropTarget } from "../ui/drop";
 import { InlineText } from "./Agents";
 import { leftText } from "./InfoCard";
@@ -20,15 +20,20 @@ import { EntrySheet, ProvenanceLine, VerifyChip } from "./Trust";
 import { CompanyChips } from "./PropChips";
 import { ExtraTags, StatusTag, statusOfArchive } from "./Status";
 import { roleByID, roleCategoryLabel, roleLabel, rolesFor } from "../domain/roles";
-import { companyTint, softBg, useUIStyle, softLike } from "../ui/uistyle";
+import { companyTint } from "../ui/uistyle";
+
+const tabNames = ["概览", "人员与持股", "文件", "申报", "变更历史"] as const;
 
 export function CompanyPage({ company: c }: { company: Company }) {
   const { store, router } = useApp();
   const [startStage, stageNode] = useStageFile();
-  const g = store.brandOf(c.id);
-  const soft = softLike(useUIStyle());
   const unv = store.unverified.filter((x) => x.item.companyID === c.id).length;
   const [busy, setBusy] = useState(false);
+  const tab = Math.min(router.companyTab, tabNames.length - 1);
+  const cnt = archiveCounts(store.archive(c));
+  const dues = store.openObligations.filter((o) => o.company.id === c.id);
+  const people = new Set(store.officers(c.id).map((a) => a.personID)).size + store.directShareholders(c.id).length;
+  const history = store.data.changes.filter((x) => x.companyID === c.id).length;
   const onDrop = async (paths: string[]) => {
     const t = setTimeout(() => setBusy(true), 300);
     let left: string[] = [];
@@ -36,82 +41,171 @@ export function CompanyPage({ company: c }: { company: Company }) {
     if (left.length === 1) void startStage({ owner: ref("company", c.id), path: left[0] });
     else if (left.length > 1) router.startImport(left, { kind: "company", id: c.id });
   };
+  const gs = store.groupsContaining(c.id);
+  const facts = [store.jurisdictionName(c.jurisdiction), c.entityForm, c.registrationNumber].filter(Boolean).join(" · ");
+  const upload = (typeID?: string) => void startStage({ owner: ref("company", c.id), typeID });
   return (
-    <DropTarget message={`松开即可归档到 ${c.name}`} onDrop={(p) => void onDrop(p)} style={{ flex: 1, minHeight: 0, display: "flex" }}>
-      <div className="surface col grow cp-card">
-        <header className={`row gap16 cp-head ${soft && g ? "tinted" : ""}`} style={{ flexWrap: "wrap", padding: "22px 24px 18px", alignItems: "flex-start", background: soft && g ? softBg(store.brandColor(g)) : undefined, transition: "background var(--standard) var(--ease)" }}>
-          <span className="v4-code big">{c.jurisdiction}</span>
-          <div className="col grow" style={{ minWidth: 0, gap: 8 }}>
-            <InlineText wrap value={c.name} label="公司名称" onCommit={(v) => v.trim() && store.editCompanyField(c, "name", v.trim(), "公司名称")} style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.4, lineHeight: 1.25 }} />
-            <div className="row gap6 wrap"><CompanyChips c={c} chipClass={soft && g ? "bento-chip" : ""} /></div>
-            {unv > 0 && <button className="v4-chip btnlike chip-pending" style={{ alignSelf: "flex-start" }} onClick={() => router.go("verify")}>{unv} 条待核实 ›</button>}
-          </div>
-          <div className="col gap10" style={{ alignItems: "flex-end", flex: "none" }}>
-            <HeaderNumbers c={c} />
-            <div className="row gap8">
+    <DropTarget message={`松开即可归档到 ${c.name}`} onDrop={(p) => void onDrop(p)} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <div className="page"><div className="page-inner">
+        <PageHeader crumb={<><button onClick={() => router.go("companies")}>公司总览</button><Icon name="chevron.right" size={10} />{gs.length ? gs.map((g) => g.name).join("、") : store.jurisdictionName(c.jurisdiction)}</>}
+          title={<span className="row gap14" style={{ minWidth: 0 }}><JurisdictionBadge code={c.jurisdiction} size={44} tint={companyTint(store, c.id)} />
+            <InlineText wrap value={c.name} label="公司名称" onCommit={(v) => v.trim() && store.editCompanyField(c, "name", v.trim(), "公司名称")} style={{ font: "inherit" }} /></span>}
+          subtitle={<span className="col gap8"><span>{facts || "法域、类型和编号还没填"}</span><span className="row gap6 wrap"><CompanyChips c={c} />{unv > 0 && <button className="v4-chip btnlike chip-pending" onClick={() => router.go("verify")}>{unv} 条待核实 ›</button>}</span></span>}>
           {busy && <span className="busy-chip" role="status"><span className="ring" />正在识别…</span>}
-          <Button onClick={() => { void platform().copyText(store.companySummary(c)); store.showToast("公司资料摘要已复制。"); }}>复制摘要</Button>
+          <Button icon="square.and.arrow.down" onClick={() => upload()}>上传材料</Button>
+          <Button kind="primary" icon="shippingbox" onClick={() => router.open({ kind: "packet", companyID: c.id })}>准备文件包</Button>
           <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" showsChevron={false} entries={[
-            item("准备文件包…", "shippingbox", () => router.open({ kind: "packet", companyID: c.id })),
+            item("复制公司摘要", "doc.on.doc", () => { void platform().copyText(store.companySummary(c)); store.showToast("公司资料摘要已复制。"); }),
             item("导出全部档案…", "archivebox", () => router.open({ kind: "exportAll", companyID: c.id })),
-            item("上传材料…", "square.and.arrow.down", () => void startStage({ owner: ref("company", c.id) })),
-            item("在结构图中选中", "point.3.connected.trianglepath.dotted", () => router.update((r) => { r.section = "structure"; r.selectedCompanyID = c.id; })),
+            item("在股权结构中查看", "point.3.connected.trianglepath.dotted", () => router.update((r) => { r.section = "structure"; r.selectedCompanyID = c.id; })),
             item("更多资料（曾用名、别名、备注）…", "pencil", () => router.open({ kind: "editCompany", companyID: c.id })),
             divider,
-            item("删除公司", "trash", () => { store.deleteCompany(c); router.set("selectedCompanyID", null); }, { destructive: true }),
+            item("删除公司", "trash", () => { store.deleteCompany(c); router.update((r) => { r.selectedCompanyID = null; r.companyOpen = false; }); }, { destructive: true }),
           ]} />
-            </div>
-          </div>
-        </header>
-        <div className="hairline" />
-        <div className="scroll grow swap-quick">
-          <div className="cp-grid">
-            <div className="col gap16" style={{ minWidth: 0 }}>
-              <Basics c={c} />
-              <Shareholders c={c} />
-              <Officers c={c} />
-              <History c={c} />
-            </div>
-            <div className="col gap16" style={{ minWidth: 0 }}>
-              <Dues c={c} />
-              <Archive c={c} onUpload={(typeID) => void startStage({ owner: ref("company", c.id), typeID })} />
-              <Agent c={c} />
-            </div>
-          </div>
+        </PageHeader>
+        <Snapshot c={c} />
+        <Tabs<number> value={tab} onChange={(v) => router.set("companyTab", v)} tabs={[[0, "概览"], [1, "人员与持股", people], [2, "文件", cnt.total], [3, "申报", dues.length], [4, "变更历史", history]]} />
+        <div className="swap-in" key={tab}>
+          {tab === 0 && <div className="two">
+            <div className="col gap24"><Basics c={c} /><PeopleSummary c={c} /><ArchiveSummary c={c} /></div>
+            <div className="col gap24"><NextUp c={c} /><Agent c={c} /></div>
+          </div>}
+          {tab === 1 && <div className="col gap24"><Shareholders c={c} /><Officers c={c} /><RelatedPersonFiles c={c} /></div>}
+          {tab === 2 && <Archive c={c} onUpload={(typeID) => upload(typeID)} />}
+          {tab === 3 && <div className="two"><Dues c={c} /><Agent c={c} /></div>}
+          {tab === 4 && <History c={c} />}
         </div>
-      </div>
+      </div></div>
       {stageNode}
     </DropTarget>
   );
 }
 
-/** 公司页头三个数字：档案 x/y、下一件到期（天）、上层持股（%）。两种风格同一骨架。 */
-function HeaderNumbers({ c }: { c: Company }) {
-  const { store } = useApp();
+/** 关联到这家公司的个人文件（董事同意书、委任书等）。 */
+function RelatedPersonFiles({ c }: { c: Company }) {
+  const { store, router } = useApp();
+  const docs = store.relatedPersonDocuments(c.id);
+  if (!docs.length) return null;
+  return (
+    <KitCard title="相关的个人文件">
+      <div className="col">{docs.map((d) => (
+        <div key={d.id} className="doc-row">
+          <span className="doc-ic"><Icon name="doc.text" size={15} /></span>
+          <span className="col grow" style={{ minWidth: 0 }}><span className="ellipsis" style={{ fontWeight: 700 }}>{store.docType(d.typeID)?.name ?? "文件"}</span>
+            <button className="link t-meta" style={{ textAlign: "left" }} onClick={() => router.openPerson(d.owner.id)}>{store.nameOf(d.owner)}</button></span>
+          <span className="t-meta muted num">{d.issueDate ?? d.addedOn}</span>
+          <Button size="small" kind="quiet" onClick={() => router.open({ kind: "document", id: d.id })}>查看</Button>
+        </div>
+      ))}</div>
+    </KitCard>
+  );
+}
+
+/** 概况条：登记状态、合规、档案完整度、默认中介。 */
+function Snapshot({ c }: { c: Company }) {
+  const { store, router } = useApp();
   const cnt = archiveCounts(store.archive(c));
   const next = store.openObligations.filter((o) => o.company.id === c.id).sort((a, b) => (a.due < b.due ? -1 : 1))[0];
   const left = next ? D.daysBetween(store.today, next.due) : null;
-  const top = store.directShareholders(c.id)[0];
-  const cell = (label: string, value: ReactNode, unit: string, tone?: string) => (
-    <div className="col hdr-num"><span className="t-meta muted" style={tone ? { color: tone } : undefined}>{label}</span>
-      <span className="row" style={{ alignItems: "baseline", gap: 2 }}><span className="big-num">{value}</span>{unit && <span className="big-unit">{unit}</span>}</span></div>
-  );
+  const party = store.party(c.defaultPartyID);
   return (
-    <div className="row hdr-nums">
-      {cell(cnt.missing ? `档案 · 缺 ${cnt.missing}` : "档案", `${cnt.held}/${cnt.total}`, "", cnt.missing ? "var(--risk-warn)" : undefined)}
-      {cell(left !== null && left < 0 ? "已逾期" : "下一件到期", left === null ? "—" : Math.abs(left), left === null ? "" : "天", left !== null && left < 0 ? "var(--danger)" : left !== null && left <= 30 ? "var(--amber-text)" : undefined)}
-      {cell(top ? "上层持股" : "股东", top ? Number(top.percent.toFixed(2)) : "待补", top ? "%" : "")}
+    <div className="snapshot">
+      <div className="cell"><span className="t-label">登记状态</span><span>{c.status === "active" ? <Pill text="存续" kind="valid" /> : <Pill text={companyStatusLabel[c.status]} kind="neutral" />}</span></div>
+      <div className="cell"><span className="t-label">合规</span><span>{left === null ? <Pill text="没有待办" kind="valid" /> : left < 0 ? <Pill text={`逾期 ${-left} 天`} kind="bad" /> : left <= 30 ? <Pill text={`${left} 天后到期`} kind="warn" /> : <Pill text="按时" kind="valid" />}</span></div>
+      <div className="cell"><span className="t-label">档案完整度</span><span className="row gap8"><ProgressTrack value={cnt.total ? cnt.held / cnt.total : 1} width={90} /><b className="num">{cnt.held}/{cnt.total}</b></span></div>
+      <div className="cell"><span className="t-label">默认中介</span>{party ? <button className="v4-link ellipsis" style={{ textAlign: "left" }} onClick={() => router.openAgent(party.id)}>{party.name}</button> : <span className="missing-val">未指定</span>}</div>
     </div>
   );
 }
 
-function Card({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="cp-sec">
-      <div className="row" style={{ justifyContent: "space-between", gap: 12, minHeight: 28 }}><h3 className="sec" style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>{title}</h3>{aside}</div>
-      <div className="col" style={{ marginTop: 6 }}>{children}</div>
-    </section>
+/** 右栏：下一件事 + 接下来。 */
+function NextUp({ c }: { c: Company }) {
+  const { store, router } = useApp();
+  const list = store.openObligations.filter((o) => o.company.id === c.id).sort((a, b) => (a.due < b.due ? -1 : 1));
+  const next = list[0];
+  if (!next) return (
+    <KitCard tone="green-card"><span className="row gap10"><span className="doc-ic"><Icon name="checkmark" size={16} strokeWidth={3} /></span><span className="col"><span className="t-subtitle">没有待办</span><span className="t-meta muted">这家公司暂时没有要申报的事。</span></span></span></KitCard>
   );
+  const left = D.daysBetween(store.today, next.due);
+  const party = store.responsibleParty(next);
+  return (
+    <>
+      <KitCard tone={left < 0 ? "red" : "amber"} className="nextup">
+        <span className="cue"><Icon name={left < 0 ? "exclamationmark.circle.fill" : "clock"} size={14} />下一件事</span>
+        <div className="t-headline">{next.rule.name}</div>
+        <p className="why">{D.long(next.due)}截止 · {leftText(left)}{next.record?.dateConfirmed ? "" : " · 日期按规则推算"}</p>
+        <span className="t-meta why">{party ? `交给 ${party.name}` : "还没有指定中介"}</span>
+        <div className="row gap8"><Button kind="primary" onClick={() => router.openDue(next.key)}>去处理</Button>{!next.record?.dateConfirmed && <Button onClick={() => store.confirmDue(next)}>确认日期</Button>}</div>
+      </KitCard>
+      {list.length > 1 && <KitCard title="接下来">
+        <div className="horizon">{list.slice(1, 6).map((o) => (
+          <button key={o.key} onClick={() => router.openDue(o.key)}><span className="d">{D.short(o.due)}</span><span style={{ fontWeight: 600 }}>{o.rule.name}</span></button>
+        ))}</div>
+      </KitCard>}
+    </>
+  );
+}
+
+/** 公司背后的人：股东和董事一览，点进人员与持股页签编辑。 */
+function PeopleSummary({ c }: { c: Company }) {
+  const { store, router } = useApp();
+  const hs = store.directShareholders(c.id);
+  const os = store.officers(c.id);
+  const pids = [...new Set(os.map((a) => a.personID))];
+  return (
+    <KitCard title="公司背后的人" action={<button className="link t-meta" onClick={() => router.set("companyTab", 1)}>编辑</button>}>
+      {hs.length || pids.length ? <div className="col">
+        {hs.map((h) => (
+          <div key={h.id} className="people-row">
+            <span className="row gap10" style={{ minWidth: 0 }}>
+              {h.holder.kind === "person" ? <Avatar name={store.nameOf(h.holder)} size={30} /> : <JurisdictionBadge code={store.company(h.holder.id)?.jurisdiction ?? ""} size={30} tint={companyTint(store, h.holder.id)} />}
+              <button className="v4-link name-2" style={{ textAlign: "left", color: "var(--ink)" }} onClick={() => h.holder.kind === "company" ? router.openCompany(h.holder.id) : router.openPerson(h.holder.id)}>{store.nameOf(h.holder)}</button>
+            </span>
+            <span className="t-meta muted">股东{h.isNominee ? " · 代持" : ""}</span>
+            <span className="pct">{percentLabel(h.percent)}</span>
+          </div>
+        ))}
+        {pids.map((pid) => (
+          <div key={pid} className="people-row">
+            <span className="row gap10" style={{ minWidth: 0 }}><Avatar name={store.person(pid)?.name ?? "?"} size={30} />
+              <button className="v4-link name-2" style={{ textAlign: "left", color: "var(--ink)" }} onClick={() => router.openPerson(pid)}>{store.person(pid)?.name}</button></span>
+            <span className="t-meta muted ellipsis">{os.filter((a) => a.personID === pid).map((a) => a.title).join("、")}</span>
+            <span />
+          </div>
+        ))}
+      </div> : <span className="muted">还没有股东和董事。<button className="link" onClick={() => router.set("companyTab", 1)}>去添加</button></span>}
+    </KitCard>
+  );
+}
+
+/** 样样都在：档案清单的结论 + 缺的几项。 */
+function ArchiveSummary({ c }: { c: Company }) {
+  const { store, router } = useApp();
+  const items = store.archive(c).filter((i) => !isNotApplicable(i.state));
+  const cnt = archiveCounts(store.archive(c));
+  const attention = items.filter((i) => !isHeld(i.state) || i.state.kind === "expired" || i.state.kind === "expiring" || i.state.kind === "needsUpdate");
+  const all = !attention.length;
+  return (
+    <KitCard title={all ? "样样都在" : "档案还差几样"} action={<button className="link t-meta" onClick={() => router.set("companyTab", 2)}>全部文件</button>}>
+      <span className="row gap10"><ProgressTrack value={cnt.total ? cnt.held / cnt.total : 1} width={140} /><span className="t-meta muted num">已有 {cnt.held}/{cnt.total}</span></span>
+      {attention.slice(0, 5).map((i) => {
+        const st = statusOfArchive(i.state);
+        return (
+          <div key={i.typeID} className="doc-row">
+            <span className={`doc-ic ${isMissing(i.state) ? "missing" : i.state.kind === "expired" ? "bad" : "warn"}`}><Icon name={isMissing(i.state) ? "plus" : "doc.text"} size={15} /></span>
+            <span className="grow ellipsis" style={{ fontWeight: 600 }}>{archiveItemName(i)}</span>
+            <StatusTag s={st} />
+            {i.document ? <button className="link t-meta" onClick={() => router.open({ kind: "document", id: i.document!.id })}>查看</button> : <button className="link t-meta" onClick={() => router.set("companyTab", 2)}>上传</button>}
+          </div>
+        );
+      })}
+      {all && <span className="t-meta muted">现行文件都在，也没有快过期的。</span>}
+    </KitCard>
+  );
+}
+
+function Card({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+  return <KitCard title={title} action={aside}><div className="col">{children}</div></KitCard>;
 }
 
 function KV({ k, children }: { k: string; children: ReactNode }) {
@@ -146,7 +240,7 @@ function Shareholders({ c }: { c: Company }) {
         return (
           <div key={h.id} ref={rowRef(h.id)} className={`cp-row2 ${isNew(h.id) ? "cp-new" : ""}`}>
             <div className="cp-line">
-              <span className="v4-code" style={h.holder.kind === "person" ? { borderRadius: "50%" } : companyTint(store, h.holder.id)}>{h.holder.kind === "company" ? store.company(h.holder.id)?.jurisdiction : [...store.nameOf(h.holder)][0]}</span>
+              {h.holder.kind === "person" ? <Avatar name={store.nameOf(h.holder)} size={30} /> : <span className="v4-code" style={companyTint(store, h.holder.id)}>{store.company(h.holder.id)?.jurisdiction}</span>}
               <button className="v4-link ellipsis grow" style={{ textAlign: "left" }} onClick={() => h.holder.kind === "company" ? router.openCompany(h.holder.id) : router.openPerson(h.holder.id)}>{store.nameOf(h.holder)}{h.isNominee ? <span className="muted" style={{ fontWeight: 400 }}>（名义）</span> : null}</button>
               {role && <span className="t-meta muted">{role.name}</span>}
               <InlineText value={String(h.percent)} label="持股比例" className="num" style={{ width: 56, textAlign: "right", fontWeight: 600 }} onCommit={(v) => store.setHoldingPercent(h, parseFloat(v))} />
@@ -178,7 +272,7 @@ function Officers({ c }: { c: Company }) {
         return (
           <div key={pid} ref={rowRef(mine[0].id)} className={`cp-row2 ${mine.some((a) => isNew(a.id)) ? "cp-new" : ""}`}>
             <div className="cp-line" style={{ alignItems: "flex-start", paddingTop: 8 }}>
-              <span className="v4-code" style={{ borderRadius: "50%" }}>{[...(p?.name ?? "?")][0]}</span>
+              <Avatar name={p?.name ?? "?"} size={30} />
               <button className="v4-link grow name-2" style={{ textAlign: "left", paddingTop: 5 }} title={p?.name} onClick={() => router.openPerson(pid)}>{p?.name}</button>
               {mine.length > 1 && <span className="t-meta muted" style={{ paddingTop: 6, whiteSpace: "nowrap" }}>{mine.length} 个职务</span>}
             </div>
@@ -252,12 +346,12 @@ function Dues({ c }: { c: Company }) {
   const { store, router } = useApp();
   const list = store.openObligations.filter((o) => o.company.id === c.id).sort((a, b) => (a.due < b.due ? -1 : 1));
   return (
-    <Card title="到期事项">
+    <Card title="申报事项">
       {list.map((o) => {
         const left = D.daysBetween(store.today, o.due);
         return (
-          <div key={o.key} className="cp-due tk" style={{ background: left < 0 ? "var(--danger-soft)" : left <= 30 ? "var(--amber-soft)" : "var(--band)" }}>
-            <button className="cp-due-main" onClick={() => router.openDue(o.key)}>
+          <div key={o.key} className="doc-row tk">
+            <button className="row gap12 grow" style={{ textAlign: "left", minWidth: 0 }} onClick={() => router.openDue(o.key)}>
             <TicketStub due={o.due} today={store.today} />
             <span className="col grow" style={{ minWidth: 0 }}>
               <span className="ellipsis" style={{ fontWeight: 600 }}>{o.rule.name}</span>
@@ -265,7 +359,7 @@ function Dues({ c }: { c: Company }) {
                 {o.record?.dateConfirmed ? <span>· 已确认</span> : <span>· 推算日期</span>}
                 <span className="ellipsis">· {store.responsibleParty(o)?.name ?? "未指定中介"}</span></span>
             </span>
-            <span className={`v4-chip ${left < 0 ? "bad" : left <= 30 ? "warn" : ""}`} style={{ background: left >= 0 && left > 30 ? "var(--surface)" : undefined }}>{leftText(left)}</span>
+            <span className={`pill ${left < 0 ? "bad" : left <= 30 ? "warn" : "neutral"}`}>{leftText(left)}</span>
             </button>
             {!o.record?.dateConfirmed && <button className="v4-chip btnlike" style={{ height: 24, fontSize: 11, flexShrink: 0 }} title="按推算日期确认" onClick={() => store.confirmDue(o)}>确认日期</button>}
           </div>
@@ -308,7 +402,7 @@ function Archive({ c, onUpload }: { c: Company; onUpload: (typeID: string) => vo
       {items.filter((i) => !isNotApplicable(i.state)).map(row)}
       {na.length > 0 && <button className="t-meta muted" style={{ textAlign: "left", padding: "8px 0 2px" }} onClick={() => setShowNA((v) => !v)}>{showNA ? "收起" : "显示"}不适用的 {na.length} 项</button>}
       {showNA && na.map(row)}
-      <span className="t-meta muted" style={{ paddingTop: 8 }}>把文件拖到这张卡片上的任何地方即可归档，Charter 会识别类型和日期。</span>
+      <span className="t-meta muted" style={{ paddingTop: 8 }}>把文件拖进这一页的任何地方即可归档，Charter 会识别类型和日期。</span>
     </Card>
   );
 }
@@ -332,7 +426,7 @@ function Agent({ c }: { c: Company }) {
           </span>
         </div>
       )}
-      <span className="t-meta muted">到期事项默认交给它；单件事可以在“到期”里另外指定。</span>
+      <span className="t-meta muted">申报事项默认交给它；单件事可以在申报日历里另外指定。</span>
     </Card>
   );
 }
