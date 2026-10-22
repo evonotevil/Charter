@@ -2,9 +2,9 @@ Charter 5.1.0：只有一种全新外观，Windows 能稳定打开，结构图�
 
 ## 下载与安装
 
-- **Mac（Apple 芯片，M1 及以后）**：`Charter-5.1.0-Mac-Apple芯片.dmg`。打开后把 Charter 拖进「应用程序」。
-- **Mac（Intel）**：`Charter-5.1.0-Mac-Intel.dmg`。
-- **Windows 10/11**：`Charter-5.1.0-Windows-安装版.exe`；不想安装可用 `Windows-免安装.zip`。
+- **Mac（Apple 芯片，M1 及以后）**：`Charter-5.1.0-Mac-arm64.dmg`。打开后把 Charter 拖进「应用程序」。
+- **Mac（Intel）**：`Charter-5.1.0-Mac-x64.dmg`。
+- **Windows 10/11**：推荐 `Charter-5.1.0-Windows-Setup.exe`；也可以使用免安装版 `Charter-5.1.0-Windows-x64.zip`。
 - `SHA256SUMS.txt` 用于核对下载文件。
 
 应用没有正式签名：Mac 第一次打开时在访达里右键 →「打开」；Windows SmartScreen 提示时选「更多信息」→「仍要运行」。
@@ -25,4 +25,4 @@ Charter 5.1.0：只有一种全新外观，Windows 能稳定打开，结构图�
 
 ## 验证范围
 
-在 Linux 上运行单元测试，用 Linux 版 Electron 打开真实界面检查全部页面（浅色、深色）、关闭按钮、结构图的键盘、折叠、以它为中心和搜索、申报打勾。Mac 的图标效果、Windows 的启动、OCR 和同步状态需要在真机上确认。
+GitHub Actions 会在原生 macOS 和 Windows 构建环境运行单元测试与生产构建。macOS 包会校验版本、架构、ad-hoc 签名、应用资源和 DMG/ZIP 完整性；Windows 会静默安装、启动应用并检查窗口。

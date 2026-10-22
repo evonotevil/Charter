@@ -79,6 +79,7 @@
         }
       ],
       "icon": "electron/resources/icon.icns",
+      "artifactName": "Charter-${version}-Mac-${arch}.${ext}",
       "category": "public.app-category.business",
       "identity": null,
       "minimumSystemVersion": "12.0",
@@ -103,6 +104,7 @@
         }
       ],
       "icon": "electron/resources/icon.ico",
+      "artifactName": "Charter-${version}-Windows-${arch}.${ext}",
       "signAndEditExecutable": false
     },
     "nsis": {
