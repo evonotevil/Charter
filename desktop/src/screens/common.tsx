@@ -176,6 +176,7 @@ export function ArchiveConfirmSheet({ file, onClose }: { file: StagedFile; onClo
   const [owner, setOwner] = useState<NodeRef | null>(file.owner ?? file.replaces?.owner ?? null);
   const [issued, setIssued] = useState<Day | undefined>(file.recognition.issueDate);
   const [expiry, setExpiry] = useState<Day | undefined>(file.recognition.expiryDate);
+  const [noExpiry, setNoExpiry] = useState(false);
   const [note, setNote] = useState("");
   const [ack, setAck] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,6 +184,8 @@ export function ArchiveConfirmSheet({ file, onClose }: { file: StagedFile; onClo
   const [keepBoth, setKeepBoth] = useState(false);
   const target = owner?.kind === "company" ? store.company(owner.id) : undefined;
   const typeChoices = store.data.library.documentTypes.filter((t) => owner?.kind === "person" ? t.owner === "person" : !target || (t.owner === "company" && typeAppliesTo(t, target.jurisdiction)));
+  const selectedType = typeChoices.find((t) => t.id === typeID);
+  const needsPrintedExpiry = selectedType?.validity === "expiryOnDocument";
   useEffect(() => { setAck(false); if (!typeChoices.some((t) => t.id === typeID)) setTypeID(""); }, [owner?.id]);
   const conflicts: string[] = [];
   if (owner?.kind === "company" && target) {
@@ -200,7 +203,7 @@ export function ArchiveConfirmSheet({ file, onClose }: { file: StagedFile; onClo
     if (!canConfirm || !owner) return;
     setWorking(true);
     try {
-      await commitStaged(store, file.id, { typeID, owner, issued, expiry, form: file.form, note, keepBoth: keepBoth && !!current });
+      await commitStaged(store, file.id, { typeID, owner, issued, expiry, noExpiry, form: file.form, note, keepBoth: keepBoth && !!current });
       onClose();
     } catch (e) { setError(`归档未完成：${(e instanceof Error ? e.message : String(e))}`); }
     finally { setWorking(false); }
@@ -226,7 +229,17 @@ export function ArchiveConfirmSheet({ file, onClose }: { file: StagedFile; onClo
             <FieldRow label="归属"><SelectField options={ownerOptions} value={owner} onChange={setOwner} minWidth={280} /></FieldRow>
             <FieldRow label="材料类别"><SelectField options={typeChoices.map((t) => [t.id, t.name] as [string, string])} value={typeID} onChange={(v) => { setTypeID(v); setAck(false); }} placeholder="请选择（未识别）" minWidth={280} /></FieldRow>
             <FieldRow label="签发日期" hint={issued ? undefined : "尚未填写签发日期，建议补充。"}><DateField value={issued} onChange={setIssued} /></FieldRow>
-            <FieldRow label="到期日期" hint="填写到期日后，Charter 会按设置中的天数提前提醒；留空则按条目的有效期规则判断。"><DateField value={expiry} onChange={setExpiry} placeholder="可留空" relativeTo={issued} /></FieldRow>
+            <FieldRow
+              label="到期日期"
+              hint={selectedType?.validity === "permanent" || selectedType?.validity === "untilChanged"
+                ? "这类文件长期有效，无需填写。"
+                : needsPrintedExpiry && !expiry && !noExpiry
+                  ? "文件上写明长期有效的，请勾选下方选项；否则留空会显示为“未填日期”。"
+                  : "填写到期日后，Charter 会按设置中的天数提前提醒；留空则按条目的有效期规则判断。"}
+            >
+              <DateField value={expiry} onChange={(value) => { setExpiry(value); if (value) setNoExpiry(false); }} placeholder={noExpiry ? "长期有效" : selectedType?.validity === "permanent" || selectedType?.validity === "untilChanged" ? "长期有效，无需填写" : "填写文件上的到期日"} relativeTo={issued} />
+            </FieldRow>
+            {needsPrintedExpiry && <Checkbox checked={noExpiry && !expiry} disabled={!!expiry} title={expiry ? "已填写到期日" : undefined} onChange={(value) => setNoExpiry(value)}>文件上写明长期有效 / 没有到期日</Checkbox>}
             <FieldRow label="备注"><TextField value={note} onChange={setNote} placeholder="可选" /></FieldRow>
           </FormGroup>
           {current && (

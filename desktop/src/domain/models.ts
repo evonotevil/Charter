@@ -73,6 +73,7 @@ export interface Person {
   email: string;
   notes: string;
   position?: GraphPoint;
+  archive?: PersonArchive;
 }
 export const newPerson = (name: string): Person => ({ id: uuid(), name, aliases: [], email: "", notes: "" });
 
@@ -159,15 +160,43 @@ export const newParty = (name: string): Party => ({
 
 // MARK: 文件
 
+export type EvidenceTarget = "company" | "person" | "appointment" | "holding";
+export type EvidenceLinkKind = "identity" | "address" | "appointment" | "shareholding" | "kyc" | "board" | "other";
+export const evidenceLinkKindLabel: Record<EvidenceLinkKind, string> = {
+  identity: "身份证明",
+  address: "住址证明",
+  appointment: "任职证明",
+  shareholding: "持股证明",
+  kyc: "KYC",
+  board: "董事会文件",
+  other: "其他",
+};
+
+/** 一份文件除了自己的归属，还能作为哪些公司、人员、任职或持股的证据。 */
+export interface DocumentLink {
+  target: EvidenceTarget;
+  id: string;
+  kind: EvidenceLinkKind;
+  page?: string;
+}
+
 export interface Document {
   id: string;
   typeID: string;
   owner: NodeRef;
   issueDate?: Day;
   expiryDate?: Day;
+  /** 文件自身写明长期有效，或没有到期日。 */
+  noExpiry?: boolean;
   form: string;
   filePath: string;
   originalFileName: string;
+  /** 导入前原文件所在的位置；Charter 只记录，不改动原文件。 */
+  sourcePath?: string;
+  /** 归档副本的 SHA-256，用于核对副本是否完整。 */
+  sha256?: string;
+  /** 这份文件作为其他档案记录的核实依据。 */
+  links?: DocumentLink[];
   supersededBy?: string;
   needsUpdate: boolean;
   addedOn: Day;
@@ -412,13 +441,40 @@ const itemMarkExplanation: Record<ItemMark, string> = {
   notApplicable: "此公司不适用该条目；不纳入本公司的归档比例。",
 };
 
+/** 材料范围。只有“我负责”的缺项算缺件。 */
+export type MaterialCustody = "mine" | "agent" | "pending" | "outOfScope" | "na";
+export const materialCustodies: MaterialCustody[] = ["mine", "agent", "pending", "outOfScope", "na"];
+export const materialCustodyLabel: Record<MaterialCustody, string> = {
+  mine: "我负责", agent: "中介保管", pending: "待确认", outOfScope: "不在我的范围", na: "不适用",
+};
+export const materialCustodyExplanation: Record<MaterialCustody, string> = {
+  mine: "由你保管；没有归档时算缺件。",
+  agent: "由中介或其他机构保管，不算缺件，单独计数。",
+  pending: "还没有决定；不算缺件，在完整性审阅里提醒你确认。",
+  outOfScope: "不归你管，普通归档视图不显示。",
+  na: "这家公司或这个人用不到，普通归档视图不显示。",
+};
+export const legacyMarkToCustody = (mark: ItemMark): MaterialCustody =>
+  mark === "external" || mark === "restricted" ? "agent"
+    : mark === "notApplicable" ? "na"
+      : mark === "unverified" ? "pending"
+        : "mine";
+export const custodyIsVisible = (custody: MaterialCustody) => custody !== "outOfScope" && custody !== "na";
+
 export interface CompanyArchive {
   added: string[];
   removed: string[];
   marks: Record<string, ItemMark>;
   notes: Record<string, string>;
+  custody?: Record<string, MaterialCustody>;
 }
 export const emptyArchive = (): CompanyArchive => ({ added: [], removed: [], marks: {}, notes: {} });
+
+export interface PersonArchive {
+  custody: Record<string, MaterialCustody>;
+  notes: Record<string, string>;
+}
+export const emptyPersonArchive = (): PersonArchive => ({ custody: {}, notes: {} });
 
 export type ArchiveState =
   | { kind: "valid" }
@@ -472,10 +528,46 @@ export interface ArchiveItem {
   /** 当前这份之外的同类现行文件。 */
   others: Document[];
   state: ArchiveState;
+  custody: MaterialCustody;
+  explicit: boolean;
+  suggested: boolean;
   note: string;
   isExtra: boolean;
 }
 export const archiveItemName = (i: ArchiveItem) => i.type?.name ?? "未知条目";
+
+export interface MaterialCounts {
+  held: number;
+  total: number;
+  missing: number;
+  agent: number;
+  pending: number;
+  attention: number;
+  files: number;
+  docs: number;
+  notApplicable: number;
+  configured: boolean;
+}
+
+/** 材料范围口径：只有“我负责”进入缺件比例，中介保管和待确认单独计数。 */
+export function materialCounts(items: ArchiveItem[], configured = true): MaterialCounts {
+  const mine = items.filter((i) => i.custody === "mine");
+  return {
+    held: mine.filter((i) => hasFile(i.state)).length,
+    total: mine.length,
+    missing: mine.filter((i) => !hasFile(i.state)).length,
+    agent: items.filter((i) => i.custody === "agent").length,
+    pending: items.filter((i) => i.custody === "pending").length,
+    attention: items.filter((i) => custodyIsVisible(i.custody) && stateNeedsAttention(i.state)).length,
+    files: items.filter((i) => hasFile(i.state)).length,
+    docs: items.filter((i) => hasFile(i.state)).reduce((n, i) => n + 1 + i.others.length, 0),
+    notApplicable: items.filter((i) => !custodyIsVisible(i.custody)).length,
+    configured,
+  };
+}
+
+export const materialRatio = (counts: MaterialCounts) =>
+  counts.configured && counts.total ? counts.held / counts.total : null;
 
 // MARK: 补发请求
 

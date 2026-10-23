@@ -6,11 +6,12 @@ import * as D from "../domain/day";
 import type { Day } from "../domain/day";
 import {
   type Appointment, type ArchiveItem, type ArchiveState, type ChangeKind, type ChangeRecord, type Company, type CorporateGroup,
-  type Document, type DocumentRequest, type DocumentType, type GroupRow, type HandoffAction, type Holding, type ItemMark,
-  type Jurisdiction, type NodeRef, type ObligationRecord, type Party, type Person, type RuleTemplate, type RuleTrust,
+  type Document, type DocumentLink, type DocumentRequest, type DocumentType, type EvidenceLinkKind, type EvidenceTarget, type GroupRow, type HandoffAction, type Holding, type ItemMark,
+  type Jurisdiction, type MaterialCustody, type NodeRef, type ObligationRecord, type Party, type Person, type RuleTemplate, type RuleTrust,
   type RuleVerification, type Schedule, type Evidence, type Provenance, type SharedSettings, type TemplateLibrary,
-  archiveCounts, changeKindLabel, companyStatusLabel, emptyArchive, hasFile, isActiveOn, isHandedOff, isNotApplicable, itemMarkLabel,
-  latinPad, newPerson, normalizedStatus, pendingTypeIDs, ref, refKey, sameRef, typeAppliesTo, uuid, latinPadStart, brandPalette } from "../domain/models";
+  changeKindLabel, companyStatusLabel, emptyArchive, emptyPersonArchive, hasFile, isActiveOn, isHandedOff, itemMarkLabel,
+  latinPad, legacyMarkToCustody, materialCounts, materialCustodyLabel, newPerson, normalizedStatus, pendingTypeIDs, ref, refKey,
+  sameRef, typeAppliesTo, uuid, latinPadStart, brandPalette } from "../domain/models";
 import {
   type Chain, type Freshness, type Obligation, type OwnershipBreakdown, adjustDay, breakdown, chainPaths, computeObligations,
   explainObligation, freshnessNeedsAttention, freshnessOf, freshnessRank, obligationStatus, openObligations as openOf,
@@ -67,7 +68,8 @@ export const unavailableError = () => new ArchiveError("数据正在读取、归
 export const invalidTargetError = () => new ArchiveError("材料类别与归属不匹配，请重新选择公司或人员及材料类别。");
 
 export interface ArchiveRequest {
-  path: string; typeID: string; owner: NodeRef; issued?: Day; expiry?: Day; form?: string; note?: string; keepBoth?: boolean;
+  path: string; typeID: string; owner: NodeRef; issued?: Day; expiry?: Day; noExpiry?: boolean; form?: string; note?: string;
+  keepBoth?: boolean; sourcePath?: string; sha256?: string; links?: DocumentLink[];
 }
 
 /** 导入列表的一行。 */
@@ -808,66 +810,177 @@ export class Store {
     const templ = new Set(this.templateItems(c.jurisdiction));
     const ids = this.itemIDs(c);
     for (const d of mine) if (!d.supersededBy && !ids.includes(d.typeID) && !nonArchiveTypeIDs.has(d.typeID)) ids.push(d.typeID);
+    for (const id of Object.keys(a.custody ?? {})) if (!ids.includes(id) && this.docType(id)) ids.push(id);
     return ids.map((id) => {
-      const versions = mine.filter((d) => d.typeID === id);
-      const currents = versions.filter((d) => !d.supersededBy);
-      const current = currents.reduce<Document | undefined>((m, d) => (!m || (d.issueDate ?? d.addedOn) > (m.issueDate ?? m.addedOn) ? d : m), undefined);
-      let state: ArchiveState;
-      if (current) {
-        const f = this.freshness(current);
-        state = f.kind === "valid" ? { kind: "valid" } : f.kind === "expiring" ? { kind: "expiring", days: f.days }
-          : f.kind === "expired" ? { kind: "expired", days: f.days } : f.kind === "needsUpdate" ? { kind: "needsUpdate" } : { kind: "noDate" };
-      } else if (a.marks[id]) state = { kind: "marked", mark: a.marks[id] };
-      else state = { kind: "missing" };
-      const others = currents.filter((d) => d !== current);
-      return { typeID: id, type: this.docType(id), document: current, olderVersions: versions.filter((d) => !!d.supersededBy).length, copies: others.length, others,
-        state, note: a.notes[id] ?? "", isExtra: !templ.has(id) };
+      const item = this.itemFrom(id, mine);
+      const explicitCustody = a.custody?.[id];
+      const custody = explicitCustody ?? (a.marks[id] ? legacyMarkToCustody(a.marks[id]) : item.document ? "mine" : "pending");
+      return { ...item, custody, explicit: !!explicitCustody, suggested: templ.has(id), note: a.notes[id] ?? "", isExtra: !templ.has(id) };
     });
   }
 
-  /** 个人档案：护照或身份证件、住址证明必备；在任董事另需董事同意书。其余类型有就列出，没有算“可选”。 */
-  personArchive(personID: string): (ArchiveItem & { required: boolean })[] {
+  private itemFrom(typeID: string, ownerDocuments: Document[]): Omit<ArchiveItem, "custody" | "explicit" | "suggested" | "note" | "isExtra"> {
+    const versions = ownerDocuments.filter((d) => d.typeID === typeID);
+    const currents = versions.filter((d) => !d.supersededBy);
+    const current = currents.reduce<Document | undefined>((m, d) => (!m || (d.issueDate ?? d.addedOn) > (m.issueDate ?? m.addedOn) ? d : m), undefined);
+    let state: ArchiveState = { kind: "missing" };
+    if (current) {
+      const f = this.freshness(current);
+      state = f.kind === "valid" ? { kind: "valid" } : f.kind === "expiring" ? { kind: "expiring", days: f.days }
+        : f.kind === "expired" ? { kind: "expired", days: f.days } : f.kind === "needsUpdate" ? { kind: "needsUpdate" } : { kind: "noDate" };
+    }
+    const others = currents.filter((d) => d !== current);
+    return {
+      typeID, type: this.docType(typeID), document: current, olderVersions: versions.filter((d) => !!d.supersededBy).length,
+      copies: others.length, others, state,
+    };
+  }
+
+  scopeConfigured(owner: NodeRef): boolean {
+    if (owner.kind === "company") {
+      const a = this.company(owner.id)?.archive;
+      return !!a && (Object.keys(a.custody ?? {}).length > 0 || Object.keys(a.marks).length > 0);
+    }
+    return Object.keys(this.person(owner.id)?.archive?.custody ?? {}).length > 0;
+  }
+
+  companyCounts(c: Company) {
+    return materialCounts(this.archive(c), this.scopeConfigured(ref("company", c.id)));
+  }
+
+  personCounts(personID: string) {
+    return materialCounts(this.personArchive(personID), this.scopeConfigured(ref("person", personID)));
+  }
+
+  personSuggested(personID: string): Set<string> {
+    const director = this.data.appointments.some((a) => a.personID === personID && isActiveOn(a, this.today) && a.title.includes("董事"));
+    return new Set(["common.passport", "common.address", ...(director ? ["person.consent"] : [])]);
+  }
+
+  /** 个人档案：材料范围由用户设置；有文件默认由我负责，没有文件默认待确认。 */
+  personArchive(personID: string): ArchiveItem[] {
     const d = this.data;
-    return this.cached(`parchive:${personID}`, [d.documents, d.library, d.appointments, this.today], () => {
+    return this.cached(`parchive:${personID}`, [d.documents, d.library, d.appointments, d.people, this.today], () => {
       const r = ref("person", personID);
       const mine = d.documents.filter((x) => sameRef(x.owner, r));
       const types = d.library.documentTypes.filter((t) => t.owner === "person");
-      const director = d.appointments.some((a) => a.personID === personID && isActiveOn(a, this.today) && a.title.includes("董事"));
+      const person = this.person(personID);
+      const suggested = this.personSuggested(personID);
       const ids = types.map((t) => t.id);
       for (const x of mine) if (!ids.includes(x.typeID)) ids.push(x.typeID);
-      const hasID = mine.some((x) => !x.supersededBy && (x.typeID === "common.passport" || x.typeID === "person.idcard"));
-      const required = (id: string) => id === "common.address" || (director && id === "person.consent")
-        || (id === "common.passport" && (!hasID || mine.some((x) => x.typeID === id))) || (id === "person.idcard" && mine.some((x) => x.typeID === id));
       return ids.map((id) => {
-        const versions = mine.filter((x) => x.typeID === id);
-        const currents = versions.filter((x) => !x.supersededBy);
-        const current = currents.reduce<Document | undefined>((m, x) => (!m || (x.issueDate ?? x.addedOn) > (m.issueDate ?? m.addedOn) ? x : m), undefined);
-        let state: ArchiveState = { kind: "missing" };
-        if (current) {
-          const f = this.freshness(current);
-          state = f.kind === "valid" ? { kind: "valid" } : f.kind === "expiring" ? { kind: "expiring", days: f.days }
-            : f.kind === "expired" ? { kind: "expired", days: f.days } : f.kind === "needsUpdate" ? { kind: "needsUpdate" } : { kind: "noDate" };
-        }
-        const others = currents.filter((x) => x !== current);
-        return { typeID: id, type: this.docType(id), document: current, olderVersions: versions.filter((x) => !!x.supersededBy).length, copies: others.length, others,
-          state, note: "", isExtra: false, required: required(id) };
+        const item = this.itemFrom(id, mine);
+        const explicitCustody = person?.archive?.custody?.[id];
+        const custody = explicitCustody ?? (item.document ? "mine" : "pending");
+        return {
+          ...item, custody, explicit: !!explicitCustody, suggested: suggested.has(id),
+          note: person?.archive?.notes?.[id] ?? "", isExtra: false,
+        };
       });
     });
   }
 
+  /** 一次设置一个或多个对象的材料保管状态；传 null 恢复默认。 */
+  setCustody(owners: NodeRef[], typeIDs: string[], custody: MaterialCustody | null) {
+    if (!owners.length || !typeIDs.length) return;
+    const outcome = custody ? materialCustodyLabel[custody] : "默认";
+    this.performUndoable("设置材料范围",
+      `已把 ${owners.length > 1 ? `${owners.length} 个对象的` : ""}${typeIDs.length} 个条目设为“${outcome}”。`,
+      (d) => {
+        for (const owner of owners) {
+          if (owner.kind === "company") {
+            const company = d.companies.find((c) => c.id === owner.id);
+            if (!company) continue;
+            if (!company.archive) company.archive = emptyArchive();
+            const custodyMap = { ...(company.archive.custody ?? {}) };
+            for (const typeID of typeIDs) {
+              if (custody) custodyMap[typeID] = custody;
+              else delete custodyMap[typeID];
+              delete company.archive.marks[typeID];
+            }
+            company.archive.custody = custodyMap;
+          } else {
+            const person = d.people.find((p) => p.id === owner.id);
+            if (!person) continue;
+            const archive = person.archive ?? emptyPersonArchive();
+            const custodyMap = { ...archive.custody };
+            for (const typeID of typeIDs) {
+              if (custody) custodyMap[typeID] = custody;
+              else delete custodyMap[typeID];
+            }
+            person.archive = { custody: custodyMap, notes: archive.notes ?? {} };
+          }
+        }
+      });
+  }
+
   /** 关联到某家公司的个人文件（现行版本）。 */
   relatedPersonDocuments(companyID: string): Document[] {
-    return this.data.documents.filter((x) => x.relatedCompanyID === companyID && x.owner.kind === "person" && !x.supersededBy);
+    return this.data.documents.filter((x) => !x.supersededBy && x.owner.kind === "person"
+      && (x.relatedCompanyID === companyID || this.linksOf(x).some((link) => link.target === "company" && link.id === companyID)));
+  }
+
+  linksOf(doc: Document): DocumentLink[] {
+    return doc.links ?? [];
+  }
+
+  evidenceTargetName(link: Pick<DocumentLink, "target" | "id">): string {
+    if (link.target === "company") return this.company(link.id)?.name ?? "已删除的公司";
+    if (link.target === "person") return this.person(link.id)?.name ?? "已删除的人员";
+    if (link.target === "appointment") {
+      const a = this.data.appointments.find((x) => x.id === link.id);
+      if (!a) return "已删除的任职";
+      const company = this.company(a.companyID)?.name ?? "未知公司";
+      return `${this.person(a.personID)?.name ?? "未知人员"} · ${a.title || "任职"} · ${company}`;
+    }
+    const h = this.data.holdings.find((x) => x.id === link.id);
+    if (!h) return "已删除的持股";
+    const company = this.company(h.companyID)?.name ?? "未知公司";
+    return `${this.nameOf(h.holder)} · ${percentLabel(h.percent)} · ${company}`;
+  }
+
+  /** 哪些文件把某个公司、人员、任职或持股列为证据。 */
+  evidenceFor(target: EvidenceTarget, id: string): { doc: Document; link: DocumentLink }[] {
+    const out: { doc: Document; link: DocumentLink }[] = [];
+    for (const doc of this.data.documents) {
+      if (doc.supersededBy) continue;
+      for (const link of this.linksOf(doc)) if (link.target === target && link.id === id) out.push({ doc, link });
+    }
+    return out;
+  }
+
+  setLinks(docID: string, links: DocumentLink[]) {
+    const unique = links.filter((link, index) => links.findIndex((x) => x.target === link.target && x.id === link.id && x.kind === link.kind) === index);
+    this.performUndoable("证据关联", unique.length ? `已保存 ${unique.length} 条证据关联。` : "已清除证据关联。", (d) => {
+      const doc = d.documents.find((x) => x.id === docID);
+      if (!doc) return;
+      if (unique.length) doc.links = unique;
+      else delete doc.links;
+    });
   }
 
   setDocumentCompany(docID: string, companyID: string | undefined) {
-    this.commit((d) => { const x = d.documents.find((y) => y.id === docID); if (x) { if (companyID) x.relatedCompanyID = companyID; else delete x.relatedCompanyID; } }, { label: "关联公司" });
+    this.commit((d) => {
+      const x = d.documents.find((y) => y.id === docID);
+      if (!x) return;
+      const links = (x.links ?? []).filter((link) => link.target !== "company");
+      if (companyID) {
+        x.relatedCompanyID = companyID;
+        const kind: EvidenceLinkKind = x.typeID === "person.consent" || x.typeID === "person.appointment" || x.typeID === "person.resignation"
+          ? "appointment" : x.typeID === "person.kyc" ? "kyc" : "other";
+        links.unshift({ target: "company", id: companyID, kind });
+      } else {
+        delete x.relatedCompanyID;
+      }
+      if (links.length) x.links = links;
+      else delete x.links;
+    }, { label: "关联公司" });
   }
 
   archiveProgress(c: Company): { have: number; total: number } {
     if (c.status === "forming") return { have: 0, total: 0 };
-    const items = this.archive(c).filter((i) => !isNotApplicable(i.state));
-    return { have: items.filter((i) => hasFile(i.state)).length, total: items.length };
+    const counts = this.companyCounts(c);
+    return { have: counts.held, total: counts.total };
   }
 
   private editArchive(d: Draft<Data>, companyID: string, change: (a: Draft<NonNullable<Company["archive"]>>) => void) {
@@ -953,7 +1066,7 @@ export class Store {
     for (const c of this.data.companies) {
       if (scope && !scope.has(c.id)) continue;
       if (c.status === "dissolved" || c.status === "redomiciled" || c.status === "forming") continue;
-      const m = archiveCounts(this.archive(c)).missing;
+      const m = this.companyCounts(c).missing;
       if (m) { companies++; items += m; }
     }
     return { companies, items };
@@ -1831,8 +1944,11 @@ export class Store {
           const ownerName = (r.owner.kind === "company" ? cName.get(r.owner.id) : pName.get(r.owner.id))!;
           const path = await this.folder.archive(r.path, ownerName, r.owner, this.docType(r.typeID)!.name, r.issued);
           const doc: Document = {
-            id: uuid(), typeID: r.typeID, owner: r.owner, issueDate: r.issued, expiryDate: r.expiry, form: r.form ?? "扫描件",
-            filePath: path, originalFileName: r.path.split(/[\\/]/).pop() ?? "", needsUpdate: false, addedOn: this.today, notes: r.note ?? "",
+            id: uuid(), typeID: r.typeID, owner: r.owner, issueDate: r.issued, expiryDate: r.expiry,
+            ...(r.noExpiry && !r.expiry ? { noExpiry: true } : {}), form: r.form ?? "扫描件",
+            filePath: path, originalFileName: r.path.split(/[\\/]/).pop() ?? "", sourcePath: r.sourcePath,
+            sha256: r.sha256, ...(r.links?.length ? { links: r.links } : {}),
+            needsUpdate: false, addedOn: this.today, notes: r.note ?? "",
           };
           if (r.keepBoth) keepBoth.add(doc.id);
           copies.push(doc);

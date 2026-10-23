@@ -10,3 +10,5 @@ release/
 *.dmg
 *.exe
 build-mac.log
+__pycache__/
+*.pyc

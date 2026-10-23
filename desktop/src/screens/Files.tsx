@@ -4,7 +4,7 @@ import { companyTint } from "../ui/uistyle";
 import { useEffect, useRef, useState } from "react";
 import * as D from "../domain/day";
 import { type Document, type NodeRef } from "../domain/models";
-import { type Freshness, expiryOf, freshnessLabel, freshnessNeedsAttention, freshnessRank } from "../domain/engine";
+import { type Freshness, expiryLabel, expiryOf, freshnessLabel, freshnessNeedsAttention, freshnessRank } from "../domain/engine";
 import { snapshotTitle } from "../domain/folder";
 import { useApp } from "../state/hooks";
 import { pendingRemaining } from "../state/store";
@@ -141,7 +141,16 @@ export function FilesView() {
           </div>
         ) : (
           <div className="card flush" style={{ overflowX: "auto" }}>
-            <table className="table" aria-label={`${title}的文件`}>
+            <table className="table files-table" aria-label={`${title}的文件`}>
+              <colgroup>
+                <col style={{ width: 52 }} />
+                <col />
+                {!owner && <col style={{ width: 220 }} />}
+                <col style={{ width: 132 }} />
+                <col style={{ width: 132 }} />
+                <col style={{ width: 168 }} />
+                <col style={{ width: 132 }} />
+              </colgroup>
               <thead><tr><th style={{ width: 28 }} aria-label="选择" /><th>文件</th>{!owner && <th>归属</th>}<th>签发</th><th>到期</th><th>状态</th><th style={{ width: 120 }} aria-label="操作" /></tr></thead>
               <tbody>{list.map((d) => <FileTableRow key={d.id} d={d} showOwner={!owner} selected={selected.has(d.id)} extraMenu={batchMenu(d.id)} onSelect={(e) => click(e, d.id)}
                 onToggle={() => { const s2 = new Set(selected); if (s2.has(d.id)) s2.delete(d.id); else s2.add(d.id); setSelected(s2); setAnchor(d.id); }} />)}</tbody>
@@ -260,7 +269,7 @@ function FileTableRow({ d, showOwner, selected, extraMenu, onSelect, onToggle }:
   const t = store.docType(d.typeID);
   const f = store.freshness(d);
   const st = statusOfFreshness(f);
-  const expiry = expiryOf(d, t);
+  const expiry = expiryLabel(d, t);
   const same = store.data.documents.filter((x) => !x.supersededBy && x.typeID === d.typeID && x.owner.kind === d.owner.kind && x.owner.id === d.owner.id);
   const older = store.data.documents.filter((x) => x.supersededBy === d.id).length;
   const c = d.owner.kind === "company" ? store.company(d.owner.id) : undefined;
@@ -282,7 +291,7 @@ function FileTableRow({ d, showOwner, selected, extraMenu, onSelect, onToggle }:
       <td><div className="col" style={{ minWidth: 0, gap: 1 }}><span className="fname name-1" title={d.originalFileName}>{fileName}</span><span className="t-meta muted name-1" title={sub}>{sub}</span></div></td>
       {showOwner && <td className="owner"><span className="row gap6" style={{ minWidth: 0 }}>{c && <span className="v4-code" style={{ width: 24, height: 20, fontSize: 9.5, borderRadius: 6, ...companyTint(store, c.id) }}>{c.jurisdiction}</span>}<span className="name-1" title={store.nameOf(d.owner)}>{store.nameOf(d.owner)}</span></span></td>}
       <td className="date mono">{d.issueDate ?? <span className="missing-val">未填</span>}</td>
-      <td className="date mono" style={{ color: f.kind === "expired" ? "var(--risk-bad)" : undefined }}>{expiry ?? (t?.validity === "permanent" || t?.validity === "untilChanged" ? <span className="muted">长期</span> : <span className="missing-val">未填</span>)}</td>
+      <td className="date mono" style={{ color: f.kind === "expired" ? "var(--risk-bad)" : undefined }}>{expiry === "长期" ? <span className="muted">长期</span> : expiry === "未填日期" ? <span className="missing-val">未填日期</span> : expiry}</td>
       <td><span className="row gap4" style={{ flexWrap: "nowrap" }}><StatusTag s={st} /><ExtraTags d={d} t={t} /></span></td>
       <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
         {f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补日期</Button>

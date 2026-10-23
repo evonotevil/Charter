@@ -237,7 +237,7 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
     for (const i of items.filter(ready)) {
       const owner: NodeRef | undefined = i.owner ?? (i.newCompanyKey && byKey.get(i.newCompanyKey) ? ref("company", byKey.get(i.newCompanyKey)!.id) : undefined);
       if (!owner || !i.typeID) continue;
-      reqs.push({ path: i.path, typeID: i.typeID, owner, issued: i.issueDate, expiry: i.expiryDate, keepBoth: !!i.keepBoth && !!replaced(i) });
+      reqs.push({ path: i.path, typeID: i.typeID, owner, issued: i.issueDate, expiry: i.expiryDate, keepBoth: !!i.keepBoth && !!replaced(i), sourcePath: i.path });
     }
     if (!reqs.length) return;
     setCommitting(true);

@@ -4,13 +4,13 @@
 import { TicketStub } from "../ui/TicketStub";
 import { useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
-import { type Appointment, type ArchiveItem, type Company, type NodeRef, archiveItemName, archiveStateLabel, companyStatusLabel, companyStatuses, contactsOf, hasFile, isNotApplicable, ref, archiveCounts, isHeld, isMissing } from "../domain/models";
-import { percentLabel } from "../domain/engine";
+import { type Appointment, type ArchiveItem, type Company, archiveItemName, companyStatusLabel, companyStatuses, contactsOf, custodyIsVisible, hasFile, ref } from "../domain/models";
+import { expiryLabel, percentLabel } from "../domain/engine";
 import { useApp } from "../state/hooks";
 import { quickArchive } from "../state/actions";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { ActionMenu, Avatar, Button, Card as KitCard, DateField, JurisdictionBadge, PageHeader, Pill, Popover, PopoverRow, ProgressTrack, SelectField, Tabs, divider, item } from "../ui/kit";
+import { ActionMenu, Avatar, Button, Card as KitCard, DateField, JurisdictionBadge, PageHeader, Pill, Popover, PopoverRow, SelectField, Tabs, divider, item } from "../ui/kit";
 import { DropTarget } from "../ui/drop";
 import { InlineText } from "./Agents";
 import { leftText } from "./InfoCard";
@@ -18,9 +18,14 @@ import { useStageFile } from "./common";
 import { useListMotion } from "../ui/motion";
 import { EntrySheet, ProvenanceLine, VerifyChip } from "./Trust";
 import { CompanyChips } from "./PropChips";
-import { ExtraTags, StatusTag, statusOfArchive } from "./Status";
+import { ExtraTags, StatusTag } from "./Status";
 import { roleByID, roleCategoryLabel, roleLabel, rolesFor } from "../domain/roles";
 import { companyTint } from "../ui/uistyle";
+import {
+  ArchiveCountSummary, CustodyChip, FileViewSwitch, archiveReviewGroups, heldArchiveItems,
+  hiddenArchiveItems, statusOfArchiveItem, useFileView, visibleArchiveItems,
+} from "./ArchiveScope";
+import { RelatedEvidence } from "./Packet";
 
 const tabNames = ["概览", "人员与持股", "文件", "申报", "变更历史"] as const;
 
@@ -30,7 +35,7 @@ export function CompanyPage({ company: c }: { company: Company }) {
   const unv = store.unverified.filter((x) => x.item.companyID === c.id).length;
   const [busy, setBusy] = useState(false);
   const tab = Math.min(router.companyTab, tabNames.length - 1);
-  const cnt = archiveCounts(store.archive(c));
+  const cnt = store.companyCounts(c);
   const dues = store.openObligations.filter((o) => o.company.id === c.id);
   const people = new Set(store.officers(c.id).map((a) => a.personID)).size + store.directShareholders(c.id).length;
   const history = store.data.changes.filter((x) => x.companyID === c.id).length;
@@ -64,13 +69,13 @@ export function CompanyPage({ company: c }: { company: Company }) {
           ]} />
         </PageHeader>
         <Snapshot c={c} />
-        <Tabs<number> value={tab} onChange={(v) => router.set("companyTab", v)} tabs={[[0, "概览"], [1, "人员与持股", people], [2, "文件", cnt.total], [3, "申报", dues.length], [4, "变更历史", history]]} />
+        <Tabs<number> value={tab} onChange={(v) => router.set("companyTab", v)} tabs={[[0, "概览"], [1, "人员与持股", people], [2, "文件", cnt.docs], [3, "申报", dues.length], [4, "变更历史", history]]} />
         <div className="swap-in" key={tab}>
           {tab === 0 && <div className="two">
             <div className="col gap24"><Basics c={c} /><PeopleSummary c={c} /><ArchiveSummary c={c} /></div>
             <div className="col gap24"><NextUp c={c} /><Agent c={c} /></div>
           </div>}
-          {tab === 1 && <div className="col gap24"><Shareholders c={c} /><Officers c={c} /><RelatedPersonFiles c={c} /></div>}
+          {tab === 1 && <div className="col gap24"><Shareholders c={c} /><Officers c={c} /><RelatedEvidence target="company" id={c.id} title="其他文件里的证据" /></div>}
           {tab === 2 && <Archive c={c} onUpload={(typeID) => upload(typeID)} />}
           {tab === 3 && <div className="two"><Dues c={c} /><Agent c={c} /></div>}
           {tab === 4 && <History c={c} />}
@@ -81,30 +86,10 @@ export function CompanyPage({ company: c }: { company: Company }) {
   );
 }
 
-/** 关联到这家公司的个人文件（董事同意书、委任书等）。 */
-function RelatedPersonFiles({ c }: { c: Company }) {
-  const { store, router } = useApp();
-  const docs = store.relatedPersonDocuments(c.id);
-  if (!docs.length) return null;
-  return (
-    <KitCard title="相关的个人文件">
-      <div className="col">{docs.map((d) => (
-        <div key={d.id} className="doc-row">
-          <span className="doc-ic"><Icon name="doc.text" size={15} /></span>
-          <span className="col grow" style={{ minWidth: 0 }}><span className="ellipsis" style={{ fontWeight: 700 }}>{store.docType(d.typeID)?.name ?? "文件"}</span>
-            <button className="link t-meta" style={{ textAlign: "left" }} onClick={() => router.openPerson(d.owner.id)}>{store.nameOf(d.owner)}</button></span>
-          <span className="t-meta muted num">{d.issueDate ?? d.addedOn}</span>
-          <Button size="small" kind="quiet" onClick={() => router.open({ kind: "document", id: d.id })}>查看</Button>
-        </div>
-      ))}</div>
-    </KitCard>
-  );
-}
-
 /** 概况条：登记状态、合规、档案完整度、默认中介。 */
 function Snapshot({ c }: { c: Company }) {
   const { store, router } = useApp();
-  const cnt = archiveCounts(store.archive(c));
+  const cnt = store.companyCounts(c);
   const next = store.openObligations.filter((o) => o.company.id === c.id).sort((a, b) => (a.due < b.due ? -1 : 1))[0];
   const left = next ? D.daysBetween(store.today, next.due) : null;
   const party = store.party(c.defaultPartyID);
@@ -112,7 +97,7 @@ function Snapshot({ c }: { c: Company }) {
     <div className="snapshot">
       <div className="cell"><span className="t-label">登记状态</span><span>{c.status === "active" ? <Pill text="存续" kind="valid" /> : <Pill text={companyStatusLabel[c.status]} kind="neutral" />}</span></div>
       <div className="cell"><span className="t-label">合规</span><span>{left === null ? <Pill text="没有待办" kind="valid" /> : left < 0 ? <Pill text={`逾期 ${-left} 天`} kind="bad" /> : left <= 30 ? <Pill text={`${left} 天后到期`} kind="warn" /> : <Pill text="按时" kind="valid" />}</span></div>
-      <div className="cell"><span className="t-label">档案完整度</span><span className="row gap8"><ProgressTrack value={cnt.total ? cnt.held / cnt.total : 1} width={90} /><b className="num">{cnt.held}/{cnt.total}</b></span></div>
+      <div className="cell"><span className="t-label">我负责的材料</span><span><ArchiveCountSummary counts={cnt} compact /></span></div>
       <div className="cell"><span className="t-label">默认中介</span>{party ? <button className="v4-link ellipsis" style={{ textAlign: "left" }} onClick={() => router.openAgent(party.id)}>{party.name}</button> : <span className="missing-val">未指定</span>}</div>
     </div>
   );
@@ -181,25 +166,31 @@ function PeopleSummary({ c }: { c: Company }) {
 /** 样样都在：档案清单的结论 + 缺的几项。 */
 function ArchiveSummary({ c }: { c: Company }) {
   const { store, router } = useApp();
-  const items = store.archive(c).filter((i) => !isNotApplicable(i.state));
-  const cnt = archiveCounts(store.archive(c));
-  const attention = items.filter((i) => !isHeld(i.state) || i.state.kind === "expired" || i.state.kind === "expiring" || i.state.kind === "needsUpdate");
-  const all = !attention.length;
+  const items = store.archive(c);
+  const counts = store.companyCounts(c);
+  const owner = ref("company", c.id);
+  const missing = items.filter((item) => item.custody === "mine" && !hasFile(item.state));
+  const attentionFiles = items.filter((item) => hasFile(item.state) && custodyIsVisible(item.custody) && item.state.kind !== "valid");
+  const attention = [...missing, ...attentionFiles];
+  const all = counts.configured && !attention.length;
+  const title = !counts.configured ? "材料范围还没设置" : missing.length ? "我负责的还差几样" : attentionFiles.length ? "有文件需要处理" : "样样都在";
   return (
-    <KitCard title={all ? "样样都在" : "档案还差几样"} action={<button className="link t-meta" onClick={() => router.set("companyTab", 2)}>全部文件</button>}>
-      <span className="row gap10"><ProgressTrack value={cnt.total ? cnt.held / cnt.total : 1} width={140} /><span className="t-meta muted num">已有 {cnt.held}/{cnt.total}</span></span>
+    <KitCard title={title} action={<button className="link t-meta" onClick={() => router.set("companyTab", 2)}>全部文件</button>}>
+      <ArchiveCountSummary counts={counts} />
+      {!counts.configured && <span className="t-meta muted">Charter 不再按法域清单猜你缺什么。先定哪些材料由你保管，完整度只算这些。</span>}
       {attention.slice(0, 5).map((i) => {
-        const st = statusOfArchive(i.state);
+        const st = statusOfArchiveItem(i);
         return (
           <div key={i.typeID} className="doc-row">
-            <span className={`doc-ic ${isMissing(i.state) ? "missing" : i.state.kind === "expired" ? "bad" : "warn"}`}><Icon name={isMissing(i.state) ? "plus" : "doc.text"} size={15} /></span>
+            <span className={`doc-ic ${hasFile(i.state) ? i.state.kind === "expired" ? "bad" : "warn" : "missing"}`}><Icon name={hasFile(i.state) ? "doc.text" : "plus"} size={15} /></span>
             <span className="grow ellipsis" style={{ fontWeight: 600 }}>{archiveItemName(i)}</span>
             <StatusTag s={st} />
+            <CustodyChip owner={owner} item={i} />
             {i.document ? <button className="link t-meta" onClick={() => router.open({ kind: "document", id: i.document!.id })}>查看</button> : <button className="link t-meta" onClick={() => router.set("companyTab", 2)}>上传</button>}
           </div>
         );
       })}
-      {all && <span className="t-meta muted">现行文件都在，也没有快过期的。</span>}
+      {all && <span className="t-meta muted">我负责的材料都在，也没有快过期的。</span>}
     </KitCard>
   );
 }
@@ -373,35 +364,56 @@ function Dues({ c }: { c: Company }) {
 function Archive({ c, onUpload }: { c: Company; onUpload: (typeID: string) => void }) {
   const { store, router } = useApp();
   const items = store.archive(c);
-  const cnt = archiveCounts(items);
-  const [showNA, setShowNA] = useState(false);
-  const na = items.filter((i) => isNotApplicable(i.state));
+  const counts = store.companyCounts(c);
+  const view = useFileView();
+  const visible = visibleArchiveItems(items);
+  const hidden = hiddenArchiveItems(items);
+  const owner = ref("company", c.id);
+  const groups = archiveReviewGroups(visible);
+  const shown = view === "held" ? heldArchiveItems(items) : visible;
   const row = (i: ArchiveItem) => {
-    const st = statusOfArchive(i.state);
+    const st = statusOfArchiveItem(i);
     const d = i.document;
-    const date = d ? (d.expiryDate ? `${d.expiryDate} 到期` : d.issueDate ? `${d.issueDate} 签发` : "") : "";
+    const expiry = d ? expiryLabel(d, i.type) : "";
+    const date = d ? (expiry === "长期" ? "长期" : `${expiry} 到期`) : "";
     return (
-      <div key={i.typeID} className="cp-line archive-line" role="button" tabIndex={0} style={{ cursor: "default" }}
+      <div key={i.typeID} className="cp-line archive-line" role="button" tabIndex={0} style={{ cursor: "default" }} data-custody={i.custody}
         title={d ? d.originalFileName : st.hint}
-        onClick={() => d ? router.open({ kind: "document", id: d.id }) : onUpload(i.typeID)}
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest("button")) return;
+          if (d) router.open({ kind: "document", id: d.id });
+          else if (i.custody === "mine") onUpload(i.typeID);
+        }}
         onKeyDown={(e) => e.key === "Enter" && (d ? router.open({ kind: "document", id: d.id }) : onUpload(i.typeID))}>
         <span className="col grow" style={{ minWidth: 0, gap: 1 }}>
-          <span className="name-1" style={{ fontSize: 13.5, fontWeight: 600, color: isHeld(i.state) ? undefined : "var(--muted)" }}>{archiveItemName(i)}</span>
+          <span className="name-1" style={{ fontSize: 13.5, fontWeight: 600, color: d ? undefined : "var(--muted)" }}>{archiveItemName(i)}{i.suggested && !i.explicit && !d ? <span className="t-meta muted" style={{ fontWeight: 400 }}>　法域常见</span> : null}</span>
           {(i.copies > 0 || i.olderVersions > 0 || i.note) && <span className="t-meta muted name-1">
             {[i.copies > 0 ? `另有 ${i.copies} 份同类现行` : "", i.olderVersions > 0 ? `${i.olderVersions} 个旧版` : "", i.note].filter(Boolean).join(" · ")}</span>}
         </span>
         <span className="t-meta muted num" style={{ whiteSpace: "nowrap" }}>{date}</span>
         <StatusTag s={st} />
         {d && <ExtraTags d={d} t={i.type} />}
-        {!d && isMissing(i.state) && <span className="t-meta link" style={{ whiteSpace: "nowrap" }}>上传</span>}
+        {view === "review" && <CustodyChip owner={owner} item={i} />}
+        {!d && i.custody !== "agent" && <button className="link t-meta" style={{ whiteSpace: "nowrap" }} onClick={() => onUpload(i.typeID)}>上传</button>}
       </div>
     );
   };
   return (
-    <Card title="档案清单" aside={<span className="row gap10"><span className="t-meta muted num" title="已有 = 有现行文件，或外部保管、权限受限；不适用的不计入">已有 {cnt.held}/{cnt.total}{cnt.missing ? ` · 缺 ${cnt.missing}` : ""}</span><button className="link t-meta" onClick={() => router.open({ kind: "companyItems", companyID: c.id })}>调整清单</button></span>}>
-      {items.filter((i) => !isNotApplicable(i.state)).map(row)}
-      {na.length > 0 && <button className="t-meta muted" style={{ textAlign: "left", padding: "8px 0 2px" }} onClick={() => setShowNA((v) => !v)}>{showNA ? "收起" : "显示"}不适用的 {na.length} 项</button>}
-      {showNA && na.map(row)}
+    <Card title={view === "held" ? "已有材料" : "完整性审阅"} aside={<span className="row gap10 wrap"><FileViewSwitch /><button className="link t-meta" onClick={() => router.open({ kind: "companyItems", companyID: c.id })}>增减条目</button></span>}>
+      <div className="row gap10 wrap" style={{ paddingBottom: 8 }}><ArchiveCountSummary counts={counts} /><span className="spacer" /></div>
+      <div className="col" aria-label={view === "held" ? "已有材料" : "完整性审阅"}>
+        {view === "held"
+          ? shown.map(row)
+          : groups.map((group) => group.items.length > 0 && (
+            <div key={group.key} className="col" style={{ gap: 0, marginTop: 8 }}>
+              <span className="t-label" style={{ padding: "6px 0" }}>{group.title} · {group.items.length}{group.hint ? <span className="muted" style={{ fontWeight: 500 }}>　{group.hint}</span> : null}</span>
+              {group.items.map(row)}
+            </div>
+          ))}
+        {view === "held" && !shown.length && <span className="muted" style={{ padding: "8px 0" }}>还没有归档文件。把文件拖进这一页即可归档。</span>}
+        {view === "review" && !groups.some((group) => group.items.length) && <span className="muted" style={{ padding: "8px 0" }}>没有需要审阅的条目。</span>}
+      </div>
+      {view === "review" && hidden.length > 0 && <span className="t-meta muted">不在范围或不适用的 {hidden.length} 项已隐藏。</span>}
       <span className="t-meta muted" style={{ paddingTop: 8 }}>把文件拖进这一页的任何地方即可归档，Charter 会识别类型和日期。</span>
     </Card>
   );

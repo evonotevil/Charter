@@ -4,7 +4,10 @@ import { ExtraTags, StatusTag, statusOfFreshness } from "./Status";
 import { useEffect, useRef, useState } from "react";
 import { pdfjs } from "../services/extract";
 import * as D from "../domain/day";
-import { type Document, type NodeRef, type PacketTemplate, archiveStateLabel, ref, sameRef, stateNeedsAttention, typeAppliesTo, latinPadEnd } from "../domain/models";
+import {
+  type Document, type DocumentLink, type EvidenceLinkKind, type EvidenceTarget, type NodeRef, type PacketTemplate,
+  archiveStateLabel, evidenceLinkKindLabel, ref, sameRef, stateNeedsAttention, typeAppliesTo, latinPadEnd,
+} from "../domain/models";
 import { expiryOf, freshnessLabel } from "../domain/engine";
 import { useApp } from "../state/hooks";
 import { type PacketItem, buildPacket, exportAll, exportPlan, packetIncluded, packetItemID, packetItemTitle, packetItems, packetMissing, packetReason, recencyText } from "../services/packets";
@@ -335,11 +338,149 @@ function FilePreview({ path }: { path: string }) {
   return <div ref={box} className="scroll" style={{ height: "100%", paddingBottom: 12 }} aria-busy={state === "loading"} />;
 }
 
+const evidenceTargetLabel: Record<EvidenceTarget, string> = {
+  company: "公司",
+  person: "人员",
+  appointment: "任职",
+  holding: "持股",
+};
+const evidenceTargets: EvidenceTarget[] = ["company", "person", "appointment", "holding"];
+const evidenceKinds = Object.keys(evidenceLinkKindLabel) as EvidenceLinkKind[];
+
+export function EvidenceLinksChip({ doc, onEdit }: { doc: Document; onEdit: () => void }) {
+  const { store } = useApp();
+  const current = store.data.documents.find((item) => item.id === doc.id) ?? doc;
+  const links = store.linksOf(current);
+  return (
+    <button
+      className="row gap4"
+      style={{ minWidth: 0, maxWidth: 260, flexWrap: "nowrap", flexShrink: 1 }}
+      title="证据关联：这份文件还证明了哪些公司、人员、任职或持股"
+      onClick={(event) => { event.stopPropagation(); onEdit(); }}
+    >
+      {links.length ? <>
+        {links.slice(0, 2).map((link, index) => (
+          <span key={`${link.target}:${link.id}:${index}`} className="v4-chip btnlike" style={{ maxWidth: 140, minWidth: 0, flexShrink: 1 }}>
+            <Icon name={link.target === "person" ? "users" : link.target === "company" ? "building.2" : "arrow.triangle.branch"} size={10} />
+            <span className="ellipsis">{store.evidenceTargetName(link)}</span>
+          </span>
+        ))}
+        {links.length > 2 && <span className="t-meta muted" style={{ whiteSpace: "nowrap", flex: "none" }}>另 {links.length - 2} 条</span>}
+      </> : <span className="v4-chip btnlike" style={{ color: "var(--muted)" }}><Icon name="plus" size={10} />关联</span>}
+    </button>
+  );
+}
+
+export function EvidenceEditor({ doc, onClose }: { doc: Document; onClose: () => void }) {
+  const { store } = useApp();
+  const [links, setLinks] = useState<DocumentLink[]>(() => store.linksOf(doc).map((link) => ({ ...link })));
+  const [target, setTarget] = useState<EvidenceTarget | null>(null);
+  const [query, setQuery] = useState("");
+  const t = store.docType(doc.typeID);
+  const candidates = (kind: EvidenceTarget) => {
+    const q = query.trim().toLowerCase();
+    const list = kind === "company"
+      ? store.data.companies.map((c) => ({ id: c.id, name: `${c.jurisdiction} ${c.name}` }))
+      : kind === "person"
+        ? store.data.people.map((p) => ({ id: p.id, name: p.name }))
+        : kind === "appointment"
+          ? store.data.appointments.map((a) => ({ id: a.id, name: store.evidenceTargetName({ target: "appointment", id: a.id }) }))
+          : store.data.holdings.map((h) => ({ id: h.id, name: store.evidenceTargetName({ target: "holding", id: h.id }) }));
+    return list.filter((item) => !links.some((link) => link.target === kind && link.id === item.id) && !(doc.owner.kind === kind && doc.owner.id === item.id) && (!q || item.name.toLowerCase().includes(q))).slice(0, 30);
+  };
+  const defaultKind = (kind: EvidenceTarget): EvidenceLinkKind =>
+    kind === "appointment" ? "appointment"
+      : kind === "holding" ? "shareholding"
+        : doc.typeID === "common.passport" || doc.typeID === "person.idcard" ? "identity"
+          : doc.typeID === "common.address" ? "address"
+            : doc.typeID === "person.kyc" ? "kyc" : "other";
+  const save = () => {
+    store.setLinks(doc.id, links);
+    onClose();
+  };
+  return (
+    <Modal onClose={onClose}>
+      <SheetScaffold
+        title="证据关联"
+        width={720}
+        height={720}
+        subtitle={`${t?.name ?? "文件"} · ${store.nameOf(doc.owner)}。这份文件除了属于${doc.owner.kind === "company" ? "这家公司" : "这个人"}，还能证明哪些公司、人员、任职或持股。`}
+        trailing={<><Button onClick={onClose}>取消</Button><Button kind="primary" onClick={save}>保存</Button></>}
+      >
+        <div className="col gap16">
+          {doc.sourcePath && <span className="t-meta muted">来源：<span className="mono selectable">{doc.sourcePath}</span></span>}
+          <div className="card flush">
+            {!links.length && <div className="muted" style={{ padding: 18 }}>还没有关联。例如：一份合并 KYC 可以同时关联几位董事；一份董事会决议可以关联几项任职。</div>}
+            {links.map((link, index) => (
+              <div key={`${link.target}:${link.id}:${index}`} className="list-row" style={{ alignItems: "center" }}>
+                <span className="pill neutral">{evidenceTargetLabel[link.target]}</span>
+                <span className="col grow" style={{ minWidth: 0 }}><span className="ellipsis" style={{ fontWeight: 600 }}>{store.evidenceTargetName(link)}</span></span>
+                <SelectField minWidth={130} value={link.kind} options={evidenceKinds.map((kind) => [kind, evidenceLinkKindLabel[kind]] as [EvidenceLinkKind, string])}
+                  onChange={(kind) => setLinks((items) => items.map((item, i) => i === index ? { ...item, kind } : item))} />
+                <input className="field" style={{ width: 80 }} placeholder="页码" aria-label="页码" value={link.page ?? ""}
+                  onChange={(event) => setLinks((items) => items.map((item, i) => i === index ? { ...item, page: event.target.value || undefined } : item))} />
+                <button className="v4-x" aria-label="移除这条关联" onClick={() => setLinks((items) => items.filter((_, i) => i !== index))}><Icon name="xmark" size={11} /></button>
+              </div>
+            ))}
+          </div>
+          <div className="col gap8">
+            <span className="row gap8 wrap"><span className="t-label">添加关联</span>
+              {evidenceTargets.map((kind) => <Button key={kind} size="small" kind={target === kind ? "primary" : "secondary"} onClick={() => { setTarget(target === kind ? null : kind); setQuery(""); }}>{evidenceTargetLabel[kind]}</Button>)}
+            </span>
+            {target && <div className="card" style={{ padding: 10, gap: 6 }}>
+              <input className="field" autoFocus placeholder={`搜索${evidenceTargetLabel[target]}…`} value={query} onChange={(event) => setQuery(event.target.value)} />
+              <div className="col scroll" style={{ maxHeight: 240 }}>
+                {candidates(target).map((item) => <button key={item.id} className="v4-opt" onClick={() => setLinks((items) => [...items, { target, id: item.id, kind: defaultKind(target) }])}>
+                  <span className="ellipsis grow">{item.name}</span><Icon name="plus" size={12} />
+                </button>)}
+                {!candidates(target).length && <span className="t-meta muted" style={{ padding: 8 }}>没有可选的。</span>}
+              </div>
+            </div>}
+          </div>
+        </div>
+      </SheetScaffold>
+    </Modal>
+  );
+}
+
+export function RelatedEvidence({ target, id, title = "相关证据" }: { target: EvidenceTarget; id: string; title?: string }) {
+  const { store, router } = useApp();
+  const [editing, setEditing] = useState<Document | null>(null);
+  const evidence = store.evidenceFor(target, id);
+  if (!evidence.length) return null;
+  const grouped = new Map<string, { doc: Document; links: DocumentLink[] }>();
+  for (const { doc, link } of evidence) {
+    const row = grouped.get(doc.id) ?? { doc, links: [] };
+    row.links.push(link);
+    grouped.set(doc.id, row);
+  }
+  return (
+    <section className="card">
+      <div className="card-head"><h2 className="t-card">{title}</h2><span className="t-meta muted">{grouped.size} 份文件</span></div>
+      <div className="col">
+        {[...grouped.values()].map(({ doc, links }) => (
+          <div key={doc.id} className="doc-row">
+            <span className="doc-ic"><Icon name="doc.text" size={15} /></span>
+            <span className="col grow" style={{ minWidth: 0 }}>
+              <span className="ellipsis" style={{ fontWeight: 700 }}>{store.docType(doc.typeID)?.name ?? "文件"}<span className="t-meta muted" style={{ fontWeight: 400 }}>　{store.nameOf(doc.owner)} 名下</span></span>
+              <span className="t-meta muted ellipsis">{links.map((link) => `${evidenceLinkKindLabel[link.kind]}：${store.evidenceTargetName(link)}${link.page ? `（第 ${link.page} 页）` : ""}`).join("；")}</span>
+            </span>
+            <Button size="small" kind="quiet" onClick={() => setEditing(doc)}>关联</Button>
+            <Button size="small" kind="quiet" onClick={() => router.open({ kind: "document", id: doc.id })}>查看</Button>
+          </div>
+        ))}
+      </div>
+      {editing && <EvidenceEditor doc={editing} onClose={() => setEditing(null)} />}
+    </section>
+  );
+}
+
 export function DocumentSheet({ documentID, onClose }: { documentID: string; onClose: () => void }) {
   const { store } = useApp();
   const orig = store.data.documents.find((d) => d.id === documentID);
   const [doc, setDoc] = useState<Document | undefined>(orig ? { ...orig } : undefined);
   const [reissue, setReissue] = useState(false);
+  const [editingLinks, setEditingLinks] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [startStage, stageNode] = useStageFile();
   if (!doc) return <Modal onClose={onClose}><SheetScaffold title="找不到这份文件" subtitle="它可能已被移除。" width={420} trailing={<Button kind="primary" onClick={onClose}>关闭</Button>}><span /></SheetScaffold></Modal>;
@@ -351,12 +492,14 @@ export function DocumentSheet({ documentID, onClose }: { documentID: string; onC
   if (!typeChoices.some(([id]) => id === doc.typeID)) typeChoices.push([doc.typeID, t?.name ?? "未知类型"]);
   const owners: NodeRef[] = [...store.data.companies.map((c) => ref("company", c.id)), ...store.data.people.map((p) => ref("person", p.id))];
   const formChoices = forms.includes(doc.form) ? forms : [...forms, doc.form];
-  const ruleExpiry = !doc.expiryDate ? expiryOf(doc, t) : undefined;
+  const ruleExpiry = !doc.expiryDate && !doc.noExpiry ? expiryOf(doc, t) : undefined;
+  const needsPrintedExpiry = t?.validity === "expiryOnDocument";
   const needsReissue = f.kind === "expired" || f.kind === "expiring" || f.kind === "needsUpdate";
   const waiting = store.openRequest(doc.owner, doc.typeID);
   const save = async () => {
     try {
-      const u = await store.updateDocument(doc);
+      const latestLinks = store.data.documents.find((item) => item.id === doc.id)?.links;
+      const u = await store.updateDocument({ ...doc, links: latestLinks });
       let text = "文件信息已保存";
       if (orig && !sameRef(orig.owner, doc.owner)) text = `已改归属到 ${store.nameOf(doc.owner)}`;
       else if (orig && orig.typeID !== doc.typeID) text = `已改为“${store.docType(doc.typeID)?.name ?? "文件"}”`;
@@ -390,7 +533,19 @@ export function DocumentSheet({ documentID, onClose }: { documentID: string; onC
             </FormGroup>
             <FormGroup title="日期">
               <FieldRow label="签发日期"><DateField value={doc.issueDate} onChange={(issueDate) => set({ issueDate })} /></FieldRow>
-              <FieldRow label="到期日期" hint={ruleExpiry ? `留空时按规则算出：${D.long(ruleExpiry)}` : undefined}><DateField value={doc.expiryDate} onChange={(expiryDate) => set({ expiryDate })} placeholder="长期有效可留空" relativeTo={doc.issueDate} /></FieldRow>
+              <FieldRow
+                label="到期日期"
+                hint={ruleExpiry ? `留空时按规则算出：${D.long(ruleExpiry)}` : t?.validity === "permanent" || t?.validity === "untilChanged"
+                  ? "这类文件长期有效，不用填。"
+                  : needsPrintedExpiry && !doc.expiryDate && !doc.noExpiry
+                    ? "留空会算作“未填日期”，计入需处理。"
+                    : undefined}
+              >
+                <DateField value={doc.expiryDate} onChange={(expiryDate) => set({ expiryDate, ...(expiryDate ? { noExpiry: undefined } : {}) })}
+                  placeholder={t?.validity === "permanent" || t?.validity === "untilChanged" ? "长期有效，无需填写" : ruleExpiry ? "留空按规则计算" : doc.noExpiry ? "长期有效" : "填写文件上的到期日"} relativeTo={doc.issueDate} />
+              </FieldRow>
+              {needsPrintedExpiry && <Checkbox checked={!!doc.noExpiry && !doc.expiryDate} disabled={!!doc.expiryDate} title={doc.expiryDate ? "已填写到期日" : undefined}
+                onChange={(noExpiry) => set({ noExpiry: noExpiry || undefined })}>文件上写明长期有效 / 没有到期日</Checkbox>}
             </FormGroup>
             <FormGroup title="状态与备注">
               <Switch checked={doc.needsUpdate} onChange={(needsUpdate) => set({ needsUpdate })}>信息有变更，需要重开</Switch>
@@ -398,10 +553,17 @@ export function DocumentSheet({ documentID, onClose }: { documentID: string; onC
               <FieldRow label="核实" hint="与原件（或经认证副本）核对过的日期。"><DateField value={doc.verifiedOn} onChange={(verifiedOn) => set({ verifiedOn })} placeholder="未核实" /></FieldRow>
               <FieldRow label="备注"><TextField multiline rows={2} value={doc.notes} onChange={(notes) => set({ notes })} placeholder="可选" /></FieldRow>
             </FormGroup>
+            <FormGroup title="证据关联">
+              <div className="row gap8 wrap">
+                <EvidenceLinksChip doc={doc} onEdit={() => setEditingLinks(true)} />
+                <Button size="small" kind="quiet" onClick={() => setEditingLinks(true)}>编辑关联…</Button>
+              </div>
+            </FormGroup>
             <FormGroup title="记录">
               <FieldRow label="原始文件名"><span className="ellipsis selectable" title={doc.originalFileName}>{doc.originalFileName || "—"}</span></FieldRow>
               <FieldRow label="归档日期"><span>{D.long(doc.addedOn)}</span></FieldRow>
-              <FieldRow label="来源路径"><span className="mono selectable t-meta" style={{ overflowWrap: "anywhere" }}>{store.fileURL(doc)}</span></FieldRow>
+              <FieldRow label="Charter 副本"><span className="mono selectable t-meta" style={{ overflowWrap: "anywhere" }}>{doc.filePath}</span></FieldRow>
+              <FieldRow label="原件位置" hint="导入时的位置，只作记录；Charter 不会改动原件。"><span className="mono selectable t-meta" style={{ overflowWrap: "anywhere" }}>{doc.sourcePath || "未记录（5.3 之前归档）"}</span></FieldRow>
               {(() => { const older = store.data.documents.filter((x) => x.supersededBy === doc.id); const newer = doc.supersededBy ? store.data.documents.find((x) => x.id === doc.supersededBy) : undefined;
                 return <FieldRow label="版本">{newer ? <span>旧版，已被 {newer.issueDate ?? "新版"} 的版本替代</span> : <span>现行{older.length ? `，替代了 ${older.length} 个旧版` : ""}</span>}</FieldRow>; })()}
             </FormGroup>
@@ -410,6 +572,11 @@ export function DocumentSheet({ documentID, onClose }: { documentID: string; onC
         {stageNode}
       </SheetScaffold>
       {reissue && <ReissueRequestSheet owner={doc.owner} typeIDs={[doc.typeID]} onClose={() => setReissue(false)} />}
+      {editingLinks && <EvidenceEditor doc={doc} onClose={() => {
+        const latest = store.data.documents.find((item) => item.id === doc.id);
+        setDoc((value) => value ? { ...value, links: latest?.links } : value);
+        setEditingLinks(false);
+      }} />}
     </Modal>
   );
 }

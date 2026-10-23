@@ -1,7 +1,7 @@
 // Charter 桌面端主进程（Electron）：窗口、文件读写（原子写入）、文件夹监听、同步状态、文字识别、系统字体。
 // 界面全部在前端（dist/）；这里只提供前端做不到的系统能力。与 Tauri 版 src-tauri/src/*.rs 一一对应。
 
-const { app, BrowserWindow, ipcMain, dialog, shell, Notification, protocol, net, nativeTheme, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, Notification, protocol, net, nativeTheme, Menu, session } = require("electron");
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const os = require("node:os");
@@ -295,15 +295,28 @@ function menu() {
   ]));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   log("info", `启动 Charter ${app.getVersion()} · ${process.platform} ${process.arch} · Electron ${process.versions.electron}`);
+  // 升级后清掉旧界面缓存。Windows 覆盖安装时 userData 会保留，这一步避免继续打开旧版本资源。
+  try {
+    const versionMark = path.join(app.getPath("userData"), "last-version.txt");
+    const lastVersion = await fsp.readFile(versionMark, "utf8").catch(() => "");
+    if (lastVersion.trim() !== app.getVersion()) {
+      await session.defaultSession.clearCache();
+      await session.defaultSession.clearStorageData({ storages: ["serviceworkers", "cachestorage", "shadercache"] });
+      await fsp.mkdir(path.dirname(versionMark), { recursive: true });
+      await fsp.writeFile(versionMark, app.getVersion(), "utf8");
+    }
+  } catch (e) {
+    log("warn", "旧界面缓存清理失败", e && e.message || String(e));
+  }
   protocol.handle("app", (req) => {
     const u = new URL(req.url);
     const rel = decodeURIComponent(u.pathname).replace(/^\/+/, "") || "index.html";
     const file = path.normalize(path.join(DIST, rel));
     if (!file.startsWith(DIST)) return new Response("禁止访问", { status: 403 });
     // 直接读文件返回，不依赖 net.fetch(file://)（Windows 上对 asar 内路径不稳定）
-    return fsp.readFile(file).then((buf) => new Response(buf, { headers: { "content-type": mime(file) } }))
+    return fsp.readFile(file).then((buf) => new Response(buf, { headers: { "content-type": mime(file), "cache-control": "no-store" } }))
       .catch((e) => { log("error", "界面文件读取失败", file, e.code || e.message); return new Response("找不到界面文件", { status: 404 }); });
   });
   // 本地文件预览（PDF、图片）：charter-file://local/<编码后的完整路径>

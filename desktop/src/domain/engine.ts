@@ -227,6 +227,8 @@ export function freshnessOf(doc: Document, type: DocumentType | undefined, today
   let expiry: Day | undefined;
   if (doc.expiryDate) expiry = doc.expiryDate;
   else {
+    // 文件上已经明确写明长期有效时，以文件本身为准。
+    if (doc.noExpiry) return { kind: "valid" };
     if (!type) return { kind: "unknown" };
     switch (type.validity) {
       case "permanent": case "untilChanged": return { kind: "valid" };
@@ -251,8 +253,8 @@ export function expiryOf(doc: Document, type?: DocumentType): Day | undefined {
 export function expiryLabel(doc: Document, type?: DocumentType): string {
   const e = expiryOf(doc, type);
   if (e) return e;
-  if (type?.validity === "permanent" || type?.validity === "untilChanged") return "长期";
-  return "待核对";
+  if (doc.noExpiry || type?.validity === "permanent" || type?.validity === "untilChanged") return "长期";
+  return "未填日期";
 }
 
 // MARK: - 股权
