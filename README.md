@@ -2,7 +2,7 @@
 
 管理海外子公司的跨平台桌面应用：股权结构、到期事项、中介、公司档案、文件与人员。
 
-当前版本：**5.3.0**。Charter 5 使用 Electron + React + TypeScript，Mac 与 Windows 共用一套产品代码。
+当前版本：**5.3.1**。Charter 5 使用 Electron + React + TypeScript，Mac 与 Windows 共用一套产品代码。
 
 产品网站：[https://evonotevil.github.io/Charter/](https://evonotevil.github.io/Charter/)
 
@@ -10,19 +10,20 @@
 
 从 [GitHub Releases](https://github.com/evonotevil/Charter/releases/latest) 下载：
 
-- **Mac Apple 芯片（M1 及以后）**：`Charter-5.3.0-Mac-arm64.dmg`
-- **Mac Intel**：`Charter-5.3.0-Mac-x64.dmg`
-- **Windows 10/11 x64**：推荐 `Charter-5.3.0-Windows-Setup.exe`
-- **Windows 免安装**：`Charter-5.3.0-Windows-x64.zip`
+- **Mac Apple 芯片（M1 及以后）**：`Charter-5.3.1-Mac-arm64.dmg`
+- **Mac Intel**：`Charter-5.3.1-Mac-x64.dmg`
+- **Windows 10/11 x64**：推荐 `Charter-5.3.1-Windows-Setup.exe`
+- **Windows 免安装**：`Charter-5.3.1-Windows-x64.zip`
 - **SHA-256 校验值**：`SHA256SUMS.txt`
 
 Mac 用户也可以下载对应的 `.zip`。应用没有使用 Apple Developer ID 或 Windows 商业代码签名证书：Mac 首次打开时可能需要在访达中右键 Charter →「打开」；Windows 可能显示 SmartScreen 提示，选择「更多信息」→「仍要运行」。
 
-## 5.3 更新
+## 5.3.1 更新
 
+- 5.3.1 为维护版本，桌面应用、产品网站、安装包与校验文件统一更新到 5.3.1。
+- 安装包由 GitHub Actions 在原生 macOS 和 Windows 环境重新构建并验证。
 - 产品网站全新改版，用真实界面、更新说明和完整数据策略介绍 Charter。
 - 下载区重新整理为 Apple 芯片、Intel Mac 与 Windows 安装版、免安装版。
-- 桌面应用与网站统一发布到 5.3.0，安装包继续由原生 macOS 和 Windows 环境构建验证。
 - 延续现有数据格式，5.0、5.1 和 4.x 数据可以直接打开。
 
 ## 源码
@@ -34,4 +35,4 @@ Mac 用户也可以下载对应的 `.zip`。应用没有使用 Apple Developer I
 | `规范/` | 产品设计、交互与视觉规范 |
 | `.github/workflows/release.yml` | Windows 与两种 Mac 架构的原生构建、安装测试和发布流程 |
 
-开发说明见 [desktop/README.md](desktop/README.md)，5.3 发布说明见 [desktop/RELEASE.md](desktop/RELEASE.md)。
+开发说明见 [desktop/README.md](desktop/README.md)，5.3.1 发布说明见 [desktop/RELEASE.md](desktop/RELEASE.md)。
