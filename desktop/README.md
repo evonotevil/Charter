@@ -1,6 +1,6 @@
 # Charter 桌面版
 
-Electron + React + TypeScript。5.1 正式发布同时提供 Windows x64、Apple 芯片 Mac 和 Intel Mac 安装包；4.x 的 Tauri 源码保留在 `src-tauri/`，不再用于发布。
+Electron + React + TypeScript。5.3 正式发布同时提供 Windows x64、Apple 芯片 Mac 和 Intel Mac 安装包；4.x 的 Tauri 源码保留在 `src-tauri/`，不再用于发布。
 
 GitHub 发布使用三个原生构建环境：
 
@@ -78,4 +78,4 @@ npm test             # 单元测试
 
 ## 数据
 
-用户在设置里选择数据文件夹。Mac 与 Windows 共用数据时，请选两端都能访问的同步服务。5.1 延续 4.x 和 5.0 的数据文件夹格式，升级前仍建议备份整个文件夹。
+用户在设置里选择数据文件夹。Mac 与 Windows 共用数据时，请选两端都能访问的同步服务。5.3 延续 4.x、5.0 和 5.1 的数据文件夹格式，升级前仍建议备份整个文件夹。
