@@ -3,21 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Charter 5 将海外子公司、股权、到期事项、公司档案、文件与人员关系整理在同一个本地优先的工作区中。">
-  <meta name="theme-color" content="#f2f5ee">
-  <title>Charter 5 — 复杂公司关系，一眼看清</title>
+  <meta name="theme-color" content="#f7f9f5">
+  <meta name="description" content="Charter 5.3.2 用五个工作视图整理公司关系、到期事项、档案、文件与人员，数据留在本机。">
+  <title>Charter 5.3.2 · 五个视图，一份公司底稿</title>
   <link rel="icon" href="assets/charter-icon.png">
   <style>
+    /* Hallmark · shape: Feature Stack · genre: modern-minimal · theme: brand · hero: Stage · nav: floating pill · footer: letter close · signature: a five-chapter working guide under an island navigation
+     * posture: restrained · axes: light/rounded-sans/chromatic-green · contrast: pass · fold: pass · v2.0.0 */
+    /* Hallmark · pre-emit critique: P5 H4 E4 S5 R5 V5 · weakest: H, five stacked chapters can flatten the pace; the sticky chapter index and changing fact blocks keep each screen distinct */
+
     @font-face {
-      font-family: "Inter";
-      src: url("assets/fonts/inter-latin-400-normal.woff2") format("woff2");
-      font-weight: 400;
+      font-family: "Nunito";
+      src: url("./assets/fonts/nunito-900.ttf") format("truetype");
+      font-weight: 900;
       font-display: swap;
     }
     @font-face {
       font-family: "Inter";
-      src: url("assets/fonts/inter-latin-500-normal.woff2") format("woff2");
-      font-weight: 500;
+      src: url("assets/fonts/inter-latin-400-normal.woff2") format("woff2");
+      font-weight: 400;
       font-display: swap;
     }
     @font-face {
@@ -28,1372 +32,698 @@
     }
 
     :root {
-      --canvas: #f2f5ee;
-      --canvas-deep: #e8eee4;
-      --surface: #ffffff;
-      --surface-soft: #f7f9f4;
-      --ink: #17231b;
-      --forest: #214b30;
-      --forest-deep: #143622;
-      --muted: #5d6a60;
-      --faint: #79857c;
-      --line: #d5ddd2;
-      --line-strong: #b3beb2;
-      --lime: #7be32c;
-      --lime-hot: #8def3d;
-      --lime-edge: #46a500;
-      --lime-soft: #eafadf;
-      --amber: #f4d36b;
-      --amber-soft: #fff3cf;
-      --rose: #b42318;
-      --rose-soft: #ffe5e1;
-      --max: 1360px;
-      --ease: cubic-bezier(.22, 1, .36, 1);
-      --ease-out: cubic-bezier(.16, 1, .3, 1);
+      --font-display: "Nunito", "PingFang SC", "Noto Sans SC", sans-serif;
+      --font-body: "Inter", "PingFang SC", "Noto Sans SC", sans-serif;
+
+      --color-canvas: oklch(97.95% 0.0057 128.5);
+      --color-surface: oklch(99.15% 0.0038 128.5);
+      --color-surface-soft: oklch(96.62% 0.0085 128.6);
+      --color-surface-hover: oklch(98.4% 0.011 131);
+      --color-tint: oklch(94.9% 0.022 132);
+      --color-ink: oklch(31.16% 0.0266 159.7);
+      --color-muted: oklch(52.08% 0.0201 164.1);
+      --color-line: oklch(91.99% 0.0153 136.1);
+      --color-line-strong: oklch(65% 0.034 133.4);
+      --color-accent: oklch(74.78% 0.2289 137.6);
+      --color-accent-edge: oklch(55.93% 0.1732 138.1);
+      --color-accent-ink: oklch(30.02% 0.0777 135.2);
+      --color-accent-text: oklch(51.17% 0.1584 138.1);
+      --color-accent-soft: oklch(96.9% 0.0344 130.5);
+      --color-accent-soft-line: oklch(89.02% 0.0841 131.4);
+      --color-deep: oklch(23.67% 0.0173 155.7);
+      --color-deep-line: oklch(42% 0.02 153);
+      --color-on-deep: oklch(96.2% 0.013 135);
+      --color-on-deep-muted: oklch(82% 0.025 139);
+      --color-focus: oklch(51.17% 0.1584 138.1);
+      --color-shadow: oklch(24% 0.02 150 / 0.08);
+
+      --container: 1440px;
+      --gutter: clamp(24px, 5vw, 64px);
+      --gap-columns: 32px;
+      --space-2xs: 4px;
+      --space-xs: 8px;
+      --space-sm: 12px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 40px;
+      --space-2xl: 64px;
+      --space-3xl: 96px;
+      --space-4xl: 144px;
+
+      --text-display: clamp(54px, 6vw, 82px);
+      --text-display-s: clamp(42px, 4.2vw, 58px);
+      --text-section: clamp(38px, 3.6vw, 52px);
+      --text-title: 25px;
+      --text-lead: 21px;
+      --text-md: 18px;
+      --text-sm: 14px;
+
+      --radius-control: 12px;
+      --radius-panel: 26px;
+      --shadow-control: 0 4px 0 var(--color-accent-edge);
+      --shadow-soft: 0 16px 40px var(--color-shadow);
     }
 
-    * { box-sizing: border-box; }
-    html { overflow-x: clip; scroll-behavior: smooth; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { overflow-x: clip; scroll-behavior: smooth; scroll-padding-top: 104px; }
     body {
       margin: 0;
       overflow-x: clip;
-      color: var(--ink);
-      background: var(--canvas);
-      font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
-      font-size: 16px;
-      line-height: 1.5;
-      -webkit-font-smoothing: antialiased;
+      color: var(--color-ink);
+      background: var(--color-canvas);
+      font-family: var(--font-body);
+      font-size: var(--text-md);
+      line-height: 1.6;
+      text-rendering: optimizeLegibility;
+      scrollbar-color: var(--color-line-strong) var(--color-canvas);
     }
+    img { display: block; max-width: 100%; height: auto; }
     a { color: inherit; text-decoration: none; }
-    img { display: block; max-width: 100%; }
-    button { font: inherit; }
-    section[id] { scroll-margin-top: 80px; }
-    :focus-visible { outline: 2px solid var(--forest); outline-offset: 3px; }
+    summary { font: inherit; }
+    h1, h2, h3, p, figure, ol, dl, dd { margin: 0; }
+    b, strong { font-weight: 600; }
+    h1, h2, h3 {
+      min-width: 0;
+      overflow-wrap: break-word;
+      font-family: var(--font-display);
+      font-weight: 900;
+      color: var(--color-ink);
+      text-wrap: balance;
+    }
+    h1 { max-width: 11ch; font-size: var(--text-display); line-height: 1.03; letter-spacing: -0.035em; }
+    h2 { max-width: 16ch; font-size: var(--text-section); line-height: 1.08; letter-spacing: -0.025em; }
+    h3 { max-width: 24ch; font-size: var(--text-title); line-height: 1.25; letter-spacing: -0.015em; }
+    p { max-width: 65ch; text-wrap: pretty; }
+    :focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
+    ::selection { color: var(--color-accent-ink); background: var(--color-accent-soft-line); }
+    .container {
+      width: 100%;
+      max-width: var(--container);
+      margin-inline: auto;
+      padding-inline: var(--gutter);
+    }
     .skip-link {
       position: fixed;
       z-index: 100;
-      left: 16px;
-      top: 12px;
-      padding: 10px 14px;
-      border-radius: 8px;
-      color: var(--ink);
-      background: var(--lime);
-      transform: translateY(-150%);
-      transition: transform .2s ease;
+      inset-block-start: var(--space-sm);
+      inset-inline-start: var(--space-sm);
+      padding: var(--space-sm) var(--space-md);
+      border-radius: var(--radius-control);
+      color: var(--color-accent-ink);
+      background: var(--color-accent);
+      transform: translateY(-160%);
     }
     .skip-link:focus { transform: translateY(0); }
 
-    .header {
+    .nav-wrap {
       position: sticky;
-      top: 0;
+      inset-block-start: var(--space-sm);
       z-index: 30;
-      border-bottom: 1px solid rgba(213, 221, 210, .9);
-      background: rgba(242, 245, 238, .9);
-      backdrop-filter: blur(16px) saturate(1.1);
-      transition: box-shadow .24s ease, background .24s ease;
+      padding-inline: var(--gutter);
     }
-    .header.scrolled {
-      background: rgba(242, 245, 238, .97);
-      box-shadow: 0 10px 30px rgba(27, 53, 33, .07);
-    }
-    .header-inner {
-      width: min(calc(100% - 48px), var(--max));
-      min-height: 66px;
-      margin: 0 auto;
+    .nav-shell {
+      width: min(100%, 920px);
+      min-height: 64px;
+      margin-inline: auto;
       display: flex;
       align-items: center;
-      gap: 18px;
+      gap: var(--space-md);
+      padding: var(--space-xs) var(--space-sm) var(--space-xs) var(--space-md);
+      border-radius: var(--radius-panel);
+      background: var(--color-surface);
+      box-shadow: var(--shadow-soft);
     }
     .brand {
       display: inline-flex;
       align-items: center;
-      gap: 10px;
-      font-size: 20px;
-      font-weight: 600;
-      letter-spacing: -.4px;
+      gap: var(--space-xs);
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      white-space: nowrap;
     }
-    .brand img { width: 31px; height: 31px; border-radius: 8px; }
-    .version { padding: 4px 7px; color: #5d6a60; font-size: 10.5px; font-weight: 500; }
+    .brand img { width: 34px; height: 34px; border-radius: var(--space-sm); }
     .nav {
-      margin-left: auto;
+      margin-inline-start: auto;
       display: flex;
       align-items: center;
-      gap: 24px;
-      color: #4f5e54;
-      font-size: 13px;
-      font-weight: 500;
+      gap: var(--space-xs);
+      font-size: var(--text-sm);
+      font-weight: 600;
     }
-    .nav a { transition: color .18s ease; }
-    .nav a:hover { color: var(--ink); }
-    .nav .github {
-      padding: 9px 13px;
-      border-radius: 8px;
-      color: white;
-      background: var(--ink);
-      transition: transform .2s var(--ease), background .2s ease;
+    .nav a { padding: var(--space-xs) var(--space-sm); border-radius: var(--space-xs); }
+    .nav a:hover { background: var(--color-surface-soft); }
+    .nav .nav-action { color: var(--color-accent-text); background: var(--color-accent-soft); }
+    .mobile-menu { display: none; margin-inline-start: auto; position: relative; }
+    .mobile-menu summary {
+      list-style: none;
+      padding: var(--space-xs) var(--space-sm);
+      border: 1px solid var(--color-line-strong);
+      border-radius: var(--radius-control);
+      cursor: pointer;
+      font-size: var(--text-sm);
+      font-weight: 600;
     }
-    .nav .github:hover { transform: translateY(-1px); background: #26362b; }
+    .mobile-menu summary::-webkit-details-marker { display: none; }
+    .mobile-menu nav {
+      position: absolute;
+      inset-block-start: calc(100% + var(--space-xs));
+      inset-inline-end: 0;
+      min-width: 184px;
+      display: grid;
+      gap: var(--space-2xs);
+      padding: var(--space-sm);
+      border: 1px solid var(--color-line);
+      border-radius: var(--radius-control);
+      background: var(--color-surface);
+    }
+    .mobile-menu nav a { padding: var(--space-sm); border-radius: var(--space-xs); }
+    .mobile-menu nav a:hover { background: var(--color-surface-soft); }
 
     .hero {
-      width: min(calc(100% - 48px), var(--max));
-      min-height: 846px;
-      margin: 0 auto;
-      padding: 58px 0 46px;
+      min-height: calc(100dvh - 80px);
       display: grid;
-      grid-template-columns: .8fr 1.2fr;
+      align-items: end;
+      padding-block: var(--space-2xl) var(--space-xl);
+      background: var(--color-surface-soft);
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      gap: var(--space-2xl);
       align-items: center;
-      gap: 48px;
     }
-    .hero-copy {
-      position: relative;
-      z-index: 2;
-      opacity: 0;
-      transform: translateY(18px);
-      animation: hero-in .8s var(--ease-out) .08s forwards;
-    }
-    .eyebrow {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      margin-bottom: 24px;
-      color: #536158;
-      font-size: 12.5px;
-      font-weight: 600;
-      letter-spacing: .02em;
-    }
-    .eyebrow i {
-      width: 8px;
-      height: 8px;
-      flex: 0 0 8px;
-      border-radius: 3px;
-      background: var(--lime);
-      box-shadow: inset 0 -2px 0 var(--lime-edge);
-    }
-    h1 {
-      margin: 0;
-      font-family: "Avenir Next", "Aptos Display", "PingFang SC", "Microsoft YaHei", sans-serif;
-      font-size: clamp(54px, 5.2vw, 74px);
-      line-height: .98;
-      font-weight: 700;
-      letter-spacing: -3.8px;
-    }
-    h1 span { display: block; }
-    h1 .mark {
-      width: fit-content;
-      margin-top: 8px;
-      padding: 0 8px 5px 2px;
-      color: var(--forest);
-      background: linear-gradient(transparent 63%, var(--lime) 63%);
-    }
-    .lede {
-      max-width: 510px;
-      margin: 24px 0 0;
-      color: #5b675f;
-      font-size: 16px;
-      line-height: 1.8;
-    }
-    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+    .hero-copy { display: grid; gap: var(--space-lg); align-content: center; }
+    .hero-copy p { color: var(--color-muted); font-size: var(--text-lead); }
+    .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md); }
     .button {
-      min-height: 45px;
-      padding: 0 18px;
+      min-height: 50px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
-      border: 1px solid var(--line-strong);
-      border-radius: 9px;
-      color: var(--ink);
-      background: rgba(255, 255, 255, .74);
-      font-size: 13px;
+      padding: var(--space-sm) var(--space-lg);
+      border: 1px solid var(--color-line-strong);
+      border-radius: var(--radius-control);
+      color: var(--color-ink);
+      background: transparent;
+      font-size: var(--text-sm);
       font-weight: 600;
-      transition: transform .2s var(--ease), background .2s ease, border-color .2s ease;
+      white-space: nowrap;
     }
-    .button:hover { transform: translateY(-2px); border-color: #8f9d90; background: white; }
+    .button:hover { background: var(--color-surface-hover); }
+    .button:active { background: var(--color-line); }
     .button.primary {
-      color: #14240a;
-      border-color: var(--lime-edge);
-      background: var(--lime);
-      box-shadow: inset 0 -4px 0 var(--lime-edge);
+      border-color: var(--color-accent-edge);
+      color: var(--color-accent-ink);
+      background: var(--color-accent);
+      box-shadow: var(--shadow-control);
     }
-    .button.primary:hover { transform: translateY(-1px); background: var(--lime-hot); }
-    .button.primary:active { transform: translateY(3px); box-shadow: inset 0 0 0 var(--lime-edge); }
-    .facts {
+    .button.primary:hover { background: var(--color-accent-soft-line); }
+    .button.primary:active { box-shadow: none; }
+
+    .hero-figure {
+      overflow: hidden;
+      border-radius: var(--radius-panel);
+      background: var(--color-surface);
+      box-shadow: 0 0 0 1px var(--color-line);
+    }
+    .hero-figure img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top left; }
+    .hero-figure figcaption {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px 18px;
-      margin-top: 26px;
-      color: #5d6a60;
-      font-size: 11px;
-      letter-spacing: .01em;
+      justify-content: space-between;
+      gap: var(--space-sm);
+      padding: var(--space-md) var(--space-lg);
+      border-block-start: 1px solid var(--color-line);
+      color: var(--color-muted);
+      font-size: var(--text-sm);
     }
-    .facts span { display: inline-flex; align-items: center; gap: 6px; }
-    .facts i { width: 5px; height: 5px; border-radius: 50%; background: #52a41f; }
-
-    .stage {
-      min-width: 0;
-      position: relative;
-      height: 646px;
-      display: flex;
+    .hero-figure figcaption strong { color: var(--color-ink); font-weight: 600; }
+    .view-strip {
+      min-height: 80px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       align-items: center;
-      justify-content: flex-end;
-      isolation: isolate;
-      opacity: 0;
-      transform: translateY(28px) scale(.985);
-      animation: stage-in .9s var(--ease-out) .2s forwards;
-    }
-    .stage::before {
-      content: "";
-      position: absolute;
-      z-index: -2;
-      width: 630px;
-      height: 630px;
-      right: -75px;
-      top: -14px;
-      border-radius: 50%;
-      background: radial-gradient(circle at 45% 45%, rgba(123, 227, 44, .22), rgba(123, 227, 44, .06) 55%, transparent 72%);
-    }
-    .stage::after {
-      content: "";
-      position: absolute;
-      z-index: -1;
-      width: 455px;
-      height: 455px;
-      right: 64px;
-      bottom: 23px;
-      border: 1px solid rgba(33, 75, 48, .13);
-      border-radius: 50%;
-    }
-    .app-frame {
-      width: 794px;
-      max-width: 100%;
-      padding: 12px;
-      border: 1px solid #bdc8bc;
-      border-radius: 18px;
-      background: #e4ebe1;
-      box-shadow: 0 34px 72px rgba(28, 57, 35, .15);
-      transform: translateX(10px) rotate(.25deg);
-    }
-    .app-window {
-      position: relative;
-      overflow: hidden;
-      border: 1px solid #c8d1c5;
-      border-radius: 10px;
-      background: white;
-      aspect-ratio: 16 / 10;
-    }
-    .app-window::before {
-      content: "";
-      position: absolute;
-      z-index: 3;
-      inset: 0 0 auto;
-      height: 29px;
-      border-bottom: 1px solid #d8dfd5;
-      background:
-        radial-gradient(circle at 16px 14px, #f16c5c 0 4px, transparent 4.5px),
-        radial-gradient(circle at 31px 14px, #edc351 0 4px, transparent 4.5px),
-        radial-gradient(circle at 46px 14px, #62c456 0 4px, transparent 4.5px),
-        rgba(247, 249, 245, .98);
-      pointer-events: none;
-    }
-    .preview-link { position: absolute; inset: 0; display: block; cursor: zoom-in; }
-    .preview-image {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      opacity: 0;
-      transform: scale(1.006);
-      transition: opacity .24s ease, transform .4s var(--ease);
-      pointer-events: none;
-    }
-    .preview-image.active { opacity: 1; transform: scale(1); }
-    .demo-tag {
-      position: absolute;
-      z-index: 4;
-      right: 11px;
-      bottom: 11px;
-      padding: 5px 7px;
-      border-radius: 4px;
-      color: #eff5ed;
-      background: rgba(23, 35, 27, .8);
-      font-size: 10px;
-      letter-spacing: .03em;
-      pointer-events: none;
-    }
-    .app-controls {
-      padding: 10px 12px 12px;
-      border-top: 1px solid #d8dfd5;
-      background: #f7f9f5;
-    }
-    .tabs {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 4px;
-    }
-    .tab {
-      min-width: 0;
-      min-height: 38px;
-      padding: 0 7px;
-      border: 0;
-      border-radius: 7px;
-      color: #68766d;
-      background: transparent;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: color .18s ease, background .18s ease, box-shadow .18s ease;
-    }
-    .tab:hover { color: var(--ink); background: rgba(255, 255, 255, .7); }
-    .tab[aria-selected="true"] {
-      color: var(--forest);
-      background: white;
-      box-shadow: 0 1px 3px rgba(27, 50, 33, .1);
-    }
-    .preview-caption {
-      min-height: 27px;
-      padding: 7px 3px 0;
-      display: flex;
-      align-items: baseline;
-      gap: 9px;
-      color: #5f6c62;
-      font-size: 10.5px;
-      line-height: 1.5;
-    }
-    .preview-caption strong { flex: 0 0 auto; color: #35443a; font-size: 10.5px; font-weight: 600; }
-    .float-card {
-      position: absolute;
-      z-index: 5;
-      padding: 12px 14px;
-      border: 1px solid #cfd7cc;
-      border-radius: 11px;
-      background: rgba(255, 255, 255, .96);
-      box-shadow: 0 14px 30px rgba(26, 51, 33, .11);
-    }
-    .float-card small { display: block; color: #66746a; font-size: 9px; }
-    .float-card b {
-      display: block;
-      margin-top: 3px;
-      color: var(--forest);
-      font-family: "Avenir Next", "Aptos Display", "PingFang SC", sans-serif;
-      font-size: 21px;
-      letter-spacing: -.5px;
-    }
-    .float-card.one { left: -16px; top: 84px; }
-    .float-card.two { right: -17px; bottom: 75px; }
-    .float-card.two b { color: #916000; }
-
-    .view-rail {
-      border-top: 1px solid var(--line);
-      border-bottom: 1px solid var(--line);
-      background: rgba(255, 255, 255, .36);
-    }
-    .view-rail-inner {
-      width: min(calc(100% - 48px), var(--max));
-      min-height: 78px;
-      margin: 0 auto;
-      display: grid;
-      grid-template-columns: 1.15fr repeat(5, 1fr);
-      align-items: stretch;
-    }
-    .rail-intro,
-    .rail-item { padding: 16px 18px; border-right: 1px solid var(--line); }
-    .rail-intro { padding-left: 0; display: flex; flex-direction: column; justify-content: center; }
-    .rail-intro b { font-size: 13px; font-weight: 600; }
-    .rail-intro small { margin-top: 4px; color: var(--muted); font-size: 10px; }
-    .rail-item { display: flex; flex-direction: column; justify-content: center; transition: background .18s ease; }
-    .rail-item:hover { background: rgba(123, 227, 44, .12); }
-    .rail-item span { color: #4f6e43; font-size: 10.5px; font-weight: 600; }
-    .rail-item b { margin-top: 4px; font-size: 12px; font-weight: 600; }
-    .rail-item:last-child { border-right: 0; }
-
-    .section {
-      width: min(calc(100% - 48px), var(--max));
-      margin: 0 auto;
-    }
-    .story { padding: 96px 0 26px; }
-    .story-head {
-      display: grid;
-      grid-template-columns: 1fr .86fr;
-      align-items: end;
-      gap: 72px;
-      padding-bottom: 40px;
-      border-bottom: 1px solid var(--line);
-    }
-    .section-kicker {
-      display: flex;
-      align-items: center;
-      gap: 9px;
-      margin-bottom: 18px;
-      color: #66746a;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: .02em;
-    }
-    .section-kicker i { width: 18px; height: 2px; background: var(--lime); }
-    .story h2,
-    .local-copy h2,
-    .release h2,
-    .download h2 {
-      margin: 0;
-      font-family: "Avenir Next", "Aptos Display", "PingFang SC", sans-serif;
-      font-size: clamp(42px, 4.2vw, 58px);
-      line-height: 1.04;
-      font-weight: 700;
-      letter-spacing: -3px;
-    }
-    .story-head p {
-      max-width: 510px;
-      margin: 0 0 3px;
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.8;
-    }
-    .proof-list { display: grid; }
-    .proof-row {
-      display: grid;
-      grid-template-columns: 1.17fr .83fr;
-      align-items: center;
-      gap: 76px;
-      padding: 76px 0;
-      border-bottom: 1px solid var(--line);
-    }
-    .proof-row:nth-child(even) { grid-template-columns: .83fr 1.17fr; }
-    .proof-row:nth-child(even) .proof-media { order: 2; }
-    .proof-media {
-      min-width: 0;
-      position: relative;
-      padding: 10px;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: #e5ebe2;
-    }
-    .proof-media::before {
-      content: "";
-      position: absolute;
-      inset: -18px 28px 18px -18px;
-      z-index: -1;
-      border-radius: 20px;
-      background: rgba(123, 227, 44, .1);
-    }
-    .proof-window {
-      overflow: hidden;
-      border: 1px solid #c7d0c4;
-      border-radius: 9px;
-      background: white;
-    }
-    .proof-window img { width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; }
-    .proof-copy { min-width: 0; }
-    .proof-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 9px;
-      border-radius: 6px;
-      color: var(--forest);
-      background: var(--lime-soft);
-      font-size: 10px;
-      font-weight: 600;
-    }
-    .proof-label i { width: 6px; height: 6px; border-radius: 50%; background: #52a41f; }
-    .proof-copy h3 {
-      margin: 18px 0 15px;
-      font-family: "Avenir Next", "Aptos Display", "PingFang SC", sans-serif;
-      font-size: clamp(30px, 3vw, 42px);
-      line-height: 1.1;
-      font-weight: 700;
-      letter-spacing: -1.8px;
-    }
-    .proof-copy p {
-      max-width: 470px;
-      margin: 0;
-      color: var(--muted);
-      font-size: 15px;
-      line-height: 1.8;
-    }
-    .proof-points {
-      display: grid;
-      gap: 9px;
-      margin-top: 23px;
-    }
-    .proof-point {
-      display: flex;
-      align-items: flex-start;
-      gap: 9px;
-      color: #445248;
-      font-size: 12px;
-      line-height: 1.55;
-    }
-    .proof-point i {
-      width: 18px;
-      height: 18px;
-      flex: 0 0 18px;
-      display: grid;
-      place-items: center;
-      margin-top: 1px;
-      border-radius: 5px;
-      color: #19380c;
-      background: var(--lime-soft);
-      font-size: 10px;
-      font-style: normal;
-      font-weight: 700;
-    }
-    .proof-collage {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-    .proof-collage .proof-window:last-child { transform: translateY(22px); }
-
-    .local {
-      margin-top: 72px;
-      color: #f1f8ef;
-      background:
-        radial-gradient(circle at 86% 12%, rgba(123, 227, 44, .13), transparent 28%),
-        var(--forest-deep);
-    }
-    .local-inner {
-      width: min(calc(100% - 48px), var(--max));
-      margin: 0 auto;
-      padding: 78px 0;
-      display: grid;
-      grid-template-columns: .9fr 1.1fr;
-      align-items: center;
-      gap: 70px;
-    }
-    .local .section-kicker { color: #a9bea9; }
-    .local-copy h2 { color: white; }
-    .local-copy p {
-      max-width: 510px;
-      margin: 20px 0 0;
-      color: #b9cbb9;
-      font-size: 16px;
-      line-height: 1.8;
-    }
-    .local-list { display: grid; gap: 11px; margin-top: 25px; }
-    .local-item { display: flex; align-items: center; gap: 10px; color: #d9e8d8; font-size: 12px; }
-    .local-item i {
-      width: 20px;
-      height: 20px;
-      flex: 0 0 20px;
-      display: grid;
-      place-items: center;
-      border-radius: 6px;
-      color: #18370b;
-      background: var(--lime);
-      font-size: 10px;
-      font-style: normal;
-      font-weight: 700;
-      box-shadow: inset 0 -2px 0 var(--lime-edge);
-    }
-    .data-panel {
-      position: relative;
-      padding: 22px;
-      border: 1px solid rgba(221, 249, 204, .19);
-      border-radius: 18px;
-      background: rgba(255, 255, 255, .055);
-    }
-    .data-panel::before {
-      content: "";
-      position: absolute;
-      inset: 16px -14px -14px 16px;
-      z-index: -1;
-      border: 1px solid rgba(221, 249, 204, .08);
-      border-radius: 18px;
-    }
-    .data-top {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding-bottom: 17px;
-      border-bottom: 1px solid rgba(221, 249, 204, .14);
-    }
-    .folder-mark {
-      width: 36px;
-      height: 30px;
-      flex: 0 0 36px;
-      position: relative;
-      border-radius: 6px;
-      background: var(--lime);
-      box-shadow: inset 0 -3px 0 var(--lime-edge);
-    }
-    .folder-mark::before {
-      content: "";
-      position: absolute;
-      width: 16px;
-      height: 6px;
-      left: 3px;
-      top: -4px;
-      border-radius: 3px 3px 0 0;
-      background: var(--lime);
-    }
-    .data-top b { display: block; color: white; font-size: 13px; font-weight: 600; }
-    .data-top small { display: block; margin-top: 3px; color: #9db29f; font-size: 9px; }
-    .data-top .status {
-      margin-left: auto;
-      padding: 5px 7px;
-      border-radius: 4px;
-      color: #d9efc7;
-      background: rgba(123, 227, 44, .12);
-      font-size: 10px;
-    }
-    .data-rows { display: grid; margin-top: 8px; }
-    .data-row {
-      min-height: 62px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      border-bottom: 1px solid rgba(221, 249, 204, .1);
-    }
-    .data-row:last-child { border-bottom: 0; }
-    .data-icon {
-      width: 34px;
-      height: 34px;
-      flex: 0 0 34px;
-      display: grid;
-      place-items: center;
-      border-radius: 8px;
-      color: #b8cdb9;
-      background: rgba(255, 255, 255, .07);
-      font-size: 14px;
-      font-weight: 600;
-    }
-    .data-row b { display: block; color: #edf6eb; font-size: 12px; font-weight: 500; }
-    .data-row small { display: block; margin-top: 3px; color: #91a894; font-size: 9px; }
-    .data-row .row-note { margin-left: auto; color: #b8ccb9; font-size: 9px; white-space: nowrap; }
-    .data-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }
-    .data-chips span {
-      padding: 6px 8px;
-      border: 1px solid rgba(221, 249, 204, .14);
-      border-radius: 5px;
-      color: #b3c7b5;
-      background: rgba(255, 255, 255, .035);
-      font-size: 9px;
+      gap: var(--space-sm);
+      padding: var(--space-lg);
+      border-block-start: 1px solid var(--color-line);
+      color: var(--color-muted);
+      font-size: var(--text-sm);
     }
 
-    .release { padding: 94px 0 86px; }
-    .release-grid {
+    .guide { padding-block: var(--space-4xl); }
+    .guide-grid {
       display: grid;
-      grid-template-columns: .72fr 1.28fr;
-      gap: 76px;
+      grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+      gap: var(--space-2xl);
       align-items: start;
     }
-    .release-number {
-      margin-top: 18px;
-      color: var(--forest);
-      font-family: "Avenir Next", "Aptos Display", "PingFang SC", sans-serif;
-      font-size: clamp(96px, 12vw, 170px);
-      line-height: .8;
-      font-weight: 700;
-      letter-spacing: -10px;
-    }
-    .release-number small {
-      display: inline-block;
-      margin-left: 7px;
-      color: #6c7a70;
-      font-size: 12px;
-      font-weight: 500;
-      letter-spacing: 0;
-      vertical-align: top;
-      transform: translateY(8px);
-    }
-    .release-copy {
-      margin: 22px 0 0;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.75;
-    }
-    .release-list {
+    .guide-index {
+      position: sticky;
+      inset-block-start: 112px;
       display: grid;
-      border-top: 1px solid var(--line);
+      gap: var(--space-lg);
     }
-    .release-item {
+    .guide-index > p { color: var(--color-muted); }
+    .chapter-list {
+      counter-reset: chapter;
       display: grid;
-      grid-template-columns: 34px 1fr auto;
-      align-items: center;
-      gap: 18px;
-      min-height: 96px;
-      border-bottom: 1px solid var(--line);
+      border-block-start: 1px solid var(--color-line-strong);
     }
-    .release-item .icon {
-      width: 30px;
-      height: 30px;
+    .chapter-list li { counter-increment: chapter; list-style: none; }
+    .chapter-list a {
       display: grid;
-      place-items: center;
-      border-radius: 8px;
-      color: #1d3c10;
-      background: var(--lime-soft);
-      font-size: 12px;
-      font-weight: 700;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 4fr);
+      gap: var(--space-md);
+      padding-block: var(--space-sm);
+      border-block-end: 1px solid var(--color-line);
+      color: var(--color-muted);
+      font-size: 16px;
     }
-    .release-item b { display: block; font-size: 14px; font-weight: 600; }
-    .release-item p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
-    .release-item .date { color: #5f6c62; font-size: 10px; letter-spacing: .04em; white-space: nowrap; }
-
-    .download {
-      border-top: 1px solid var(--line);
-      background: var(--canvas-deep);
+    .chapter-list a::before {
+      content: counter(chapter, decimal-leading-zero);
+      color: var(--color-accent-text);
+      font-size: var(--text-sm);
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
     }
-    .download-inner {
-      width: min(calc(100% - 48px), var(--max));
-      margin: 0 auto;
-      padding: 78px 0 70px;
-    }
-    .download-head {
-      display: grid;
-      grid-template-columns: 1fr .8fr;
-      align-items: end;
-      gap: 64px;
-      margin-bottom: 30px;
-    }
-    .download-lede {
-      max-width: 470px;
-      margin: 0 0 3px;
-      color: var(--muted);
-      font-size: 15px;
-      line-height: 1.8;
-    }
-    .platform-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .platform-card {
+    .chapter-list a:hover { color: var(--color-ink); background: var(--color-surface-hover); }
+    .chapters { display: grid; gap: var(--space-3xl); }
+    .chapter { display: grid; gap: var(--space-lg); }
+    .chapter-figure {
       overflow: hidden;
-      border: 1px solid #c9d3c7;
-      border-radius: 15px;
-      background: rgba(255, 255, 255, .8);
+      border-radius: var(--radius-panel);
+      background: var(--color-surface);
+      box-shadow: 0 0 0 1px var(--color-line);
     }
-    .platform-head {
-      min-height: 74px;
-      padding: 16px 20px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      border-bottom: 1px solid #d4dcd1;
-    }
-    .platform-mark {
-      width: 39px;
-      height: 39px;
-      flex: 0 0 39px;
+    .chapter-figure img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; }
+    .chapter-copy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-xl); align-items: start; }
+    .chapter-copy > div { display: grid; gap: var(--space-sm); }
+    .chapter-copy p { color: var(--color-muted); font-size: 16px; }
+    .chapter-facts { display: grid; gap: var(--space-sm); }
+    .chapter-facts div {
       display: grid;
-      place-items: center;
-      border-radius: 10px;
-      color: var(--forest);
-      background: var(--lime-soft);
-      font-family: "Avenir Next", "Aptos Display", sans-serif;
-      font-size: 21px;
-      font-weight: 700;
+      gap: var(--space-2xs);
+      padding-block-start: var(--space-sm);
+      border-block-start: 1px solid var(--color-line);
     }
-    .platform-mark.windows { padding: 9px; }
-    .platform-mark svg { width: 20px; height: 20px; fill: currentColor; }
-    .platform-copy b { display: block; font-size: 17px; font-weight: 600; letter-spacing: -.2px; }
-    .platform-copy small { display: block; margin-top: 3px; color: #5f6c62; font-size: 11px; }
-    .platform-meta { margin-left: auto; color: #5f6c62; font-size: 10px; letter-spacing: .04em; }
-    .asset-row {
-      min-height: 65px;
-      padding: 0 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 18px;
-      border-bottom: 1px solid #d9e0d7;
-      transition: background .18s ease, padding-left .22s var(--ease);
+    .chapter-facts dt { color: var(--color-muted); font-size: var(--text-sm); }
+    .chapter-facts dd { font-size: 16px; font-weight: 600; }
+
+    .local {
+      padding-block: var(--space-3xl);
+      color: var(--color-on-deep);
+      background: var(--color-deep);
     }
-    .asset-row:last-child { border-bottom: 0; }
-    .asset-row:hover { padding-left: 25px; background: rgba(123, 227, 44, .08); }
-    .asset-copy b { display: block; color: #26352b; font-size: 13px; font-weight: 600; }
-    .asset-copy small { display: block; margin-top: 4px; color: #5f6c62; font-size: 10.5px; }
-    .asset-action { color: var(--forest); font-size: 11px; font-weight: 600; white-space: nowrap; }
-    .asset-row:hover .asset-action { color: #2d7a0b; }
-    .download-foot {
-      margin-top: 22px;
-      padding-top: 18px;
+    .local h2, .local h3 { color: var(--color-on-deep); }
+    .local-grid {
       display: grid;
-      grid-template-columns: 1fr auto;
-      align-items: end;
-      gap: 30px;
-      border-top: 1px solid #c8d2c6;
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      gap: var(--space-2xl);
+      align-items: start;
     }
-    .security-copy b { display: block; font-size: 12px; font-weight: 600; }
-    .security-copy p { max-width: 760px; margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
-    .download-links { display: flex; align-items: center; gap: 18px; color: #536057; font-size: 11px; white-space: nowrap; }
-    .download-links a { padding-bottom: 3px; border-bottom: 1px solid #9ba79c; transition: color .18s ease, border-color .18s ease; }
-    .download-links a:hover { color: var(--forest); border-color: var(--forest); }
+    .local-copy { display: grid; gap: var(--space-lg); }
+    .local-copy p { color: var(--color-on-deep-muted); }
+    .local-guide { display: grid; border-block-start: 1px solid var(--color-line-strong); }
+    .local-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+      gap: var(--space-lg);
+      padding-block: var(--space-lg);
+      border-block-end: 1px solid var(--color-deep-line);
+    }
+    .local-row h3 { font-size: 21px; }
+    .local-row p { color: var(--color-on-deep-muted); font-size: 16px; }
 
-    .source-band {
-      border-top: 1px solid var(--line);
-      border-bottom: 1px solid var(--line);
-      background: rgba(255, 255, 255, .32);
+    .updates { padding-block: var(--space-4xl); }
+    .updates-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      gap: var(--space-2xl);
+      align-items: start;
     }
-    .source-inner {
-      width: min(calc(100% - 48px), var(--max));
-      min-height: 88px;
-      margin: 0 auto;
-      display: flex;
+    .updates-copy { display: grid; gap: var(--space-lg); }
+    .updates-copy p { color: var(--color-muted); }
+    .version {
+      display: inline-flex;
+      align-items: baseline;
+      gap: var(--space-sm);
+      color: var(--color-accent-text);
+      font-family: var(--font-display);
+      font-size: var(--text-display-s);
+      font-weight: 900;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+    .version small { color: var(--color-muted); font-family: var(--font-body); font-size: var(--text-sm); font-weight: 600; }
+    .change-list { display: grid; border-block-start: 1px solid var(--color-line-strong); }
+    .change {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 4fr);
+      gap: var(--space-lg);
+      padding-block: var(--space-lg);
+      border-block-end: 1px solid var(--color-line);
+    }
+    .change h3 { font-size: 21px; }
+    .change p { color: var(--color-muted); font-size: 16px; }
+
+    .download { padding-block: var(--space-3xl); background: var(--color-tint); }
+    .download-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      gap: var(--space-2xl);
+      align-items: start;
+    }
+    .download-copy { display: grid; gap: var(--space-lg); }
+    .download-copy p { color: var(--color-muted); }
+    .download-action { justify-self: start; }
+    .packages { display: grid; border-block-start: 1px solid var(--color-line-strong); }
+    .package {
+      min-height: 68px;
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+      gap: var(--space-md);
       align-items: center;
-      justify-content: space-between;
-      gap: 30px;
+      padding-block: var(--space-sm);
+      border-block-end: 1px solid var(--color-line-strong);
     }
-    .source-inner b { display: block; font-size: 12px; font-weight: 600; }
-    .source-inner small { display: block; margin-top: 5px; color: var(--muted); font-size: 10.5px; }
-    .source-tags { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
-    .source-tags span,
-    .source-tags a {
-      padding: 6px 8px;
-      border: 1px solid #c9d2c7;
-      border-radius: 5px;
-      color: #5d6a60;
-      background: rgba(255, 255, 255, .5);
-      font-size: 9px;
+    .package:hover { background: var(--color-surface-hover); }
+    .package b { font-size: 16px; }
+    .package span { color: var(--color-muted); font-size: var(--text-sm); }
+    .package em { color: var(--color-accent-text); font-size: var(--text-sm); font-style: normal; font-weight: 600; }
+    .download-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-lg);
+      margin-block-start: var(--space-lg);
+      color: var(--color-muted);
+      font-size: var(--text-sm);
     }
-    .source-tags a { color: var(--forest); font-weight: 600; }
 
-    footer { background: var(--canvas); }
+    .site-footer {
+      padding-block: var(--space-3xl) var(--space-xl);
+      background: var(--color-surface);
+    }
     .footer-inner {
-      width: min(calc(100% - 48px), var(--max));
-      min-height: 72px;
-      margin: 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      color: #718076;
-      font-size: 11px;
+      display: grid;
+      grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
+      gap: var(--space-2xl);
+      align-items: end;
     }
-    .footer-inner a { color: #536158; }
+    .closing {
+      max-width: 18ch;
+      font-family: var(--font-display);
+      font-size: var(--text-display-s);
+      font-weight: 900;
+      line-height: 1.06;
+      letter-spacing: -0.03em;
+    }
+    .footer-note { display: grid; gap: var(--space-sm); color: var(--color-muted); font-size: var(--text-sm); }
+    .footer-links { display: flex; flex-wrap: wrap; gap: var(--space-lg); }
+    .footer-links a { color: var(--color-ink); font-weight: 600; }
 
-    .reveal {
-      opacity: 0;
-      transform: translateY(22px);
-      transition: opacity .65s var(--ease-out), transform .65s var(--ease-out);
-    }
-    .reveal.visible { opacity: 1; transform: translateY(0); }
-    .reveal.delay-1 { transition-delay: .08s; }
-    .reveal.delay-2 { transition-delay: .16s; }
-    .reveal.delay-3 { transition-delay: .24s; }
-
-    @keyframes hero-in {
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes stage-in {
-      to { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    @media (max-width: 1080px) {
-      .hero { grid-template-columns: 1fr; gap: 38px; padding-top: 52px; }
-      .hero-copy { max-width: 740px; }
-      .stage { height: auto; min-height: 560px; justify-content: flex-start; padding: 18px 0 38px; }
-      .app-frame { transform: none; }
-      .float-card.one { left: -8px; }
-      .float-card.two { right: 16px; }
-      .view-rail-inner { grid-template-columns: 1fr repeat(5, 1fr); }
-      .story-head { grid-template-columns: 1fr; gap: 20px; }
-      .proof-row,
-      .proof-row:nth-child(even) { grid-template-columns: 1fr; gap: 30px; }
-      .proof-row:nth-child(even) .proof-media { order: 0; }
-      .local-inner { grid-template-columns: 1fr; gap: 42px; }
-      .release-grid { grid-template-columns: 1fr; gap: 34px; }
-      .release-number { margin-bottom: 26px; }
-      .download-head { grid-template-columns: 1fr; gap: 16px; }
-    }
-    @media (max-width: 760px) {
-      .header-inner { min-height: 60px; }
-      .nav { gap: 14px; }
-      .nav a:not(.github):not([href="#download"]) { display: none; }
-      .hero { padding: 40px 0 42px; }
-      .eyebrow { margin-bottom: 18px; }
-      h1 { font-size: clamp(44px, 12.5vw, 52px); letter-spacing: -3.2px; }
-      .lede { margin-top: 20px; font-size: 15px; }
-      .actions .button { flex: 1 1 150px; }
-      .facts { margin-top: 21px; }
-      .stage { min-height: 0; padding: 6px 0 20px; }
-      .app-frame { padding: 7px; border-radius: 12px; }
-      .app-window::before { height: 21px; }
-      .app-controls { padding: 7px 7px 8px; }
-      .tab { min-height: 34px; padding: 0 2px; font-size: 10px; }
-      .preview-caption { min-height: 39px; padding-top: 6px; font-size: 9px; }
-      .preview-caption strong { display: none; }
-      .float-card { display: none; }
-      .demo-tag { right: 7px; bottom: 7px; font-size: 8px; }
-      .view-rail-inner { grid-template-columns: repeat(3, 1fr); }
-      .rail-intro { display: none; }
-      .rail-item { min-height: 62px; padding: 12px 10px; }
-      .rail-item:nth-child(5), .rail-item:nth-child(6) { display: none; }
-      .story { padding-top: 64px; }
-      .story h2, .local-copy h2, .release h2, .download h2 { font-size: 40px; letter-spacing: -2.2px; }
-      .story-head { padding-bottom: 26px; }
-      .proof-row { padding: 48px 0; gap: 24px; }
-      .proof-copy h3 { margin-top: 14px; font-size: 34px; letter-spacing: -1.5px; }
-      .proof-copy p { font-size: 13px; }
-      .proof-points { margin-top: 18px; }
-      .proof-collage { grid-template-columns: 1fr; }
-      .proof-collage .proof-window:last-child { transform: none; }
-      .local { margin-top: 48px; }
-      .local-inner { padding: 58px 0; }
-      .data-panel { padding: 15px; }
-      .data-row { min-height: 56px; }
-      .release { padding: 64px 0 56px; }
-      .release-number { font-size: 100px; }
-      .release-item { grid-template-columns: 30px 1fr; gap: 13px; padding: 12px 0; }
-      .release-item .date { display: none; }
-      .download-inner { padding: 58px 0 50px; }
-      .platform-grid { grid-template-columns: 1fr; }
-      .download-foot { grid-template-columns: 1fr; gap: 16px; }
-      .download-links { justify-content: flex-start; flex-wrap: wrap; }
-      .source-inner { padding: 18px 0; flex-direction: column; align-items: flex-start; gap: 14px; }
-      .source-tags { justify-content: flex-start; }
-      .footer-inner { min-height: 76px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; }
-    }
-    @media (max-width: 480px) {
-      .header-inner, .hero, .view-rail-inner, .section, .local-inner, .download-inner, .source-inner, .footer-inner {
-        width: min(calc(100% - 32px), var(--max));
+    @media (max-width: 60rem) {
+      :root { --gutter: 24px; --gap-columns: 24px; --space-4xl: 96px; --space-3xl: 72px; --space-2xl: 48px; }
+      .nav { display: none; }
+      .mobile-menu { display: block; }
+      .hero-grid, .guide-grid, .chapter-copy, .local-grid, .updates-grid, .download-grid, .footer-inner {
+        grid-template-columns: minmax(0, 1fr);
       }
-      .version { display: none; }
-      .nav .github { padding: 9px 11px; font-size: 11px; }
-      .view-rail-inner { grid-template-columns: repeat(3, 1fr); }
-      .rail-item:nth-child(4) { display: none; }
-      .asset-row { padding: 0 14px; }
-      .asset-row:hover { padding-left: 18px; }
-      .platform-head { padding-inline: 14px; }
+      .guide-index { position: static; }
+    }
+    @media (max-width: 40rem) {
+      :root { --gutter: 16px; --space-4xl: 80px; --space-3xl: 64px; --space-2xl: 40px; }
+      .nav-shell { min-height: 58px; }
+      h1 { max-width: 10ch; line-height: 1.06; }
+      .hero { padding-block: var(--space-xl) var(--space-2xl); }
+      .hero-copy p { font-size: 18px; }
+      .hero-actions { align-items: stretch; flex-direction: column; }
+      .button { width: 100%; }
+      .hero-figure figcaption { flex-direction: column; }
+      .chapter-list a { grid-template-columns: minmax(0, 1fr) minmax(0, 4fr); }
+      .local-row, .change, .package {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-xs);
+      }
+      .download-action { justify-self: stretch; }
+      .closing { font-size: 40px; }
     }
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       *, *::before, *::after {
-        animation-duration: .01ms !important;
+        animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
-        transition-duration: .01ms !important;
+        transition-duration: 0.01ms !important;
       }
-      .hero-copy, .stage, .reveal { opacity: 1; transform: none; }
     }
   </style>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到主要内容</a>
 
-  <header class="header" id="site-header">
-    <div class="header-inner">
+  <header class="nav-wrap">
+    <div class="nav-shell">
       <a class="brand" href="#top" aria-label="Charter 首页">
-        <img src="assets/charter-icon.png" alt="">
+        <img src="assets/charter-icon.png" width="34" height="34" alt="">
         <span>Charter</span>
-        <span class="version">v5.3.2</span>
       </a>
       <nav class="nav" aria-label="主导航">
-        <a href="#product">产品</a>
-        <a href="#local">数据</a>
+        <a href="#guide">五个视图</a>
+        <a href="#local">本地数据</a>
         <a href="#updates">更新</a>
         <a href="#download">下载</a>
-        <a class="github" href="https://github.com/evonotevil/Charter">GitHub ↗</a>
+        <a class="nav-action" href="https://github.com/evonotevil/Charter">GitHub</a>
       </nav>
+      <details class="mobile-menu">
+        <summary>菜单</summary>
+        <nav aria-label="移动端导航">
+          <a href="#guide">五个视图</a>
+          <a href="#local">本地数据</a>
+          <a href="#updates">更新</a>
+          <a href="#download">下载</a>
+          <a href="https://github.com/evonotevil/Charter">GitHub</a>
+        </nav>
+      </details>
     </div>
   </header>
 
   <main id="main">
     <section class="hero" id="top">
-      <div class="hero-copy">
-        <div class="eyebrow"><i></i>Charter 5.3.2 · macOS + Windows</div>
-        <h1>
-          <span>复杂公司关系，</span>
-          <span class="mark">一眼看清。</span>
-        </h1>
-        <p class="lede">股权、到期事项、公司档案、文件与人员关系放在同一个工作区。打开产品，就能看见每条记录怎样连回公司、日期和材料。</p>
-        <div class="actions">
-          <a class="button primary" href="#download">下载 Charter 5</a>
-          <a class="button" href="https://github.com/evonotevil/Charter">查看 GitHub 源码 ↗</a>
-        </div>
-        <div class="facts">
-          <span><i></i>本地优先</span>
-          <span><i></i>无需账户</span>
-          <span><i></i>Apple 芯片、Intel 与 Windows</span>
-        </div>
-      </div>
-
-      <div class="stage" aria-label="Charter 界面预览">
-        <div class="float-card one"><small>待核实</small><b>41 条</b></div>
-        <div class="float-card two"><small>下一件到期</small><b>34 天</b></div>
-        <div class="app-frame">
-          <div class="app-window">
-            <a class="preview-link" id="preview-link" href="assets/store/01-structure.png" target="_blank" rel="noreferrer" aria-label="打开结构界面大图">
-              <img class="preview-image active" data-view="structure" src="assets/screens/01-structure.png" width="2880" height="1800" alt="Charter 股权结构界面" aria-hidden="false">
-              <img class="preview-image" data-view="due" src="assets/screens/02-due.png" width="2880" height="1800" alt="Charter 到期事项界面" aria-hidden="true">
-              <img class="preview-image" data-view="companies" src="assets/screens/03-companies.png" width="2880" height="1800" alt="Charter 公司档案界面" aria-hidden="true">
-              <img class="preview-image" data-view="documents" src="assets/screens/04-files.png" width="2880" height="1800" alt="Charter 文件材料界面" aria-hidden="true">
-              <img class="preview-image" data-view="people" src="assets/screens/05-people.png" width="2880" height="1800" alt="Charter 人员关系界面" aria-hidden="true">
-            </a>
-            <span class="demo-tag">虚拟演示数据</span>
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <h1>五个工作视图，一份公司底稿。</h1>
+          <p>从关系到到期，从文件到人员，都在同一份记录里继续往下看。</p>
+          <div class="hero-actions">
+            <a class="button primary" href="#download">下载 Charter 5</a>
+            <a class="button" href="https://github.com/evonotevil/Charter">查看 GitHub 源码</a>
           </div>
-          <div class="app-controls">
-            <div class="tabs" role="tablist" aria-label="切换 Charter 界面">
-              <button class="tab" id="tab-structure" role="tab" aria-selected="true" aria-controls="preview-caption" tabindex="0" data-view="structure">结构</button>
-              <button class="tab" id="tab-due" role="tab" aria-selected="false" aria-controls="preview-caption" tabindex="-1" data-view="due">到期</button>
-              <button class="tab" id="tab-companies" role="tab" aria-selected="false" aria-controls="preview-caption" tabindex="-1" data-view="companies">公司</button>
-              <button class="tab" id="tab-documents" role="tab" aria-selected="false" aria-controls="preview-caption" tabindex="-1" data-view="documents">文件</button>
-              <button class="tab" id="tab-people" role="tab" aria-selected="false" aria-controls="preview-caption" tabindex="-1" data-view="people">人员</button>
-            </div>
-            <div class="preview-caption" id="preview-caption" role="tabpanel" aria-labelledby="tab-structure" aria-live="polite">
-              <strong id="preview-title">结构</strong>
-              <span id="preview-description">沿集团、持股和任职关系查看完整链路。</span>
-            </div>
+          <div class="view-strip" aria-label="Charter 的五个工作视图">
+            <span>结构</span>
+            <span>到期</span>
+            <span>档案</span>
+            <span>文件</span>
+            <span>人员</span>
           </div>
         </div>
+        <figure class="hero-figure">
+          <img src="assets/screens/01-structure.png" width="1440" height="900" fetchpriority="high" alt="Charter 股权结构界面，展示集团控制链和相关任职关系">
+          <figcaption>
+            <strong>从集团结构开始，沿着关系继续走。</strong>
+            <span>界面使用虚拟演示数据</span>
+          </figcaption>
+        </figure>
       </div>
     </section>
 
-    <section class="view-rail" aria-label="产品视图概览">
-      <div class="view-rail-inner">
-        <div class="rail-intro">
-          <b>一个窗口，五种查看方式</b>
-          <small>同一份数据，不换上下文。</small>
-        </div>
-        <div class="rail-item"><span>01</span><b>结构</b></div>
-        <div class="rail-item"><span>02</span><b>到期</b></div>
-        <div class="rail-item"><span>03</span><b>公司</b></div>
-        <div class="rail-item"><span>04</span><b>文件</b></div>
-        <div class="rail-item"><span>05</span><b>人员</b></div>
-      </div>
-    </section>
-
-    <section class="section story" id="product">
-      <div class="story-head reveal">
-        <div>
-          <div class="section-kicker"><i></i>同一份公司记录</div>
-          <h2>不是五张表，<br>是一条记录。</h2>
-        </div>
-        <p>在 Charter 里，集团结构、截止日、公司档案、文件和人员不是彼此分开的表格。它们共用同一批公司、人物与材料，查看任何一处，都能继续沿着关系往前找。</p>
-      </div>
-
-      <div class="proof-list">
-        <article class="proof-row">
-          <div class="proof-media reveal">
-            <div class="proof-window">
-              <img src="assets/screens/01-structure.png" width="2880" height="1800" loading="lazy" alt="股权结构图中的公司和持股关系">
-            </div>
-          </div>
-          <div class="proof-copy reveal delay-1">
-            <span class="proof-label"><i></i>结构</span>
-            <h3>关系不是一张组织图，<br>是一条控制链。</h3>
-            <p>从集团进入公司，再看到董事、股东和名义持有人。选中任一节点，其他相关记录仍留在视野里。</p>
-            <div class="proof-points">
-              <div class="proof-point"><i>✓</i><span>集团、持股和任职关系共用一套数据。</span></div>
-              <div class="proof-point"><i>✓</i><span>待核实的持股和任职有明确标记。</span></div>
-              <div class="proof-point"><i>✓</i><span>支持完整控制链与多种查看方式。</span></div>
-            </div>
-          </div>
-        </article>
-
-        <article class="proof-row">
-          <div class="proof-media reveal">
-            <div class="proof-window">
-              <img src="assets/screens/02-due.png" width="2880" height="1800" loading="lazy" alt="Charter 到期事项列表和操作详情">
-            </div>
-          </div>
-          <div class="proof-copy reveal delay-1">
-            <span class="proof-label"><i></i>到期</span>
-            <h3>截止日不是提醒，<br>是下一步。</h3>
-            <p>事项详情把截止日、负责人、中介和邮件草稿放在一起。该联系谁、还剩几天、下一步做什么，不用再跨几个窗口确认。</p>
-            <div class="proof-points">
-              <div class="proof-point"><i>✓</i><span>到期、逾期和待核实的日期一眼可见。</span></div>
-              <div class="proof-point"><i>✓</i><span>直接查看负责中介与对接人。</span></div>
-              <div class="proof-point"><i>✓</i><span>复制邮件或标记完成都不离开当前页。</span></div>
-            </div>
-          </div>
-        </article>
-
-        <article class="proof-row">
-          <div class="proof-media reveal">
-            <div class="proof-window">
-              <img src="assets/screens/03-companies.png" width="2880" height="1800" loading="lazy" alt="Charter 公司档案页">
-            </div>
-          </div>
-          <div class="proof-copy reveal delay-1">
-            <span class="proof-label"><i></i>公司</span>
-            <h3>每个结论，<br>都能回到出处。</h3>
-            <p>公司页同时保存基本资料、股东、任职、变更历史、到期事项和档案进度。字段改动进入同一条历史，不必再靠额外备注解释。</p>
-            <div class="proof-points">
-              <div class="proof-point"><i>✓</i><span>生效日期、资料截至日期和录入日期分开记录。</span></div>
-              <div class="proof-point"><i>✓</i><span>核实状态能关联到具体依据文件。</span></div>
-              <div class="proof-point"><i>✓</i><span>空字段显示“未填”，缺失一眼可见。</span></div>
-            </div>
-          </div>
-        </article>
-
-        <article class="proof-row">
-          <div class="proof-media reveal">
-            <div class="proof-collage">
-              <div class="proof-window">
-                <img src="assets/screens/04-files.png" width="2880" height="1800" loading="lazy" alt="Charter 文件版本和到期状态">
+    <section class="guide" id="guide">
+      <div class="container guide-grid">
+        <aside class="guide-index">
+          <h2>从五个角度，看同一份记录。</h2>
+          <p>每一章都对应一个真实工作视图。它们不是五套数据，而是同一家公司的五种查看方式。</p>
+          <ol class="chapter-list">
+            <li><a href="#chapter-structure">先看谁控制谁</a></li>
+            <li><a href="#chapter-due">再看下一件到期</a></li>
+            <li><a href="#chapter-companies">回到公司档案</a></li>
+            <li><a href="#chapter-files">确认文件版本</a></li>
+            <li><a href="#chapter-people">查清人和任职</a></li>
+          </ol>
+        </aside>
+        <div class="chapters">
+          <article class="chapter" id="chapter-structure">
+            <figure class="chapter-figure">
+              <img src="assets/screens/01-structure.png" width="1440" height="900" loading="lazy" alt="Charter 股权结构界面">
+            </figure>
+            <div class="chapter-copy">
+              <div>
+                <h3>先看谁控制谁</h3>
+                <p>从集团进入公司，再看到董事、股东和名义持有人。选中任一节点，相关记录仍留在视野里。</p>
               </div>
-              <div class="proof-window">
-                <img src="assets/screens/05-people.png" width="2880" height="1800" loading="lazy" alt="Charter 人员任职与个人文件">
+              <dl class="chapter-facts">
+                <div><dt>共用数据</dt><dd>集团、持股与任职关系</dd></div>
+                <div><dt>待核实</dt><dd>有明确标记，并可继续追查</dd></div>
+              </dl>
+            </div>
+          </article>
+
+          <article class="chapter" id="chapter-due">
+            <figure class="chapter-figure">
+              <img src="assets/screens/02-due.png" width="1440" height="900" loading="lazy" alt="Charter 到期事项界面">
+            </figure>
+            <div class="chapter-copy">
+              <div>
+                <h3>再看下一件到期</h3>
+                <p>截止日、负责人、中介和邮件草稿放在一起。该联系谁、还剩几天、下一步做什么，一页就够。</p>
               </div>
+              <dl class="chapter-facts">
+                <div><dt>日期状态</dt><dd>到期、逾期和待核实</dd></div>
+                <div><dt>下一步</dt><dd>复制邮件或标记完成</dd></div>
+              </dl>
             </div>
-          </div>
-          <div class="proof-copy reveal delay-1">
-            <span class="proof-label"><i></i>文件与人员</span>
-            <h3>材料和人员，<br>也属于同一家公司。</h3>
-            <p>文件与公司、人员和时间关联，任职与持股回到同一张公司档案。整理交付材料时，不需要再手工拼合多个目录。</p>
-            <div class="proof-points">
-              <div class="proof-point"><i>✓</i><span>区分现行、旧版、快到期和已过期文件。</span></div>
-              <div class="proof-point"><i>✓</i><span>人员可以归档个人文件，并在公司页查看。</span></div>
-              <div class="proof-point"><i>✓</i><span>选中材料可继续追到对应公司与记录。</span></div>
+          </article>
+
+          <article class="chapter" id="chapter-companies">
+            <figure class="chapter-figure">
+              <img src="assets/screens/03-companies.png" width="1440" height="900" loading="lazy" alt="Charter 公司档案界面">
+            </figure>
+            <div class="chapter-copy">
+              <div>
+                <h3>回到公司档案</h3>
+                <p>基本资料、股东、任职、变更历史、到期事项和档案进度都回到同一家公司。</p>
+              </div>
+              <dl class="chapter-facts">
+                <div><dt>时间</dt><dd>生效、资料截至与录入日期</dd></div>
+                <div><dt>出处</dt><dd>核实依据可以关联文件</dd></div>
+              </dl>
             </div>
-          </div>
-        </article>
+          </article>
+
+          <article class="chapter" id="chapter-files">
+            <figure class="chapter-figure">
+              <img src="assets/screens/04-files.png" width="1440" height="900" loading="lazy" alt="Charter 文件界面">
+            </figure>
+            <div class="chapter-copy">
+              <div>
+                <h3>确认文件版本</h3>
+                <p>现行、旧版、快到期和已过期分别显示，不必靠目录名猜哪一份还能用。</p>
+              </div>
+              <dl class="chapter-facts">
+                <div><dt>材料</dt><dd>公司与记录都可继续追溯</dd></div>
+                <div><dt>状态</dt><dd>版本与到期分开表达</dd></div>
+              </dl>
+            </div>
+          </article>
+
+          <article class="chapter" id="chapter-people">
+            <figure class="chapter-figure">
+              <img src="assets/screens/05-people.png" width="1440" height="900" loading="lazy" alt="Charter 人员和任职界面">
+            </figure>
+            <div class="chapter-copy">
+              <div>
+                <h3>查清人和任职</h3>
+                <p>董事、股东、实际权益和个人文件都归到人，再沿任职与持股回到公司。</p>
+              </div>
+              <dl class="chapter-facts">
+                <div><dt>个人文件</dt><dd>在公司页继续查看</dd></div>
+                <div><dt>关系</dt><dd>任职与持股共用一套记录</dd></div>
+              </dl>
+            </div>
+          </article>
+        </div>
       </div>
     </section>
 
     <section class="local" id="local">
-      <div class="local-inner">
-        <div class="local-copy reveal">
-          <div class="section-kicker"><i></i>本地优先</div>
-          <h2>记录属于你，<br>也留在你的文件夹。</h2>
-          <p>Charter 不需要账户，也不依赖自有云服务。你可以使用本地文件夹或现有的同步盘，在 Mac 与 Windows 之间继续使用同一份数据。</p>
-          <div class="local-list">
-            <div class="local-item"><i>✓</i><span>数据文件夹格式延续，5.0、5.1 和 4.x 记录可直接打开。</span></div>
-            <div class="local-item"><i>✓</i><span>不需要导入到 Charter 账户或新的在线空间。</span></div>
-            <div class="local-item"><i>✓</i><span>升级前仍建议备份整个数据文件夹。</span></div>
-          </div>
+      <div class="container local-grid">
+        <div class="local-copy">
+          <h2>指南之外，数据还是你的。</h2>
+          <p>Charter 不需要账户，也不依赖自有云服务。数据使用普通文件夹，可放在本机磁盘，也可继续使用现有同步盘。</p>
         </div>
-        <div class="data-panel reveal delay-1" aria-label="Charter 数据存放方式示意">
-          <div class="data-top">
-            <span class="folder-mark" aria-hidden="true"></span>
-            <span>
-              <b>Charter 数据</b>
-              <small>你选择的文件夹</small>
-            </span>
-            <span class="status">仅保存在本机</span>
-          </div>
-          <div class="data-rows">
-            <div class="data-row">
-              <span class="data-icon">本</span>
-              <span><b>本机磁盘</b><small>默认使用现有文件系统</small></span>
-              <span class="row-note">原生文件夹</span>
-            </div>
-            <div class="data-row">
-              <span class="data-icon">↻</span>
-              <span><b>现有同步盘</b><small>外部改动会自动刷新</small></span>
-              <span class="row-note">无需迁移</span>
-            </div>
-            <div class="data-row">
-              <span class="data-icon">↔</span>
-              <span><b>Mac 与 Windows</b><small>继续使用同一份数据</small></span>
-              <span class="row-note">跨平台</span>
-            </div>
-          </div>
-          <div class="data-chips">
-            <span>无 Charter 云账户</span>
-            <span>可直接备份</span>
-            <span>兼容 4.x 数据</span>
-          </div>
+        <div class="local-guide">
+          <article class="local-row">
+            <h3>打开旧记录</h3>
+            <p>数据文件夹格式延续，5.0、5.1 和 4.x 记录可直接打开。</p>
+          </article>
+          <article class="local-row">
+            <h3>继续用同步盘</h3>
+            <p>不需要导入到 Charter 账户或新的在线空间，外部改动会自动刷新。</p>
+          </article>
+          <article class="local-row">
+            <h3>Mac 与 Windows</h3>
+            <p>两个平台打开同一份数据；升级前仍建议备份整个文件夹。</p>
+          </article>
         </div>
       </div>
     </section>
 
-    <section class="section release" id="updates">
-      <div class="release-grid">
-        <div class="reveal">
-          <div class="section-kicker"><i></i>2026 年 10 月</div>
-          <h2>版本一致，<br>下载也更清楚。</h2>
-          <div class="release-number">5.3.2<small>LATEST</small></div>
-          <p class="release-copy">5.3.2 重做人员材料审阅，补齐长期有效文件、证据关联和 Windows 升级缓存处理。</p>
+    <section class="updates" id="updates">
+      <div class="container updates-grid">
+        <div class="updates-copy">
+          <h2>这一版，补齐人员材料。</h2>
+          <div class="version">5.3.2 <small>当前版本</small></div>
+          <p>新版重做人员材料审阅，补齐长期有效文件、证据关联和 Windows 升级缓存处理。</p>
         </div>
-        <div class="release-list reveal delay-1">
-          <div class="release-item">
-            <span class="icon">版</span>
-            <div><b>人员材料范围与完整性审阅</b><p>在“已有材料 / 完整性审阅”间切换，并设置我负责、中介保管、待确认、不在范围或不适用。</p></div>
-            <span class="date">5.3.2</span>
-          </div>
-          <div class="release-item">
-            <span class="icon">人</span>
-            <div><b>人员可以归档个人文件</b><p>在公司「人员与持股」中直接查看，不再分散到其他目录。</p></div>
-            <span class="date">5.3.0</span>
-          </div>
-          <div class="release-item">
-            <span class="icon">↻</span>
-            <div><b>同步与启动更稳</b><p>同步文件夹中的外部改动自动刷新，Windows 启动异常时显示原因与恢复入口。</p></div>
-            <span class="date">5.3.0</span>
-          </div>
+        <div class="change-list">
+          <article class="change">
+            <h3>人员材料范围与完整性审阅</h3>
+            <p>在“已有材料”和“完整性审阅”之间切换，并标明由谁保管与是否在范围内。</p>
+          </article>
+          <article class="change">
+            <h3>人员可以归档个人文件</h3>
+            <p>在公司「人员与持股」中直接查看，不再分散到其他目录。</p>
+          </article>
+          <article class="change">
+            <h3>同步与启动更稳</h3>
+            <p>同步文件夹中的外部改动自动刷新，Windows 启动异常时显示原因与恢复入口。</p>
+          </article>
         </div>
       </div>
     </section>
 
     <section class="download" id="download">
-      <div class="download-inner">
-        <div class="download-head reveal">
-          <div>
-            <div class="section-kicker"><i></i>选择一个开始</div>
-            <h2>下载 Charter 5</h2>
-          </div>
-          <p class="download-lede">所有安装包都来自 v5.3.2，并从同一份源码在对应系统上完成构建与验证。应用没有使用商业代码签名证书，首次打开时可能看到系统安全提示。</p>
+      <div class="container download-grid">
+        <div class="download-copy">
+          <h2>下载 Charter 5</h2>
+          <p>所有安装包都来自 5.3.2，并从同一份源码在对应系统上完成构建与验证。应用没有使用商业代码签名证书。</p>
+          <a class="button primary download-action" href="https://github.com/evonotevil/Charter/releases/download/v5.3.2/Charter-5.3.2-Mac-arm64.dmg">下载 macOS 版</a>
+          <p>macOS 首次打开时，请在访达中右键 Charter 并选择「打开」；Windows 请选择「更多信息」后继续运行。</p>
         </div>
-
-        <div class="platform-grid">
-          <section class="platform-card reveal" aria-labelledby="download-macos">
-            <div class="platform-head">
-              <span class="platform-mark" aria-hidden="true">⌘</span>
-              <span class="platform-copy"><b id="download-macos">macOS</b><small>Apple 芯片或 Intel</small></span>
-              <span class="platform-meta">DMG</span>
-            </div>
-            <a class="asset-row" href="https://github.com/evonotevil/Charter/releases/download/v5.3.2/Charter-5.3.2-Mac-arm64.dmg" aria-label="下载 macOS Apple 芯片安装包">
-              <span class="asset-copy"><b>Apple 芯片</b><small>arm64 · DMG · M1 及以后</small></span>
-              <span class="asset-action">下载 ↘</span>
-            </a>
-            <a class="asset-row" href="https://github.com/evonotevil/Charter/releases/download/v5.3.2/Charter-5.3.2-Mac-x64.dmg" aria-label="下载 macOS Intel 安装包">
-              <span class="asset-copy"><b>Intel Mac</b><small>x64 · DMG</small></span>
-              <span class="asset-action">下载 ↘</span>
-            </a>
-          </section>
-
-          <section class="platform-card reveal delay-1" aria-labelledby="download-windows">
-            <div class="platform-head">
-              <span class="platform-mark windows" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M2.5 3.4 11 2.2v9.1H2.5V3.4Zm9.5-1.3 9.5-1.4v10.6H12V2.1ZM2.5 12.3H11v9.1l-8.5-1.2v-7.9Zm9.5 0h9.5v10.6L12 21.5v-9.2Z"/></svg>
-              </span>
-              <span class="platform-copy"><b id="download-windows">Windows 10 / 11</b><small>x64 · 安装版或免安装</small></span>
-              <span class="platform-meta">EXE / ZIP</span>
-            </div>
-            <a class="asset-row" href="https://github.com/evonotevil/Charter/releases/download/v5.3.2/Charter-5.3.2-Windows-Setup.exe" aria-label="下载 Windows 安装版">
-              <span class="asset-copy"><b>安装版</b><small>SETUP.EXE · 推荐</small></span>
-              <span class="asset-action">下载 ↘</span>
-            </a>
-            <a class="asset-row" href="https://github.com/evonotevil/Charter/releases/download/v5.3.2/Charter-5.3.2-Windows-x64.zip" aria-label="下载 Windows 免安装版">
-              <span class="asset-copy"><b>免安装版</b><small>x64 · ZIP</small></span>
-              <span class="asset-action">下载 ↘</span>
-            </a>
-          </section>
-        </div>
-
-        <div class="download-foot reveal">
-          <div class="security-copy">
-            <b>首次打开时如果系统显示安全提示</b>
-            <p>macOS 请在访达中右键 Charter 并选择「打开」；Windows 请选择「更多信息 → 仍要运行」。安装包没有使用 Apple Developer ID 或 Windows 商业代码签名证书。</p>
-          </div>
-          <div class="download-links">
-            <a href="https://github.com/evonotevil/Charter/releases/download/v5.3.2/SHA256SUMS.txt">SHA-256 校验值</a>
-            <a href="https://github.com/evonotevil/Charter/releases/tag/v5.3.2">完整安装说明 ↗</a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="source-band" aria-label="源码与技术栈">
-      <div class="source-inner">
         <div>
-          <b>源码和发布流程都在 GitHub</b>
-          <small>Mac Apple 芯片、Intel Mac 与 Windows 安装包由同一套 Electron 产品代码构建。</small>
-        </div>
-        <div class="source-tags" aria-label="技术栈">
-          <span>Electron</span>
-          <span>React</span>
-          <span>TypeScript</span>
-          <span>GitHub Actions</span>
-          <a href="https://github.com/evonotevil/Charter">查看仓库 ↗</a>
+          <div class="packages" aria-label="所有安装包">
+            <a class="package" href="https://github.com/evonotevil/Charter/releases/download/v5.3.2/Charter-5.3.2-Mac-arm64.dmg">
+              <b>macOS Apple 芯片</b><span>arm64 / DMG</span><em>下载</em>
+            </a>
+            <a class="package" href="https://github.com/evonotevil/Charter/releases/download/v5.3.2/Charter-5.3.2-Mac-x64.dmg">
+              <b>macOS Intel</b><span>x64 / DMG</span><em>下载</em>
+            </a>
+            <a class="package" href="https://github.com/evonotevil/Charter/releases/download/v5.3.2/Charter-5.3.2-Windows-Setup.exe">
+              <b>Windows 安装版</b><span>setup.exe</span><em>下载</em>
+            </a>
+            <a class="package" href="https://github.com/evonotevil/Charter/releases/download/v5.3.2/Charter-5.3.2-Windows-x64.zip">
+              <b>Windows 免安装版</b><span>ZIP</span><em>下载</em>
+            </a>
+          </div>
+          <div class="download-meta">
+            <a href="https://github.com/evonotevil/Charter/releases/download/v5.3.2/SHA256SUMS.txt">SHA-256 校验值</a>
+            <a href="https://github.com/evonotevil/Charter/releases/tag/v5.3.2">完整安装说明</a>
+          </div>
         </div>
       </div>
     </section>
   </main>
 
-  <footer>
-    <div class="footer-inner">
-      <span>Charter · Private company operations</span>
-      <span><a href="https://github.com/evonotevil/Charter">GitHub</a> · 所有界面使用虚拟演示数据</span>
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p class="closing">复杂的事情，也值得一条清楚的路径。</p>
+      <div class="footer-note">
+        <p>Charter 5.3.2，本地优先的公司治理工作区。所有界面使用虚拟演示数据。</p>
+        <div class="footer-links">
+          <a href="https://github.com/evonotevil/Charter">GitHub</a>
+          <a href="#guide">五个视图</a>
+          <a href="#download">下载</a>
+        </div>
+      </div>
     </div>
   </footer>
-
-  <script>
-    (() => {
-      const header = document.querySelector("#site-header");
-      const tabs = [...document.querySelectorAll(".tab")];
-      const images = [...document.querySelectorAll(".preview-image")];
-      const title = document.querySelector("#preview-title");
-      const description = document.querySelector("#preview-description");
-      const panel = document.querySelector("#preview-caption");
-      const link = document.querySelector("#preview-link");
-
-      const views = {
-        structure: {
-          title: "结构",
-          description: "沿集团、持股和任职关系查看完整链路。",
-          image: "assets/store/01-structure.png"
-        },
-        due: {
-          title: "到期",
-          description: "集中查看截止日期、负责人和下一步安排。",
-          image: "assets/store/02-due.png"
-        },
-        companies: {
-          title: "公司",
-          description: "在同一个公司页查看档案、材料与变更记录。",
-          image: "assets/store/03-companies.png"
-        },
-        documents: {
-          title: "文件",
-          description: "确认材料版本、关联记录和交付状态。",
-          image: "assets/store/04-files.png"
-        },
-        people: {
-          title: "人员",
-          description: "查看董事、股东、实际权益与代持关系。",
-          image: "assets/store/05-people.png"
-        }
-      };
-
-      const selectView = (view, moveFocus = false) => {
-        const data = views[view];
-        if (!data) return;
-
-        tabs.forEach((tab) => {
-          const selected = tab.dataset.view === view;
-          tab.setAttribute("aria-selected", String(selected));
-          tab.tabIndex = selected ? 0 : -1;
-          if (selected && moveFocus) tab.focus();
-        });
-
-        images.forEach((image) => {
-          const selected = image.dataset.view === view;
-          image.classList.toggle("active", selected);
-          image.setAttribute("aria-hidden", String(!selected));
-        });
-
-        title.textContent = data.title;
-        description.textContent = data.description;
-        panel.setAttribute("aria-labelledby", `tab-${view}`);
-        link.href = data.image;
-        link.setAttribute("aria-label", `打开${data.title}界面大图`);
-      };
-
-      tabs.forEach((tab, index) => {
-        tab.addEventListener("click", () => selectView(tab.dataset.view));
-        tab.addEventListener("keydown", (event) => {
-          const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
-          if (!keys.includes(event.key)) return;
-          event.preventDefault();
-          let next = index;
-          if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
-          if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
-          if (event.key === "Home") next = 0;
-          if (event.key === "End") next = tabs.length - 1;
-          selectView(tabs[next].dataset.view, true);
-        });
-      });
-
-      const updateHeader = () => {
-        header.classList.toggle("scrolled", window.scrollY > 12);
-      };
-      updateHeader();
-      window.addEventListener("scroll", updateHeader, { passive: true });
-
-      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const revealItems = document.querySelectorAll(".reveal");
-      if (reducedMotion || !("IntersectionObserver" in window)) {
-        revealItems.forEach((item) => item.classList.add("visible"));
-      } else {
-        const observer = new IntersectionObserver((entries) => {
-          entries.forEach((entry) => {
-            if (!entry.isIntersecting) return;
-            entry.target.classList.add("visible");
-            observer.unobserve(entry.target);
-          });
-        }, { threshold: .12, rootMargin: "0px 0px -6% 0px" });
-        revealItems.forEach((item) => observer.observe(item));
-      }
-    })();
-  </script>
 </body>
 </html>
