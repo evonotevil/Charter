@@ -11,12 +11,12 @@
 从 [GitHub Releases](https://github.com/evonotevil/Charter/releases/latest) 下载：
 
 - **Mac Apple 芯片（M1 及以后）**：`Charter-5.4.0-Mac-arm64.dmg`
-- **Mac Intel**：`Charter-5.3.2-Mac-x64.dmg`
+- **Mac Intel**：`Charter-5.4.0-Mac-x64.dmg`
 - **Windows 10/11 x64**：推荐 `Charter-5.4.0-Windows-Setup.exe`
-- **Windows 免安装**：`Charter-5.3.2-Windows-x64.zip`
+- **Windows 免安装**：`Charter-5.4.0-Windows-x64.zip`
 - **SHA-256 校验值**：`SHA256SUMS.txt`
 
-5.4.0 安装包与仓库源码的前端构建、Electron 主程序已核验一致。Mac Intel 和 Windows ZIP 暂为 5.3.2。应用没有使用 Apple Developer ID 或 Windows 商业代码签名证书：Mac 首次打开时可能需要在访达中右键 Charter →「打开」；Windows 可能显示 SmartScreen 提示，选择「更多信息」→「仍要运行」。
+5.4.0 安装包与仓库源码的前端构建、Electron 主程序已核验一致。Mac Intel 和 Windows 免安装 ZIP 均已补齐 5.4.0。应用没有使用 Apple Developer ID 或 Windows 商业代码签名证书：Mac 首次打开时可能需要在访达中右键 Charter →「打开」；Windows 可能显示 SmartScreen 提示，选择「更多信息」→「仍要运行」。
 
 ## 5.3.2 更新
 
