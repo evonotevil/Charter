@@ -31,9 +31,31 @@ export async function exportBackup(s: Store, path: string, onProgress?: (done: n
   await s.flushWrites();
   const p = platform();
   const f = s.folder;
-  const entries: { path: string; data: Uint8Array }[] = [];
   const data: { rel: string[]; full: string }[] = [];
   await walk(f.dataDir, ["data"], data);
+  const files0: { rel: string[]; full: string }[] = [];
+  await walk(f.filesDir, ["files"], files0);
+  await walk(f.groupIconsDir, ["group-icons"], files0);
+  // 5.3.3：桌面端流式打包，不把全部材料读进内存
+  if (p.zipFiles) {
+    const d0 = s.data;
+    const info0: BackupInfo = {
+      exportedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"), format: FORMAT_VERSION,
+      companies: d0.companies.length, groups: d0.groups.length, people: d0.people.length, documents: d0.documents.length,
+      files: files0.filter((x) => x.rel[0] === "files").length,
+    };
+    const list: ({ name: string; path: string } | { name: string; text: string })[] = [
+      { name: MANIFEST, text: JSON.stringify({ app: "Charter", ...info0 }, null, 2) },
+      ...data.filter((x) => x.rel[x.rel.length - 1].endsWith(".json")).map((x) => ({ name: x.rel.join("/"), path: x.full })),
+      ...((await p.stat(f.templatesFile)).exists ? [{ name: "templates.json", path: f.templatesFile }] : []),
+      ...files0.map((x) => ({ name: x.rel.join("/"), path: x.full })),
+    ];
+    onProgress?.(0, list.length);
+    await p.zipFiles(path, list);
+    onProgress?.(list.length, list.length);
+    return info0;
+  }
+  const entries: { path: string; data: Uint8Array }[] = [];
   for (const x of data.filter((x) => x.rel[x.rel.length - 1].endsWith(".json"))) entries.push({ path: x.rel.join("/"), data: await p.readBytes(x.full) });
   if ((await p.stat(f.templatesFile)).exists) entries.push({ path: "templates.json", data: await p.readBytes(f.templatesFile) });
   const files: { rel: string[]; full: string }[] = [];

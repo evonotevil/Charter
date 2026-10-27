@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
 import {
   type ArchiveItem, type ArchiveState, type Company, type Document, type DocumentType, type GroupRow, type NodeRef,
-  archiveItemName, changeKindLabel, companyStatusLabel, hasFile, isActiveOn, isNotApplicable, itemMarkLabel, itemMarks, ref, stateNeedsAttention, latinPad, latinPadStart, archiveCounts } from "../domain/models";
+  archiveItemName, changeKindLabel, companyStatusLabel, hasFile, isActiveOn, isNotApplicable, itemMarkLabel, itemMarks, ref, stateNeedsAttention, latinPad, latinPadStart, archiveCounts, inView } from "../domain/models";
 import { daysLeft, expiryLabel, obligationDone, percentLabel } from "../domain/engine";
 import { isMember, sourceLabel } from "../domain/groups";
 import { useApp } from "../state/hooks";
@@ -60,7 +60,7 @@ export function CompaniesView() {
   return <Overview />;
 }
 
-type Health = { c: Company; severity: 0 | 1 | 2; next?: ReturnType<ReturnType<typeof useApp>["store"]["openObligations"]["find"]>; held: number; total: number; text: string };
+type Health = { c: Company; severity: 0 | 1 | 2; next?: ReturnType<ReturnType<typeof useApp>["store"]["openObligations"]["find"]>; held: number; total: number; configured: boolean; agent: number; text: string };
 
 function Overview() {
   const { store, router } = useApp();
@@ -74,9 +74,9 @@ function Overview() {
   const q = query.trim().toLowerCase();
   const rows: Health[] = useMemo(() => live.map((c) => {
     const { severity, text } = alertInfo(store, c);
-    const cnt = archiveCounts(store.archive(c));
+    const cnt = store.companyCounts(c);
     const next = store.openObligations.filter((o) => o.company.id === c.id).sort((a, b) => (a.due < b.due ? -1 : 1))[0];
-    return { c, severity, next, held: cnt.held, total: cnt.total, text };
+    return { c, severity, next, held: cnt.held, total: cnt.total, configured: cnt.configured, agent: cnt.agent, text };
   }), [store.data, store.today, f]);
   const shown = rows.filter((r) => !q || searchText(r.c).includes(q) || store.jurisdictionName(r.c.jurisdiction).toLowerCase().includes(q))
     .sort((a, b) => sort === "name" ? a.c.name.localeCompare(b.c.name, "zh")
@@ -93,12 +93,22 @@ function Overview() {
   const soon = obligations.filter((o) => o.due >= store.today && D.daysBetween(store.today, o.due) <= 30).length;
   const miss = store.missingSummary(f);
   const unv = store.unverified.filter((x) => !scope || scope.has(x.item.companyID)).length;
-  const held = rows.reduce((s, r) => s + r.held, 0), total = rows.reduce((s, r) => s + r.total, 0);
-  const pct = total ? Math.round((held / total) * 100) : 100;
+  const conf = rows.filter((r) => r.configured);
+  const unconfigured = rows.length - conf.length;
+  const held = conf.reduce((s, r) => s + r.held, 0), total = conf.reduce((s, r) => s + r.total, 0);
+  const pct = total ? Math.round((held / total) * 100) : null;
   const bad = rows.filter((r) => r.severity === 2).length, warn = rows.filter((r) => r.severity === 1).length;
-  const tone = overdue || bad ? "bad" : soon || warn || miss.companies ? "warn" : "ok";
-  const title = tone === "ok" ? "看起来不错！" : overdue ? `${overdue} 件申报已逾期` : bad ? `${bad} 家公司有文件过期` : soon ? `30 天内有 ${soon} 件要申报` : `${warn + miss.companies} 家公司需要留意`;
-  const body = tone === "ok" ? `${active.length} 家公司都在正轨上：没有逾期，文件齐全。` : [overdue ? `${overdue} 件逾期` : "", soon ? `${soon} 件 30 天内到期` : "", miss.companies ? `${miss.companies} 家缺文件（共 ${miss.items} 项）` : ""].filter(Boolean).join("，") + "。";
+  // 只有逾期、过期、待核实、缺件、未配置都为 0 时才算“没有待办”；按紧急程度列出
+  const todo: { text: string; go: () => void; label: string }[] = [
+    overdue ? { text: `${overdue} 件申报已逾期`, go: () => router.go("due"), label: "打开申报日历" } : null,
+    bad ? { text: `${bad} 家公司有文件过期`, go: () => router.go("files"), label: "查看文件" } : null,
+    unv ? { text: `${unv} 条股权或任职待核实`, go: () => router.go("verify"), label: "去核实" } : null,
+    soon ? { text: `30 天内有 ${soon} 件要申报`, go: () => router.go("due"), label: "打开申报日历" } : null,
+    miss.companies ? { text: `${miss.companies} 家公司缺我负责的文件（共 ${miss.items} 项）`, go: () => router.go("files"), label: "查看缺的文件" } : null,
+    warn ? { text: `${warn} 家公司有文件快到期`, go: () => router.go("files"), label: "查看文件" } : null,
+    unconfigured ? { text: `${unconfigured} 家公司未配置材料范围`, go: () => router.open({ kind: "scope", ownerKind: "company", owners: rows.filter((r) => !r.configured).map((r) => r.c.id) }), label: "设置材料范围" } : null,
+  ].filter((x): x is { text: string; go: () => void; label: string } => !!x);
+  const tone = overdue || bad ? "bad" : "warn";
 
   if (!store.data.companies.length) return (
     <div className="page"><div className="page-inner">
@@ -110,22 +120,27 @@ function Overview() {
   const page = (
     <div className="page"><div className="page-inner">
       <PageHeader crumb={store.filterName(f)} title="公司总览" subtitle={`范围：${store.filterName(f)} · ${active.length} 家公司`}>
+        <Button icon="checklist" onClick={() => router.open({ kind: "scope", ownerKind: "company", owners: rows.map((r) => r.c.id) })}>设置材料范围</Button>
         <Button icon="square.and.arrow.down" onClick={() => void router.chooseFiles(group ? { kind: "group", id: group.id } : null)}>上传材料</Button>
         <Button kind="primary" icon="plus" onClick={() => router.open(group ? { kind: "newCompanyInGroup", group: group.id } : { kind: "newCompany" })}>新建公司</Button>
       </PageHeader>
       {store.data.groups.length > 0 && <GroupFilter />}
-      <Banner tone={tone} title={title} actions={tone !== "ok" ? <Button onClick={() => router.go(overdue || soon ? "due" : "files")}>{overdue || soon ? "打开申报日历" : "查看缺的文件"}</Button> : undefined}>
-        <span className="col gap10">
-          <span>{body}</span>
-          <span className="segs" aria-label={`${rows.length} 家公司：${bad} 家逾期或过期，${warn} 家需留意`}>
-            {[...rows].sort((a, b) => b.severity - a.severity).map((r) => <span key={r.c.id} className={`seg-bit ${r.severity === 2 ? "bad" : r.severity === 1 ? "warn" : "ok"}`} title={r.c.name} />)}
-          </span>
-        </span>
-      </Banner>
+      {todo.length ? (
+        <Banner tone={tone} title={todo[0].text} actions={<Button onClick={todo[0].go}>{todo[0].label}</Button>}>
+          {todo.length > 1 && <span className="col gap4">{todo.slice(1).map((t) => <button key={t.text} className="link" style={{ alignSelf: "flex-start", textAlign: "left", color: "inherit", textDecoration: "underline", textUnderlineOffset: 3, fontWeight: 600 }} onClick={t.go}>{t.text}</button>)}</span>}
+        </Banner>
+      ) : (
+        <span className="t-meta muted row gap6" style={{ padding: "2px 2px 6px" }}><Icon name="checkmark" size={12} />没有待处理事项：没有逾期、过期、待核实，我负责的材料都已归档。</span>
+      )}
       <Metrics stats={[
         { label: "家公司", value: active.length, icon: "building.2", onClick: undefined },
         { label: "30 天内申报", value: soon + overdue, unit: "件", tone: overdue ? "bad" : "warn", icon: "calendar", onClick: () => router.go("due") },
-        { label: "档案完整度", value: pct, unit: "%", tone: pct < 100 ? "warn" : undefined, icon: "doc.on.doc", onClick: () => router.go("files") },
+        // 5.3.1：有未配置公司时，主数字是“已配置 x/y 家”，完整度退为小字，避免 100% 压过未配置
+        unconfigured
+          ? { label: `已配置材料范围 · 已配置项 ${pct === null ? "—" : `${pct}%`}`, value: conf.length, unit: `/ ${rows.length} 家`, tone: "warn", icon: "doc.on.doc", onClick: () => router.open({ kind: "scope", ownerKind: "company", owners: rows.filter((r) => !r.configured).map((r) => r.c.id) }) }
+          : pct === null
+            ? { label: "没有我负责的材料", value: 0, unit: "项", icon: "doc.on.doc", onClick: undefined }
+            : { label: "我负责的材料齐全度", value: pct, unit: "%", tone: pct < 100 ? "warn" : undefined, icon: pct === 100 ? "checkmark.circle.fill" : "doc.on.doc", onClick: () => router.go("files") },
         { label: "待核实", value: unv, unit: "条", tone: "warn", icon: "checkmark.shield", onClick: () => router.go("verify") },
       ]} />
       <Card flush>
@@ -141,7 +156,7 @@ function Overview() {
         </div>
         <div style={{ overflowX: "auto" }}>
           <table className="table">
-            <thead><tr><th>公司</th><th>下一项申报</th><th>档案</th><th>状态</th><th aria-label="打开" /></tr></thead>
+            <thead><tr><th>公司</th><th>下一项申报</th><th>我负责的材料</th><th>状态</th><th><span className="sr-only">打开</span></th></tr></thead>
             <tbody>
               {shown.map((r) => <OverviewRow key={r.c.id} h={r} />)}
             </tbody>
@@ -183,7 +198,8 @@ function OverviewRow({ h }: { h: Health }) {
       <td>{next && left !== null ? <span className="col"><span className="ellipsis" style={{ maxWidth: 240, fontWeight: 600 }}>{next.rule.name}</span>
         <span className="t-meta num" style={{ color: left < 0 ? "var(--red-text)" : left <= 30 ? "var(--amber-text)" : "var(--muted)", fontWeight: left <= 30 ? 700 : 400 }}>{D.short(next.due)} · {left < 0 ? `逾期 ${-left} 天` : left === 0 ? "今天" : `${left} 天后`}</span></span>
         : <span className="muted">—</span>}</td>
-      <td><span className="row gap8"><ProgressTrack value={h.total ? h.held / h.total : 1} width={64} /><span className="t-meta num muted">{h.held}/{h.total}</span></span></td>
+      <td>{h.configured && h.total ? <span className="row gap8"><ProgressTrack value={h.held / h.total} width={64} /><span className="t-meta num muted">{h.held}/{h.total}</span></span>
+        : <span className="st miss" title="还没有设置哪些材料由你保管">{h.configured ? "没有我负责的" : "未配置"}</span>}</td>
       <td>{statusPill}</td>
       <td className="r"><Icon name="chevron.right" size={14} className="chev-r" /></td>
     </tr>
@@ -195,7 +211,7 @@ function alertInfo(store: ReturnType<typeof useApp>["store"], c: Company): { sev
   const o = store.complianceOn ? store.openObligations.find((x) => x.company.id === c.id) : undefined;
   const left = o ? daysLeft(o, store.today) : 999;
   if (o && left <= 30) alerts.push(left < 0 ? `合规事项“${o.rule.name}”已逾期` : `合规事项“${o.rule.name}”${left} 天后到期`);
-  const items = store.archive(c);
+  const items = store.archive(c).filter((i) => inView(i.custody));
   const n = (k: ArchiveState["kind"]) => items.filter((i) => i.state.kind === k).length;
   if (n("expired")) alerts.push(`${n("expired")} 份已过期`);
   if (n("needsUpdate")) alerts.push(`${n("needsUpdate")} 份需更新`);

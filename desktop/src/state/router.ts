@@ -25,7 +25,7 @@ export type CompaniesMode = "list" | "matrix" | "structure";
 
 export type Sheet =
   | { kind: "newCompany" } | { kind: "newCompanyInGroup"; group: string } | { kind: "newGroup" } | { kind: "editGroup"; group: string }
-  | { kind: "groupMembers"; group: string } | { kind: "addRelation"; companyID: string; upward: boolean } | { kind: "companyItems"; companyID: string }
+  | { kind: "groupMembers"; group: string } | { kind: "addRelation"; companyID: string; upward: boolean } | { kind: "companyItems"; companyID: string } | { kind: "scope"; ownerKind: "company" | "person"; owners?: string[] } | { kind: "trashDocs"; ids: string[] }
   | { kind: "quickSearch" } | { kind: "exportAll"; companyID: string } | { kind: "chainQuery"; from?: NodeRef; to?: string }
   | { kind: "editCompany"; companyID: string } | { kind: "importFiles"; paths: string[] } | { kind: "resumeImport" }
   | { kind: "packet"; companyID?: string } | { kind: "packetFor"; companyID: string; purposeID: string } | { kind: "change"; companyID: string }
@@ -39,15 +39,15 @@ export interface CalendarPreset { partyID?: string; range: CalendarRange; status
 
 export type ImportContext = { kind: "company"; id: string } | { kind: "group"; id: string };
 
-export type SettingsPane = "sync" | "reminders" | "groups" | "archiveItems" | "purposes" | "rules" | "backup";
-export const settingsPanes: SettingsPane[] = ["reminders", "groups", "archiveItems", "purposes", "rules", "backup"];
-export const settingsPaneTitle: Record<SettingsPane, string> = { sync: "数据与同步", reminders: "提醒", groups: "集团", archiveItems: "档案清单", purposes: "文件包用途", rules: "合规规则", backup: "备份与恢复" };
-export const settingsPaneSymbol: Record<SettingsPane, string> = { sync: "icloud", reminders: "bell", groups: "square.stack.3d.up", archiveItems: "list.bullet.rectangle", purposes: "shippingbox", rules: "calendar.badge.clock", backup: "clock.arrow.circlepath" };
+export type SettingsPane = "sync" | "reminders" | "groups" | "archiveItems" | "scope" | "purposes" | "rules" | "backup" | "privacy";
+export const settingsPanes: SettingsPane[] = ["reminders", "groups", "archiveItems", "scope", "purposes", "rules", "backup", "privacy"];
+export const settingsPaneTitle: Record<SettingsPane, string> = { sync: "数据与同步", reminders: "提醒", groups: "集团", archiveItems: "档案清单", purposes: "文件包用途", rules: "合规规则", backup: "备份与恢复", scope: "材料范围", privacy: "隐私与本地处理" };
+export const settingsPaneSymbol: Record<SettingsPane, string> = { sync: "icloud", reminders: "bell", groups: "square.stack.3d.up", archiveItems: "list.bullet.rectangle", purposes: "shippingbox", rules: "calendar.badge.clock", backup: "clock.arrow.circlepath", scope: "checklist", privacy: "lock.circle" };
 export const settingsGroups = (): { title: string; panes: SettingsPane[] }[] => [
   { title: "常规", panes: ["reminders"] },
-  { title: "公司资料", panes: ["groups", "archiveItems", "purposes"] },
+  { title: "公司资料", panes: ["groups", "archiveItems", "scope", "purposes"] },
   { title: "到期规则", panes: ["rules"] },
-  { title: "高级", panes: ["backup"] },
+  { title: "高级", panes: ["backup", "privacy"] },
 ];
 
 export class Router {
@@ -68,6 +68,10 @@ export class Router {
   filesFilter = 0;
   filesOwnerKind: NodeKind | null = null;
   filesHorizon = 30;
+  /** 文件页的分页：文件 / 待整理 / 废纸篓。 */
+  filesPane: "files" | "inbox" | "trash" = "files";
+  /** 等待加入待整理的路径（由文件页消费）。 */
+  inboxPaths: string[] = [];
   companiesMode: CompaniesMode = "list";
   structureCheck = false;
   structureUpward: string | null = null;
@@ -114,6 +118,8 @@ export class Router {
 
   startImport(paths: string[], context: ImportContext | null) {
     if (!paths.length) return;
+    // 5.3：没有明确目标的导入先进“待整理”，不直接进正式档案
+    if (!context) { this.inboxPaths = [...this.inboxPaths, ...paths]; this.sheet = null; this.section = "files"; this.filesPane = "inbox"; this.emit(); return; }
     this.importContext = context;
     this.sheet = { kind: "importFiles", paths };
     this.emit();

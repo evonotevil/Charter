@@ -1,12 +1,13 @@
 // Charter 4 新建公司：一张表填完。股东选已有的公司或人，没有就就地新建；年审日期按法域规则自动排出。
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../state/hooks";
 import * as D from "../domain/day";
 import { type NodeRef, effectiveRule, ref, ruleApplies } from "../domain/models";
 import { dueDates } from "../domain/engine";
 import { Icon } from "../ui/Icon";
-import { Button, DateField, Modal, SelectField } from "../ui/kit";
+import { Avatar, Button, DateField, JurisdictionBadge, Modal, SelectField } from "../ui/kit";
+import { companyTint } from "../ui/uistyle";
 
 type Holder = { kind: "existing"; ref: NodeRef } | { kind: "newCompany"; name: string; jurisdiction: string; entityForm?: string } | { kind: "newPerson"; name: string } | null;
 
@@ -36,10 +37,6 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
   const qRef = useRef<HTMLInputElement>(null);
 
   const ql = q.trim().toLowerCase();
-  const options = ql ? [
-    ...store.data.companies.filter((c) => (c.name + " " + c.aliases.join(" ") + " " + (store.brandOf(c.id)?.name ?? "") + " " + c.jurisdiction).toLowerCase().includes(ql)).slice(0, 6).map((c) => ({ ref: ref("company", c.id), title: c.name, sub: store.jurisdictionName(c.jurisdiction), code: c.jurisdiction })),
-    ...store.data.people.filter((p) => (p.name + " " + p.aliases.join(" ")).toLowerCase().includes(ql)).slice(0, 3).map((p) => ({ ref: ref("person", p.id), title: p.name, sub: "个人", code: [...p.name][0] })),
-  ] : [];
   const holderName = holder?.kind === "existing" ? store.nameOf(holder.ref) : holder ? holder.name : "";
 
   const dues = useMemo(() => {
@@ -117,23 +114,12 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
                 </div>
               ) : (
                 <>
-                  <input ref={qRef} className="v4-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="输入公司或人名，选已有的或新建…" aria-label="股东" />
-                  {ql && (
-                    <div className="v4-menu" role="listbox">
-                      {options.map((o) => (
-                        <button key={o.ref.kind + o.ref.id} className="v4-opt" role="option" onClick={() => setHolder({ kind: "existing", ref: o.ref })}>
-                          <span className="v4-code" style={o.ref.kind === "person" ? { borderRadius: "50%" } : undefined}>{o.code}</span>
-                          <span className="grow ellipsis">{o.title}</span><span className="t-meta muted">{o.sub}</span>
-                        </button>
-                      ))}
-                      <button className="v4-opt" onClick={() => setHolder({ kind: "newCompany", name: q.trim(), jurisdiction: "" })}>
-                        <span className="v4-code dark">+</span><span className="grow ellipsis" style={{ fontWeight: 600 }}>新建公司“{q.trim()}”</span><span className="t-meta muted">要选法域</span>
-                      </button>
-                      <button className="v4-opt" onClick={() => setHolder({ kind: "newPerson", name: q.trim() })}>
-                        <span className="v4-code dark" style={{ borderRadius: "50%" }}>+</span><span className="grow ellipsis" style={{ fontWeight: 600 }}>新建个人“{q.trim()}”</span>
-                      </button>
-                    </div>
-                  )}
+                  <EntityCombo inputRef={qRef} value={q} onChange={setQ} kinds={["person", "company"]} ariaLabel="股东" placeholder="点击选择已有的人或公司，或输入名字新建…"
+                    onPick={(r) => setHolder({ kind: "existing", ref: r })}
+                    extra={(t) => [
+                      { key: "nc", label: `新建公司“${t}”`, sub: "要选法域", lead: <span className="v4-code dark">+</span>, run: () => setHolder({ kind: "newCompany", name: t, jurisdiction: "" }) },
+                      { key: "np", label: `新建个人“${t}”`, lead: <span className="v4-code dark" style={{ borderRadius: "50%" }}>+</span>, run: () => setHolder({ kind: "newPerson", name: t }) },
+                    ]} />
                 </>
               )}
               {holder?.kind === "newCompany" && (
@@ -157,11 +143,10 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
             <div className="v4-field">董事
               <div className="v4-tags">
                 {dirs.map((d, i) => <span key={d + i} className="v4-chip">{d}<button aria-label={`移除 ${d}`} onClick={() => setDirs(dirs.filter((_, j) => j !== i))}><Icon name="xmark" size={9} /></button></span>)}
-                <input value={dq} onChange={(e) => setDq(e.target.value)} placeholder={dirs.length ? "" : "输入姓名后回车，已有的人会自动关联"} aria-label="添加董事"
-                  onKeyDown={(e) => {
-                    if ((e.key === "Enter" || e.key === "," || e.key === "，") && dq.trim()) { e.preventDefault(); setDirs([...dirs, dq.trim()]); setDq(""); }
-                    if (e.key === "Backspace" && !dq && dirs.length) setDirs(dirs.slice(0, -1));
-                  }} />
+                <EntityCombo bare value={dq} onChange={setDq} kinds={["person"]} ariaLabel="添加董事" placeholder={dirs.length ? "" : "点击选择已有的人，或输入姓名后回车新建"}
+                  exclude={dirs} onPick={(r) => { setDirs([...dirs, store.nameOf(r)]); setDq(""); }}
+                  extra={(t) => dirs.includes(t) ? [] : [{ key: "nd", label: `新建董事“${t}”`, lead: <span className="v4-code dark" style={{ borderRadius: "50%" }}>+</span>, run: () => { setDirs([...dirs, t]); setDq(""); } }]}
+                  onBackspaceEmpty={() => dirs.length && setDirs(dirs.slice(0, -1))} />
               </div>
             </div>
             <div className="row gap12">
@@ -196,5 +181,59 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
         </div>
       </div>
     </Modal>
+  );
+}
+
+// MARK: - 5.3.3 选人或公司的输入框：点进就列出已有的，打字过滤（忽略大小写和空格、匹配别名），最后一行是“新建”
+
+function EntityCombo({ value, onChange, kinds, onPick, extra, placeholder, ariaLabel, inputRef, bare, exclude = [], onBackspaceEmpty }: {
+  value: string; onChange: (v: string) => void; kinds: ("person" | "company")[]; onPick: (r: NodeRef) => void;
+  extra: (text: string) => { key: string; label: string; sub?: string; lead?: React.ReactNode; run: () => void }[];
+  placeholder: string; ariaLabel: string; inputRef?: React.RefObject<HTMLInputElement>; bare?: boolean; exclude?: string[]; onBackspaceEmpty?: () => void;
+}) {
+  const { store } = useApp();
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const norm = (x: string) => x.toLowerCase().replace(/\s+/g, "");
+  const t = value.trim(), nq = norm(t);
+  const people = kinds.includes("person") ? store.data.people.filter((p) => !exclude.includes(p.name) && (!nq || norm(p.name + p.aliases.join("")).includes(nq))).sort((a, b) => a.name.localeCompare(b.name, "zh")) : [];
+  const companies = kinds.includes("company") ? store.data.companies.filter((c) => !nq || norm(c.name + c.aliases.join("") + c.jurisdiction).includes(nq)).sort((a, b) => a.name.localeCompare(b.name, "zh")) : [];
+  const exact = [...people.map((p) => p.name), ...companies.map((c) => c.name)].some((n) => norm(n) === nq);
+  const extras = t && !exact ? extra(t) : [];
+  const rows: { key: string; run: () => void }[] = [
+    ...people.map((p) => ({ key: "p" + p.id, run: () => onPick(ref("person", p.id)) })),
+    ...companies.map((c) => ({ key: "c" + c.id, run: () => onPick(ref("company", c.id)) })),
+    ...extras.map((x) => ({ key: x.key, run: x.run })),
+  ];
+  useEffect(() => setHi(0), [value]);
+  const go = (i: number) => { rows[i]?.run(); setOpen(false); };
+  let i = -1;
+  const opt = (key: string, lead: React.ReactNode, label: string, sub?: string) => { i++; const n = i; return (
+    <button key={key} type="button" role="option" aria-selected={n === hi} className={`sel-opt ${n === hi ? "hi" : ""}`} onMouseDown={(e) => e.preventDefault()} onMouseMove={() => setHi(n)} onClick={() => go(n)}>
+      <span className="sel-lead">{lead}</span><span className="col grow" style={{ minWidth: 0 }}><span className="ellipsis">{label}</span>{sub && <span className="t-meta muted ellipsis">{sub}</span>}</span>
+    </button>); };
+  return (
+    <div style={{ position: "relative", flex: bare ? "1 1 160px" : undefined, minWidth: bare ? 160 : undefined }}>
+      <input ref={inputRef} className={bare ? undefined : "v4-input"} value={value} placeholder={placeholder} aria-label={ariaLabel} role="combobox" aria-expanded={open}
+        style={bare ? { width: "100%" } : undefined}
+        onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setHi((h) => Math.min(rows.length - 1, h + 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(0, h - 1)); }
+          else if ((e.key === "Enter" || ((e.key === "," || e.key === "，") && bare)) && open && rows.length) { e.preventDefault(); go(nq ? hi : hi); }
+          else if (e.key === "Escape") setOpen(false);
+          else if (e.key === "Backspace" && !value) onBackspaceEmpty?.();
+        }} />
+      {open && rows.length > 0 && (
+        <div className="v4-menu sel-list" role="listbox" style={{ position: "absolute", left: 0, right: 0, top: "100%", zIndex: 20, minWidth: 280, maxHeight: 248 }}>
+          {people.length > 0 && <span className="sel-group">人员<span className="num"> {people.length}</span></span>}
+          {people.map((p) => opt("p" + p.id, <Avatar name={p.name} size={22} />, p.name, store.personHint(p.id)))}
+          {companies.length > 0 && <span className="sel-group">公司<span className="num"> {companies.length}</span></span>}
+          {companies.map((c) => opt("c" + c.id, <JurisdictionBadge code={c.jurisdiction} size={22} tint={companyTint(store, c.id)} />, c.name, store.jurisdictionName(c.jurisdiction)))}
+          {extras.length > 0 && <span className="sel-group">新建</span>}
+          {extras.map((x) => opt(x.key, x.lead, x.label, x.sub))}
+        </div>
+      )}
+    </div>
   );
 }

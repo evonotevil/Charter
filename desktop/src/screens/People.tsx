@@ -148,9 +148,10 @@ function PersonDetail({ person }: { person: Person }) {
         <JurisdictionBadge code={store.company(id)?.jurisdiction ?? "?"} size={30} tint={companyTint(store, id)} />
         <span className="col grow" style={{ gap: 1, minWidth: 0 }}>
           <span className="ellipsis" style={{ fontSize: 13.5, fontWeight: 500 }}>{store.company(id)?.name ?? "未知公司"}</span>
-          {detail && <span className="num" style={{ fontSize: 11.5, color: warn ? "var(--amber-text)" : "var(--muted)" }}>{detail}</span>}
+          {detail && <span className="num" style={{ fontSize: 12, color: warn ? "var(--amber-text)" : "var(--muted)" }}>{detail}</span>}
         </span>
-        <span className="num" style={{ fontSize: 13, fontWeight: 600, minWidth: numeric ? 64 : undefined, textAlign: "right" }}>{trailing}</span>
+        {/* 5.3.6：比例列固定 64 右对齐；职务列固定宽度左对齐，过长省略 */}
+        <span className={numeric ? "num" : "ellipsis"} title={numeric ? undefined : trailing} style={{ fontSize: 13, fontWeight: 600, flex: "none", width: numeric ? 64 : "clamp(80px, 30%, 180px)", textAlign: numeric ? "right" : "left" }}>{trailing}</span>
       </button>
       {extra}
     </div>
@@ -169,19 +170,16 @@ function PersonDetail({ person }: { person: Person }) {
             <div className="row gap8">
               <Button onClick={() => { void platform().copyText(store.personSummary(person)); store.showToast("人员摘要已复制。"); }}>复制摘要</Button>
               <Button onClick={() => setEditing(true)}>编辑</Button>
-              <Button title="把这个人合并到另一个人名下（重复录入时使用）" onClick={() => setMerging(true)}>合并…</Button>
-              <Button disabled={!!blockers.length} title={blockers.length ? `不能删除：${blockers.join("，")}` : "删除这个人"}
+              <Button title="把这个人合并到另一个人名下（重复录入时使用）" onClick={() => setMerging(true)}>合并到…</Button>
+              <Button title={blockers.length ? `不能删除：${blockers.join("，")}` : "删除这个人"} softDisabled={!!blockers.length} describedBy={blockers.length ? "why-del" : undefined}
                 onClick={() => { const next = store.data.people.find((p) => p.id !== person.id)?.id ?? null; store.deletePerson(person.id); router.set("selectedPersonID", next); }}>删除</Button>
             </div>
           </div>
           {twins.length > 0 && <div className="row gap12 amber-text">
             <Icon name="person.2" /><span className="t-meta grow">可能与 {twins.map((p) => store.personLabel(p)).join("、")} 是同一人（名字或别名一致）。</span>
-            <Button size="small" onClick={() => setMerging(true)}>合并…</Button>
+            <Button size="small" onClick={() => setMerging(true)}>合并到…</Button>
           </div>}
-          {blockers.length > 0 && <div className="row gap12">
-            <span className="t-meta muted grow">不能删除：{blockers.join("，")}。可以先把记录合并到另一个人。</span>
-            <Button kind="quiet" size="small" onClick={() => setMerging(true)}>合并到…</Button>
-          </div>}
+          {blockers.length > 0 && <span id="why-del" className="sr-only">不可删除：{blockers.join("，")}。先处理这些记录，或用“合并到…”并入另一个人。</span>}
         </div>
       </Card>
       <Metrics stats={[

@@ -16,7 +16,7 @@ import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { ActionMenu, Button, Checkbox, DateField, FieldRow, FormGroup, Modal, Pill, SelectField, SheetScaffold, Spinner, TextField, item } from "../ui/kit";
 import { useDropTarget } from "../ui/drop";
-import { DeadlineBasis, MonthDayField, NextStepControls, TrustBadge, obligationPill, useStageFile } from "./common";
+import { DeadlineBasis, MonthDayField, NextStepControls, TrustBadge, obligationPill, useStageFile, refInfo, personInfo } from "./common";
 
 const statuses: CompanyStatus[] = ["active", "forming", "dormant", "dissolving", "dissolved", "redomiciled"].filter((s) => s in companyStatusLabel) as CompanyStatus[];
 const norm = (s: string) => s.toLowerCase().replace(/\s/g, "");
@@ -219,7 +219,7 @@ export function CompanyEditor({ companyID, groupID: initialGroup, onClose }: { c
             </> : <FieldRow label="归入集团"><SelectField options={[[null, "不归入"] as [string | null, string], ...store.data.groups.map((x) => [x.id, x.name] as [string, string])]} value={groupID} onChange={(v) => { setGroupID(v); setParentRef(topCompany(v)); }} minWidth={220} /></FieldRow>}
             {!original && g && <>
               <FieldRow label="上级公司" hint="默认挂在集团顶层公司下面，保存后出现在股权结构图里。">
-                <SelectField options={[[null, "暂不设置"] as [NodeRef | null, string], ...parentOptions.map((r) => [r, store.nameOf(r)] as [NodeRef, string])]} value={parentRef} onChange={setParentRef} minWidth={220} keyOf={(r) => (r ? `${r.kind}:${r.id}` : "")} />
+                <SelectField describe={(r) => refInfo(store, r)} options={[[null, "暂不设置"] as [NodeRef | null, string], ...parentOptions.map((r) => [r, store.nameOf(r)] as [NodeRef, string])]} value={parentRef} onChange={setParentRef} minWidth={220} keyOf={(r) => (r ? `${r.kind}:${r.id}` : "")} />
               </FieldRow>
               {parentRef && <>
                 <FieldRow label="持股比例" error={pctBad ? "持股比例需大于 0、不超过 100%" : null}><PercentField value={parentPercent} onChange={setParentPercent} invalid={pctBad} /></FieldRow>
@@ -307,14 +307,14 @@ function HoldingRow({ h, options, labelOf, onChange, onDelete }: { h: Holding; o
   return (
     <Disclosure label={<span className="row gap8 grow">
       <span style={{ fontWeight: 500 }}>{store.nameOf(h.holder)}</span>{h.isNominee && <Pill text="代持" />}<span className="spacer" />
-      <b className="num">{percentLabel(h.percent)}</b><span className="t-meta muted num">{h.to ? `${h.from ?? "?"} 至 ${h.to}` : h.from ? `自 ${h.from}` : h.asOf ? `最晚自 ${h.asOf}` : "生效日期未知"}</span>{!h.verified && <span className="v4-chip chip-pending" style={{ height: 20, fontSize: 11 }}>待核实</span>}
+      <b className="num">{percentLabel(h.percent)}</b><span className="t-meta muted num">{h.to ? `${h.from ?? "?"} 至 ${h.to}` : h.from ? `自 ${h.from}` : h.asOf ? `最晚自 ${h.asOf}` : "生效日期未知"}</span>{!h.verified && <span className="v4-chip chip-pending" style={{ height: 20, fontSize: 12 }}>待核实</span>}
     </span>}>
-      <FieldRow label="股东"><SelectField options={options.map((r) => [r, labelOf(r)] as [NodeRef, string])} value={h.holder} onChange={(holder) => set({ holder })} minWidth={240} keyOf={key} /></FieldRow>
+      <FieldRow label="股东"><SelectField describe={(r) => refInfo(store, r)} options={options.map((r) => [r, labelOf(r)] as [NodeRef, string])} value={h.holder} onChange={(holder) => set({ holder })} minWidth={240} keyOf={key} /></FieldRow>
       <FieldRow label="持股比例"><PercentField value={h.percent} onChange={(percent) => set({ percent })} /></FieldRow>
       <FieldRow label="股份数"><TextField value={h.shares} onChange={(shares) => set({ shares })} placeholder="可选" /></FieldRow>
       <FieldRow label="股份类别"><TextField value={h.shareClass} onChange={(shareClass) => set({ shareClass })} placeholder="可选" /></FieldRow>
       <FieldRow label="代持"><Checkbox checked={h.isNominee} onChange={(isNominee) => set({ isNominee })}>这是一笔代持</Checkbox></FieldRow>
-      {h.isNominee && <FieldRow label="实际受益人"><SelectField options={[[null, "未指定"] as [NodeRef | null, string], ...options.map((r) => [r, labelOf(r)] as [NodeRef, string])]} value={h.beneficialOwner ?? null} onChange={(v) => set({ beneficialOwner: v ?? undefined })} minWidth={240} keyOf={key} /></FieldRow>}
+      {h.isNominee && <FieldRow label="实际受益人"><SelectField describe={(r) => refInfo(store, r)} options={[[null, "未指定"] as [NodeRef | null, string], ...options.map((r) => [r, labelOf(r)] as [NodeRef, string])]} value={h.beneficialOwner ?? null} onChange={(v) => set({ beneficialOwner: v ?? undefined })} minWidth={240} keyOf={key} /></FieldRow>}
       <FieldRow label="生效日期" hint="法律上自哪天起；不知道就留空。"><DateField value={h.from} onChange={(from) => set({ from })} placeholder="未知" /></FieldRow>
       <FieldRow label="资料截至" hint="依据文件反映的是哪一天的状态。"><DateField value={h.asOf} onChange={(asOf) => set({ asOf })} placeholder="可留空" /></FieldRow>
       <FieldRow label="结束日期"><DateField value={h.to} onChange={(to) => set({ to })} placeholder="仍持有可留空" /></FieldRow>
@@ -329,9 +329,9 @@ function AppointmentRow({ a, roles, onChange, onDelete }: { a: Appointment; role
   return (
     <Disclosure label={<span className="row gap8 grow">
       <span style={{ fontWeight: 500 }}>{store.person(a.personID)?.name ?? "未选择"}</span><span className="muted">{a.title || "未填职位"}</span><span className="spacer" />
-      {!a.from && <span className="t-meta muted">{a.asOf ? `最晚自 ${a.asOf}` : "生效日期未知"}</span>}{a.to && <Pill text="已离任" />}{!a.verified && <span className="v4-chip chip-pending" style={{ height: 20, fontSize: 11 }}>待核实</span>}
+      {!a.from && <span className="t-meta muted">{a.asOf ? `最晚自 ${a.asOf}` : "生效日期未知"}</span>}{a.to && <Pill text="已离任" />}{!a.verified && <span className="v4-chip chip-pending" style={{ height: 20, fontSize: 12 }}>待核实</span>}
     </span>}>
-      <FieldRow label="人员"><SelectField options={store.data.people.map((p) => [p.id, store.personLabel(p)] as [string, string])} value={a.personID} onChange={(personID) => set({ personID })} minWidth={220} /></FieldRow>
+      <FieldRow label="人员"><SelectField describe={(id) => personInfo(store, id)} options={store.data.people.map((p) => [p.id, store.personLabel(p)] as [string, string])} value={a.personID} onChange={(personID) => set({ personID })} minWidth={220} /></FieldRow>
       <FieldRow label="职位" hint="按实体类型给出常用角色，也可以直接输入。">
         <div className="row gap6">
           <TextField value={a.title} onChange={(title) => set({ title })} placeholder={roles[0] ?? "职位"} />

@@ -19,11 +19,13 @@ export type BtnSize = "small" | "regular" | "large";
 export function Button(p: {
   kind?: BtnKind; size?: BtnSize; icon?: string; children?: ReactNode; onClick?: (e: React.MouseEvent) => void; disabled?: boolean;
   title?: string; className?: string; style?: CSSProperties; type?: "button" | "submit"; autoFocus?: boolean; ariaLabel?: string;
+  /** 看起来禁用、但仍可聚焦，悬停和读屏能读到原因（describedBy）。点击不执行 onClick。 */
+  softDisabled?: boolean; describedBy?: string;
 }) {
   const iconOnly = !p.children && !!p.icon;
   return (
     <button type={p.type ?? "button"} className={`btn ${p.kind ?? "secondary"} ${p.size === "regular" || !p.size ? "" : p.size} ${iconOnly ? "icon" : ""} ${p.className ?? ""}`}
-      onClick={p.onClick} disabled={p.disabled} title={p.title} style={p.style} autoFocus={p.autoFocus} aria-label={p.ariaLabel ?? (iconOnly ? p.title : undefined)}>
+      onClick={p.softDisabled ? undefined : p.onClick} disabled={p.disabled} aria-disabled={p.softDisabled || undefined} aria-describedby={p.describedBy} title={p.title} style={p.style} autoFocus={p.autoFocus} aria-label={p.ariaLabel ?? (iconOnly ? p.title : undefined)}>
       {p.icon && <Icon name={p.icon} size={p.size === "small" ? 13 : 15} />}
       {p.children}
     </button>
@@ -87,12 +89,17 @@ export function Popover({ anchor, open, onClose, children, placement = "bottom",
   }, [open, anchor, placement, align]);
   useEffect(() => {
     if (!open) return;
+    // 5.4：弹层可以嵌套（例如面板里的下拉）。下拉列表挂在 body 上，不在本面板的 DOM 里，
+    // 所以点在“其他弹层”里不算外部点击；Esc 只关最上面的一层。
+    const isTop = () => { const all = document.querySelectorAll(".popover"); return all[all.length - 1] === ref.current; };
     const down = (e: MouseEvent) => {
       const t = e.target as Node;
       if (ref.current?.contains(t) || anchor.current?.contains(t)) return;
+      const other = (t as Element).closest?.(".popover");
+      if (other && other !== ref.current) return;
       onClose();
     };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape" && isTop()) { e.stopPropagation(); onClose(); } };
     document.addEventListener("mousedown", down, true);
     document.addEventListener("keydown", key, true);
     return () => { document.removeEventListener("mousedown", down, true); document.removeEventListener("keydown", key, true); };
@@ -173,28 +180,76 @@ export function useContextMenu() {
 
 // MARK: - 下拉选择
 
-export function SelectField<V>({ options, value, onChange, placeholder = "请选择", minWidth = 180, maxWidth, disabled, keyOf }: {
-  options: [V, string][]; value: V; onChange: (v: V) => void; placeholder?: string; minWidth?: number; maxWidth?: number; disabled?: boolean;
-  keyOf?: (v: V) => string;
+/** 选项的展示信息：分组标题、前置图标（头像、法域徽章）和副标题。 */
+export interface OptionInfo { group?: string; lead?: ReactNode; sub?: string }
+
+/** 5.3.3：下拉选择。选项多时带搜索；可按 describe 分组并显示头像或法域徽章；方向键选择、回车确认。 */
+export function SelectField<V>({ options, value, onChange, placeholder = "请选择", minWidth = 180, maxWidth, disabled, keyOf, ariaLabel, describe }: {
+  options: [V, string][]; value: V; onChange: (v: V) => void; placeholder?: string; minWidth?: number; maxWidth?: number; disabled?: boolean; ariaLabel?: string;
+  keyOf?: (v: V) => string; describe?: (v: V) => OptionInfo | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [hi, setHi] = useState(0);
   const ref = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const k = keyOf ?? ((v: V) => JSON.stringify(v ?? null));
-  const current = options.find(([v]) => k(v) === k(value))?.[1];
-  const filtered = q.trim() ? options.filter(([, l]) => l.toLowerCase().includes(q.trim().toLowerCase())) : options;
+  const cur = options.find(([v]) => k(v) === k(value));
+  const current = cur?.[1];
+  const norm = (x: string) => x.toLowerCase().replace(/\s+/g, "");
+  const nq = norm(q.trim());
+  const filtered = nq ? options.filter(([v, l]) => norm(l).includes(nq) || norm(describe?.(v)?.sub ?? "").includes(nq)) : options;
+  // 按分组保持出现顺序
+  const groups: { title?: string; items: [V, string][] }[] = [];
+  for (const o of filtered) { const g = describe?.(o[0])?.group; const hit = groups.find((x) => x.title === g); if (hit) hit.items.push(o); else groups.push({ title: g, items: [o] }); }
+  const flat = groups.flatMap((g) => g.items);
+  const close = () => { setOpen(false); setQ(""); };
+  const pick = (v: V) => { onChange(v); close(); };
+  useEffect(() => { if (open) setHi(Math.max(0, flat.findIndex(([v]) => k(v) === k(value)))); }, [open]);
+  useEffect(() => { setHi(0); }, [q]);
+  useEffect(() => { listRef.current?.querySelector<HTMLElement>(`[data-i="${hi}"]`)?.scrollIntoView({ block: "nearest" }); }, [hi, open]);
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(flat.length - 1, h + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(0, h - 1)); }
+    else if (e.key === "Enter" && flat[hi]) { e.preventDefault(); pick(flat[hi][0]); }
+  };
+  const mark = (l: string) => {
+    if (!nq) return l;
+    const i = l.toLowerCase().indexOf(q.trim().toLowerCase());
+    return i < 0 ? l : <>{l.slice(0, i)}<mark className="hl">{l.slice(i, i + q.trim().length)}</mark>{l.slice(i + q.trim().length)}</>;
+  };
+  let idx = -1;
+  const curInfo = cur ? describe?.(cur[0]) : undefined;
   return (
     <>
-      <button ref={ref} className={`select ${open ? "open" : ""}`} disabled={disabled} onClick={() => setOpen((o) => !o)}
+      <button ref={ref} className={`select ${open ? "open" : ""}`} disabled={disabled} aria-label={ariaLabel ? `${ariaLabel}：${current ?? placeholder}` : undefined} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => { if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setOpen(true); } }}
         style={{ minWidth, maxWidth, width: maxWidth ? "100%" : undefined, opacity: disabled ? .5 : 1 }}>
+        {curInfo?.lead && <span className="sel-lead">{curInfo.lead}</span>}
         <span className={`ellipsis grow ${current ? "" : "muted"}`}>{current ?? placeholder}</span>
         <Icon name="chevron.up.chevron.down" size={11} className="muted" />
       </button>
-      <Popover anchor={ref} open={open} onClose={() => { setOpen(false); setQ(""); }} minWidth={Math.max(minWidth, 220)}>
-        <div className="col gap4">
-          {options.length > 8 && <input className="field" autoFocus placeholder="搜索" value={q} onChange={(e) => setQ(e.target.value)} />}
-          <div className="col" style={{ gap: 1, maxHeight: 320, overflow: "auto" }}>
-            {filtered.map(([v, l], i) => <PopoverRow key={i} title={l} checked={k(v) === k(value)} onClick={() => { onChange(v); setOpen(false); setQ(""); }} />)}
+      <Popover anchor={ref} open={open} onClose={close} minWidth={Math.max(minWidth, 260)}>
+        <div className="col gap6" onKeyDown={onKey}>
+          {options.length > 8 && <label className="search sel-search"><Icon name="magnifyingglass" size={13} /><input className="field" autoFocus placeholder="搜索" value={q} onChange={(e) => setQ(e.target.value)} aria-label="搜索选项" /></label>}
+          <div ref={listRef} className="col sel-list" role="listbox" tabIndex={options.length > 8 ? -1 : 0} autoFocus={options.length <= 8}>
+            {groups.map((g, gi) => (
+              <div key={gi} className="col" role={g.title ? "group" : undefined} aria-label={g.title}>
+                {g.title && <span className="sel-group">{g.title}<span className="num"> {g.items.length}</span></span>}
+                {g.items.map(([v, l]) => {
+                  idx++; const i = idx; const info = describe?.(v); const on = k(v) === k(value);
+                  return (
+                    <button key={k(v)} data-i={i} role="option" aria-selected={on} className={`sel-opt ${i === hi ? "hi" : ""} ${on ? "on" : ""}`}
+                      onMouseMove={() => setHi(i)} onClick={() => pick(v)}>
+                      {info?.lead && <span className="sel-lead">{info.lead}</span>}
+                      <span className="col grow" style={{ minWidth: 0 }}><span className="ellipsis">{mark(l)}</span>{info?.sub && <span className="t-meta muted ellipsis">{info.sub}</span>}</span>
+                      {on && <Icon name="checkmark" size={13} />}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+            {!flat.length && <span className="t-meta muted" style={{ padding: "10px 12px" }}>没有匹配“{q.trim()}”的选项</span>}
           </div>
         </div>
       </Popover>
@@ -316,9 +371,9 @@ export function CalendarPanel({ value, onPick, relativeTo, relativeLabel = "签�
 /** 复选（Checkbox）是方角，单选（RadioGroup）是圆形：外观和行为一致。 */
 export const ChoiceMark = ({ on, square }: { on: boolean; square?: boolean }) => <span className={`mark ${square ? "sq" : ""} ${on ? "on" : ""}`}>{on && <Icon name="checkmark" size={10} strokeWidth={3.5} />}</span>;
 
-export function Checkbox({ checked, onChange, children, disabled, title }: { checked: boolean; onChange: (v: boolean) => void; children?: ReactNode; disabled?: boolean; title?: string }) {
+export function Checkbox({ checked, onChange, children, disabled, title, ariaLabel }: { checked: boolean; onChange: (v: boolean) => void; children?: ReactNode; disabled?: boolean; title?: string; ariaLabel?: string }) {
   return (
-    <button className="row gap8" onClick={(e) => { e.stopPropagation(); onChange(!checked); }} disabled={disabled} role="checkbox" aria-checked={checked} title={title} style={{ opacity: disabled ? .5 : 1, textAlign: "left" }}>
+    <button className="row gap8" onClick={(e) => { e.stopPropagation(); onChange(!checked); }} disabled={disabled} role="checkbox" aria-checked={checked} aria-label={ariaLabel} title={title} style={{ opacity: disabled ? .5 : 1, textAlign: "left" }}>
       <ChoiceMark on={checked} square />{children && <span>{children}</span>}
     </button>
   );

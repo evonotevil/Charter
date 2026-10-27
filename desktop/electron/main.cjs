@@ -9,9 +9,14 @@ const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
 const { SYNC_SCRIPT, OCR_SCRIPT } = require("./jxa.cjs");
+const { MAC_SCRIPT: CAL_MAC, WIN_SCRIPT: CAL_WIN } = require("./calendar.cjs");
 
 const isMac = process.platform === "darwin";
 const isWin = process.platform === "win32";
+// 5.3.3：菜单和“关于”里显示 Charter，而不是包名 charter-desktop。
+// 改名会让 userData 换目录（数据文件夹位置等设置存在那里），所以先记下原路径再改回去。
+{ const ud = app.getPath("userData"); app.setName("Charter"); app.setPath("userData", ud); }
+if (isMac) app.setAboutPanelOptions({ applicationName: "Charter", applicationVersion: app.getVersion(), copyright: "数据只保存在你选择的文件夹里。" });
 const DIST = path.join(__dirname, "..", "dist");
 
 protocol.registerSchemesAsPrivileged([
@@ -38,7 +43,7 @@ process.on("unhandledRejection", (e) => log("error", "主进程未处理", e && 
 
 // MARK: - 文件
 
-async function writeAtomic(p, data) {
+async function writeAtomic(p, data, attempt = 0) {
   const dir = path.dirname(p);
   await fsp.mkdir(dir, { recursive: true });
   const tmp = path.join(dir, `.charter-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.tmp`);
@@ -49,7 +54,10 @@ async function writeAtomic(p, data) {
     try { await fsp.rename(tmp, p); return; }
     catch (e) {
       if (isWin && ["EPERM", "EBUSY", "EACCES"].includes(e.code) && i < 8) { await new Promise((r) => setTimeout(r, 100 * (i + 1))); continue; }
-      await fsp.rm(tmp, { force: true }); log("warn", "写入失败", p, e.code || e.message); throw e;
+      await fsp.rm(tmp, { force: true });
+      // 5.4：临时文件或目录在改名前被同步盘、杀毒软件移走（ENOENT）：重建目录、整份重写，最多再试 2 次
+      if (e.code === "ENOENT" && attempt < 2) { log("warn", "写入时临时文件消失，重试", p); await new Promise((r) => setTimeout(r, 150 * (attempt + 1))); return writeAtomic(p, data, attempt + 1); }
+      log("warn", "写入失败", p, e.code || e.message); throw e;
     }
   }
 }
@@ -76,6 +84,54 @@ handle("read_text", (p) => fsp.readFile(p, "utf8"));
 handle("read_bytes", async (p) => new Uint8Array(await fsp.readFile(p)));
 handle("write_text", (p, text) => writeAtomic(p, Buffer.from(text, "utf8")));
 handle("write_bytes", (p, data) => writeAtomic(p, Buffer.from(data)));
+handle("calendar_sync", (input) => calendarSync(input));
+// 5.3.3：流式写 ZIP（不压缩，带数据描述符）。逐个文件分块读、边写边算 CRC，内存只占一个分块。
+// entries: [{ name, path }] 或 [{ name, text }]；先写到 .partial，完成后改名。
+handle("zip_files", async (target, entries) => {
+  const zlib = require("node:zlib");
+  const tmp = target + ".partial";
+  const out = await fsp.open(tmp, "w");
+  let offset = 0;
+  const central = [];
+  const w = async (buf) => { await out.write(buf); offset += buf.length; };
+  const dosTime = (d) => ({ time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), date: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() });
+  try {
+    for (const e of entries) {
+      const name = Buffer.from(e.name, "utf8");
+      const { time, date } = dosTime(new Date());
+      const start = offset;
+      const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0x0808, 6); lh.writeUInt16LE(0, 8);
+      lh.writeUInt16LE(time, 10); lh.writeUInt16LE(date, 12); lh.writeUInt16LE(name.length, 26);
+      await w(lh); await w(name);
+      let crc = 0, size = 0;
+      if (e.text !== undefined) { const b = Buffer.from(e.text, "utf8"); crc = zlib.crc32(b); size = b.length; await w(b); }
+      else {
+        const fh = await fsp.open(e.path, "r");
+        try {
+          const chunk = Buffer.alloc(1 << 20);
+          for (;;) { const { bytesRead } = await fh.read(chunk, 0, chunk.length, null); if (!bytesRead) break; const part = chunk.subarray(0, bytesRead); crc = zlib.crc32(part, crc); size += bytesRead; await w(part); }
+        } catch (err) { throw new Error(`读取“${e.name}”时出错（${err.message}）`); } finally { await fh.close(); }
+      }
+      if (size >= 0xffffffff || offset >= 0xffffffff) throw new Error("备份超过 4 GB，暂不支持");
+      const dd = Buffer.alloc(16); dd.writeUInt32LE(0x08074b50, 0); dd.writeUInt32LE(crc >>> 0, 4); dd.writeUInt32LE(size, 8); dd.writeUInt32LE(size, 12);
+      await w(dd);
+      central.push({ name, crc: crc >>> 0, size, start, time, date });
+    }
+    const cdStart = offset;
+    for (const c of central) {
+      const h = Buffer.alloc(46); h.writeUInt32LE(0x02014b50, 0); h.writeUInt16LE(0x0314, 4); h.writeUInt16LE(20, 6); h.writeUInt16LE(0x0808, 8); h.writeUInt16LE(0, 10);
+      h.writeUInt16LE(c.time, 12); h.writeUInt16LE(c.date, 14); h.writeUInt32LE(c.crc, 16); h.writeUInt32LE(c.size, 20); h.writeUInt32LE(c.size, 24);
+      h.writeUInt16LE(c.name.length, 28); h.writeUInt32LE((0o100644 << 16) >>> 0, 38); h.writeUInt32LE(c.start, 42);
+      await w(h); await w(c.name);
+    }
+    const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(central.length, 8); end.writeUInt16LE(central.length, 10);
+    end.writeUInt32LE(offset - cdStart, 12); end.writeUInt32LE(cdStart, 16);
+    await w(end);
+    await out.close();
+    await fsp.rename(tmp, target);
+    return offset;
+  } catch (err) { await out.close().catch(() => {}); await fsp.rm(tmp, { force: true }); throw err; }
+});
 handle("stat", async (p) => {
   try { const st = await fsp.stat(p); return { exists: true, isDir: st.isDirectory(), mtime: mtime(st), size: st.size }; }
   catch { return { exists: false, isDir: false, mtime: null, size: 0 }; }
@@ -210,6 +266,26 @@ $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult]
 $result.Lines | ForEach-Object { $_.Text }
 `;
 
+// 5.4：同步到系统日历（Mac：EventKit；Windows：桌面版 Outlook）。数据经临时 JSON 文件传入，结束后删除。
+async function calendarSync(input) {
+  if (!isMac && !isWin) return { error: "unsupported" };
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "charter-cal-"));
+  try {
+    const file = path.join(dir, "events.json");
+    await fsp.writeFile(file, JSON.stringify(input), "utf8");
+    let out;
+    if (isMac) out = await run("/usr/bin/osascript", ["-l", "JavaScript", "-e", CAL_MAC, file], { timeout: 180000 });
+    else {
+      const script = path.join(dir, "cal.ps1");
+      await fsp.writeFile(script, "\uFEFF" + CAL_WIN, "utf8");
+      out = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, file], { timeout: 180000 });
+    }
+    if (out === null) { log("warn", "日历同步脚本失败"); return { error: "failed" }; }
+    try { const r = JSON.parse(out.split("\n").pop()); if (r.error) log("warn", "日历同步", r.error, r.message || ""); else log("info", "日历同步完成", JSON.stringify({ added: r.added, updated: r.updated, removed: r.removed })); return r; }
+    catch { log("warn", "日历同步输出无法解析"); return { error: "failed" }; }
+  } finally { await fsp.rm(dir, { recursive: true, force: true }); }
+}
+
 async function ocr(png) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "charter-ocr-"));
   const img = path.join(dir, "page.png");
@@ -288,7 +364,12 @@ function createWindow() {
 function menu() {
   if (!isMac) { Menu.setApplicationMenu(null); return; }
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { role: "appMenu" },
+    { label: "Charter", submenu: [
+      { role: "about", label: "关于 Charter" }, { type: "separator" },
+      { role: "services", label: "服务" }, { type: "separator" },
+      { role: "hide", label: "隐藏 Charter" }, { role: "hideOthers", label: "隐藏其他" }, { role: "unhide", label: "全部显示" }, { type: "separator" },
+      { role: "quit", label: "退出 Charter" },
+    ] },
     { label: "编辑", submenu: [{ role: "undo", label: "撤销" }, { role: "redo", label: "重做" }, { type: "separator" }, { role: "cut", label: "剪切" }, { role: "copy", label: "拷贝" }, { role: "paste", label: "粘贴" }, { role: "selectAll", label: "全选" }] },
     { label: "显示", submenu: [{ role: "reload", label: "重新载入" }, { role: "togglefullscreen", label: "全屏" }, ...(app.isPackaged ? [] : [{ role: "toggleDevTools" }])] },
     { role: "windowMenu", label: "窗口" },
@@ -297,25 +378,24 @@ function menu() {
 
 app.whenReady().then(async () => {
   log("info", `启动 Charter ${app.getVersion()} · ${process.platform} ${process.arch} · Electron ${process.versions.electron}`);
-  // 升级后清掉旧界面缓存。Windows 覆盖安装时 userData 会保留，这一步避免继续打开旧版本资源。
+  // 5.3.2：版本变了就清掉旧的网页缓存和 Service Worker，避免升级后仍看到旧界面
   try {
-    const versionMark = path.join(app.getPath("userData"), "last-version.txt");
-    const lastVersion = await fsp.readFile(versionMark, "utf8").catch(() => "");
-    if (lastVersion.trim() !== app.getVersion()) {
+    const mark = path.join(app.getPath("userData"), "last-version.txt");
+    const last = await fsp.readFile(mark, "utf8").catch(() => "");
+    if (last.trim() !== app.getVersion()) {
       await session.defaultSession.clearCache();
       await session.defaultSession.clearStorageData({ storages: ["serviceworkers", "cachestorage", "shadercache"] });
-      await fsp.mkdir(path.dirname(versionMark), { recursive: true });
-      await fsp.writeFile(versionMark, app.getVersion(), "utf8");
+      await fsp.writeFile(mark, app.getVersion());
+      log("info", `版本由 ${last.trim() || "（首次）"} 变为 ${app.getVersion()}，已清理界面缓存`);
     }
-  } catch (e) {
-    log("warn", "旧界面缓存清理失败", e && e.message || String(e));
-  }
+  } catch (e) { log("warn", "清理界面缓存失败", e && e.message); }
   protocol.handle("app", (req) => {
     const u = new URL(req.url);
     const rel = decodeURIComponent(u.pathname).replace(/^\/+/, "") || "index.html";
     const file = path.normalize(path.join(DIST, rel));
     if (!file.startsWith(DIST)) return new Response("禁止访问", { status: 403 });
     // 直接读文件返回，不依赖 net.fetch(file://)（Windows 上对 asar 内路径不稳定）
+    // 5.3.2：界面文件不进缓存，升级后一定读新包里的文件
     return fsp.readFile(file).then((buf) => new Response(buf, { headers: { "content-type": mime(file), "cache-control": "no-store" } }))
       .catch((e) => { log("error", "界面文件读取失败", file, e.code || e.message); return new Response("找不到界面文件", { status: 404 }); });
   });

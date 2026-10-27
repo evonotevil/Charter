@@ -17,6 +17,7 @@ import { LogoMark } from "../ui/Logo";
 import { StructureView } from "./Structure";
 import { DueView } from "./Due";
 import { VerifyView } from "./Trust";
+import { useTrashJanitor } from "./Lifecycle";
 import * as D from "../domain/day";
 
 export function GroupIcon({ groupID, size = 22, fill = "var(--band)" }: { groupID: string | null; size?: number; fill?: string }) {
@@ -58,7 +59,9 @@ function Sidebar() {
   }, []);
   const soon = store.openObligations.filter((o) => D.daysBetween(store.today, o.due) <= 30);
   const overdue = soon.filter((o) => o.due < store.today).length;
-  const missing = store.attentionCompanyCount(null);
+  // 与文件页“需处理”同一口径：当前集团范围内的公司文件 + 全部个人文件
+  const gscope = store.companyIDsForFilter(router.groupFilter);
+  const missing = store.documentsNeedingAttention.filter((d) => d.owner.kind === "person" || !gscope || gscope.has(d.owner.id)).length;
   const groupExists = (id: string) => !!store.group(id);
   const s = sync.state;
   const spin = s.kind === "syncing" || s.kind === "checking" ? { animation: "spin 2s linear infinite" } : undefined;
@@ -95,15 +98,15 @@ function Sidebar() {
           <Icon name="magnifyingglass" size={15} /><span className="lbl">搜索公司或人</span><kbd>{shortcutLabel("K")}</kbd>
         </button>
       </div>
-      <nav className="nav">{sections.map((x, i) => navButton(x, i))}</nav>
+      <nav className="nav" aria-label="主要页面">{sections.map((x, i) => navButton(x, i))}</nav>
       <span className="spacer" />
       {!rail && (soon.length > 0
         ? <button className={`side-card ${tone}`} onClick={() => router.go("due")}>
             <span className="t-subtitle">{overdue ? `${overdue} 件已逾期` : `30 天内 ${soon.length} 件`}</span>
-            <span className="t-meta">{overdue ? "先处理逾期的，再看快到期的。" : "都还来得及，按日历一件件来。"}</span>
+            <span className="t-meta">{overdue ? "先处理逾期的，再看快到期的。" : "按日历一件件来。"}</span>
           </button>
-        : <div className="side-card"><span className="t-subtitle">安心一点。</span><span className="t-meta">30 天内没有要申报的事。</span></div>)}
-      <nav className="nav">
+        : <span className="t-meta muted" style={{ padding: "0 12px" }}>30 天内没有申报事项</span>)}
+      <nav className="nav" aria-label="工作区">
         <span className="nav-head">工作区</span>
         {workspaceSections.map((x) => navButton(x))}
       </nav>
@@ -132,6 +135,7 @@ function Page() {
 
 export function Shell() {
   const { store, router } = useApp();
+  useTrashJanitor();
   const blocked = store.isLoading || store.isImporting || store.loadFailed;
   return (
     <div className="app">

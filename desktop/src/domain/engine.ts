@@ -204,7 +204,9 @@ export function scheduleSummary(s: RuleTemplate["schedule"], changeLabel: (k: st
 
 export type Freshness =
   | { kind: "valid" } | { kind: "expiring"; days: number } | { kind: "expired"; days: number }
-  | { kind: "superseded" } | { kind: "needsUpdate" } | { kind: "unknown" };
+  | { kind: "superseded" } | { kind: "needsUpdate" } | { kind: "unknown" }
+  /** 5.4：记录还在，但数据文件夹里找不到文件（未同步下来、被移动或删除）。 */
+  | { kind: "fileMissing" };
 
 export function freshnessLabel(f: Freshness): string {
   switch (f.kind) {
@@ -214,21 +216,21 @@ export function freshnessLabel(f: Freshness): string {
     case "superseded": return "旧版，已有新版本";
     case "needsUpdate": return "需要更新";
     case "unknown": return "缺少日期";
+    case "fileMissing": return "源文件不可用";
   }
 }
 export const freshnessNeedsAttention = (f: Freshness) =>
-  f.kind === "expiring" || f.kind === "expired" || f.kind === "needsUpdate" || f.kind === "unknown";
+  f.kind === "expiring" || f.kind === "expired" || f.kind === "needsUpdate" || f.kind === "unknown" || f.kind === "fileMissing";
 export const freshnessRank = (f: Freshness) =>
-  ({ expired: 0, needsUpdate: 1, expiring: 2, unknown: 3, valid: 4, superseded: 5 })[f.kind];
+  ({ fileMissing: -1, expired: 0, needsUpdate: 1, expiring: 2, unknown: 3, valid: 4, superseded: 5 })[f.kind];
 
 export function freshnessOf(doc: Document, type: DocumentType | undefined, today: Day, warnDays = 30): Freshness {
   if (doc.supersededBy) return { kind: "superseded" };
   if (doc.needsUpdate) return { kind: "needsUpdate" };
   let expiry: Day | undefined;
   if (doc.expiryDate) expiry = doc.expiryDate;
+  else if (doc.noExpiry) return { kind: "valid" };
   else {
-    // 文件上已经明确写明长期有效时，以文件本身为准。
-    if (doc.noExpiry) return { kind: "valid" };
     if (!type) return { kind: "unknown" };
     switch (type.validity) {
       case "permanent": case "untilChanged": return { kind: "valid" };

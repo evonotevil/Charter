@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
-import { type CorporateGroup, type DateAdjust, type DocumentType, type NodeKind, type NodeRef, type RuleTemplate, type ValidityKind, brandPalette, isHexColor, dateAdjustLabel, ref, refKey, uuid, validityKinds, validityLabel } from "../domain/models";
+import { type CorporateGroup, type DateAdjust, type DocumentType, type NodeKind, type NodeRef, type RuleTemplate, type ValidityKind, brandPalette, isHexColor, isStatusLike, dateAdjustLabel, ref, refKey, uuid, validityKinds, validityLabel } from "../domain/models";
 import { snapshotKeep, snapshotTitle, type DataSnapshot } from "../domain/folder";
 import { sourceLabel } from "../domain/groups";
 import { useApp } from "../state/hooks";
-import { type SettingsPane, settingsGroups, settingsPaneTitle } from "../state/router";
+import { type SettingsPane, settingsGroups, settingsPaneTitle, settingsPaneSymbol } from "../state/router";
 import { syncDetail, syncNeedsAttention, syncTitle } from "../state/sync";
 import { type ConfigBundle, applyConfig, configImportDiff, exportConfig, readConfig } from "../state/actions";
 import { type OpenedBackup, exportBackup, readBackup, restoreBackup } from "../services/backup";
@@ -14,6 +14,7 @@ import { installSampleData } from "../state/sample";
 import { nonArchiveTypeIDs } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
+import { autoSyncOn, autoSyncPref, autoSyncStatus, autoSyncSupported, describeError, runCalendarSync } from "../services/calendarSync";
 import { useChildMotion } from "../ui/motion";
 import { companyTint, groupRing, setDensity, useDensity } from "../ui/uistyle";
 import { Banner, Card, PageHeader, Button, Segmented, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField } from "../ui/kit";
@@ -32,16 +33,16 @@ export function SettingsView() {
         <nav className="settings-nav" aria-label="设置分类">
           {settingsGroups().map((g) => (
             <div key={g.title} className="nav">
-              <span className="nav-head">{g.title}</span>
+              <span className="nav-head" role="presentation">{g.title}</span>
               {g.panes.map((p) => (
-                <button key={p} className="nav-item" aria-current={p === pane ? "page" : undefined} onClick={() => router.set("settingsPane", p)}>{settingsPaneTitle[p]}</button>
+                <button key={p} className="nav-item" aria-current={p === pane ? "page" : undefined} onClick={() => router.set("settingsPane", p)}><Icon name={settingsPaneSymbol[p]} size={15} />{settingsPaneTitle[p]}</button>
               ))}
             </div>
           ))}
           <span className="t-label num" style={{ padding: "16px 12px" }}>Charter {typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : ""}</span>
         </nav>
         <div className="col" style={{ minWidth: 0 }} key={pane}>
-          {pane === "groups" ? <GroupsSettings /> : pane === "archiveItems" ? <ArchiveItemsSettings /> : pane === "purposes" ? <PacketSettings /> : pane === "rules" ? <RulesSettings /> : <GeneralSettings pane={pane} />}
+          {pane === "scope" ? <ScopeSettings /> : pane === "privacy" ? <PrivacySettings /> : pane === "groups" ? <GroupsSettings /> : pane === "archiveItems" ? <ArchiveItemsSettings /> : pane === "purposes" ? <PacketSettings /> : pane === "rules" ? <RulesSettings /> : <GeneralSettings pane={pane} />}
         </div>
       </div>
     </div></div>
@@ -236,6 +237,7 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
             <Switch checked={store.isPrimaryDevice} onChange={(v) => store.saveSettings((x) => { if (v) { x.primaryDeviceID = store.deviceID; x.primaryDeviceName = store.deviceName; } else { x.primaryDeviceID = "none"; x.primaryDeviceName = undefined; } })} />
           </SRow>
         </SGroup>
+        <CalendarAutoSync />
         <SGroup footer="用 Apple 日历或 Outlook 订阅这个文件后，手机上也能看到到期事项。">
           <SRow title="同步到日历" detail={`在数据文件夹里生成 ${settings.calendarName}.ics，事项变化时自动更新。`}>
             <Switch checked={settings.calendarEnabled} onChange={(v) => store.saveSettings((x) => { x.calendarEnabled = v; })} />
@@ -334,7 +336,7 @@ function GroupsSettings() {
       header={<PaneHeader title="集团" detail="结构图顶部的分组。删除集团只删除分组，公司和持股不受影响。"><Button kind="primary" icon="plus" onClick={create}>新建集团</Button></PaneHeader>}
       list={<>
         {groups.map((g) => <ListItem key={g.id} mid={g.id} on={g.id === sel?.id} onClick={() => router.set("settingsGroupID", g.id)}
-          lead={<span className="v4-code" style={{ width: 28, height: 28, ...groupRing(store.brandColor(g)) }}>{[...g.name.trim()][0] ?? "集"}</span>} title={g.name} sub={`${store.companyIDsIn(g).size} 家公司`} />)}
+          lead={<span className="v4-code" style={{ width: 28, height: 28, ...groupRing(store.brandColor(g)) }}>{[...g.name.trim()][0] ?? "集"}</span>} title={g.name} sub={`${store.companyIDsIn(g).size} 家公司${g.color && isStatusLike(g.color) ? " · 颜色与状态色冲突，建议更换" : ""}`} />)}
         {!groups.length && <span className="muted t-meta" style={{ padding: 12 }}>还没有集团。</span>}
         {loose > 0 && <><div className="hairline" style={{ margin: "6px 8px" }} /><span className="row gap8 t-meta muted" style={{ padding: "10px 12px" }}><span className="v4-dot" style={{ boxShadow: "inset 0 0 0 1.5px var(--muted)" }} />不属于任何集团 · {loose} 家</span></>}
       </>}
@@ -343,13 +345,19 @@ function GroupsSettings() {
   );
 }
 
-/** 18 个预设色 + 自定义（系统取色器，松手才保存一次）。 */
+/** 12 个预设色 + 自定义（系统取色器，松手才保存一次）。红、橙、黄、绿留给状态：自定义时不接受，保留原色并说明。 */
 function ColorPicker({ value, onPick }: { value: string; onPick: (c: string) => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [rejected, setRejected] = useState<string | null>(null);
   useEffect(() => {
     const el = input.current; if (!el) return;
-    const done = () => { setPreview(null); if (isHexColor(el.value) && el.value.toLowerCase() !== value.toLowerCase()) onPick(el.value.toUpperCase()); };
+    const done = () => {
+      setPreview(null);
+      if (!isHexColor(el.value) || el.value.toLowerCase() === value.toLowerCase()) return;
+      if (isStatusLike(el.value)) { setRejected(el.value.toUpperCase()); el.value = value; return; }
+      setRejected(null); onPick(el.value.toUpperCase());
+    };
     el.addEventListener("change", done);
     return () => el.removeEventListener("change", done);
   }, [value, onPick]);
@@ -359,16 +367,19 @@ function ColorPicker({ value, onPick }: { value: string; onPick: (c: string) => 
     boxShadow: on ? "0 0 0 2px var(--surface), 0 0 0 4px var(--ink)" : undefined, transition: "box-shadow var(--fast) var(--ease)" });
   return (
     <span className="col gap8" style={{ alignItems: "flex-end" }}>
-      <span style={{ display: "grid", gridTemplateColumns: "repeat(9, 20px)", gap: 8 }}>
+      <span style={{ display: "grid", gridTemplateColumns: "repeat(6, 20px)", gap: 8 }}>
         {brandPalette.map((c) => <button key={c} aria-label={`颜色 ${c}`} aria-pressed={c.toLowerCase() === shown.toLowerCase()} onClick={() => onPick(c)} style={dot(c, c.toLowerCase() === shown.toLowerCase())} />)}
       </span>
       <label className="row gap6 t-meta" style={{ cursor: "pointer", color: "var(--muted)" }}>
-        <span style={{ ...dot(custom ? shown : "conic-gradient(#D64F6E, #E07A2E, #C99A1E, #2BA889, #3AA0C9, #4F7CF7, #B05CD6, #D64F6E)", custom), position: "relative" }}>
+        <span style={{ ...dot(custom ? shown : "conic-gradient(#4F7CF7, #3AA0C9, #178F9F, #5C6B80, #8A6D4E, #8E4E8A, #B05CD6, #7A5AF0, #4F7CF7)", custom), position: "relative" }}>
           <input ref={input} type="color" value={shown} aria-label="自定义颜色" onInput={(e) => setPreview((e.target as HTMLInputElement).value)}
             style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%", border: 0, padding: 0 }} />
         </span>
         {custom ? <span className="mono" style={{ color: "var(--ink)" }}>{shown.toUpperCase()}</span> : "自定义…"}
       </label>
+      {preview && isStatusLike(preview) ? <span className="t-meta amber-text" role="status" style={{ maxWidth: 280, textAlign: "right" }}>红、橙、黄、绿用来表示过期、快到期和正常，不能用作集团色。松开后会保留原来的颜色。</span>
+        : rejected ? <span className="t-meta muted" role="status" style={{ maxWidth: 280, textAlign: "right" }}>{rejected} 属于状态色，没有采用，仍是 {value.toUpperCase()}。请换蓝、紫、青、灰或棕色系。</span>
+        : !preview && isStatusLike(value) ? <span className="t-meta amber-text" style={{ maxWidth: 280, textAlign: "right" }}>当前颜色 {value.toUpperCase()} 和状态色（过期、快到期、正常）相近，容易被误读成风险，建议换一个。</span> : null}
     </span>
   );
 }
@@ -786,5 +797,89 @@ function RuleForm({ rule, onDelete }: { rule: RuleTemplate; onDelete: () => void
         <button className="t-meta" style={{ color: "var(--danger)", fontWeight: 600 }} onClick={onDelete}>删除规则</button>
       </div>
     </div>
+  );
+}
+
+// MARK: - 材料范围（5.3）
+
+function ScopeSettings() {
+  const { store, router } = useApp();
+  const presets = store.data.settings.scopePresets ?? [];
+  const companies = store.data.companies.filter((c) => c.status !== "dissolved" && c.status !== "redomiciled");
+  const unconf = companies.filter((c) => !store.scopeConfigured(ref("company", c.id)));
+  const unconfP = store.data.people.filter((p) => !store.scopeConfigured(ref("person", p.id)));
+  return (
+    <Scroll>
+      <PaneHeader title="材料范围" detail="Charter 只按“由你保管”的材料算完整度。法域清单只是建议，出现在完整性审阅里。" />
+      <SGroup footer="没设置过范围的公司和人员显示“未配置材料范围”，不显示百分比。">
+        <SRow title="公司" detail={`${companies.length - unconf.length}/${companies.length} 家已配置`}>
+          {unconf.length > 0 && <Button size="small" onClick={() => router.open({ kind: "scope", ownerKind: "company", owners: unconf.map((c) => c.id) })}>配置未配置的 {unconf.length} 家…</Button>}
+          <Button size="small" onClick={() => router.open({ kind: "scope", ownerKind: "company" })}>批量设置…</Button>
+        </SRow>
+        <SRow title="人员" detail={`${store.data.people.length - unconfP.length}/${store.data.people.length} 人已配置`}>
+          {unconfP.length > 0 && <Button size="small" onClick={() => router.open({ kind: "scope", ownerKind: "person", owners: unconfP.map((p) => p.id) })}>配置未配置的 {unconfP.length} 人…</Button>}
+          <Button size="small" onClick={() => router.open({ kind: "scope", ownerKind: "person" })}>批量设置…</Button>
+        </SRow>
+      </SGroup>
+      <SGroup footer="在“设置材料范围”面板里把一组设置存成方案，之后可以一键套用到新公司或新人员。">
+        {!presets.length && <SRow title="还没有保存过方案" />}
+        {presets.map((p) => (
+          <SRow key={p.id} title={p.name} detail={`${p.kind === "company" ? "公司" : "人员"} · ${Object.keys(p.plan).length} 个条目`}>
+            <Button size="small" kind="danger" onClick={() => store.saveSettings((s) => { s.scopePresets = (s.scopePresets ?? []).filter((x) => x.id !== p.id); })}>删除</Button>
+          </SRow>
+        ))}
+      </SGroup>
+    </Scroll>
+  );
+}
+
+function PrivacySettings() {
+  const rows: [string, string][] = [
+    ["文字识别（OCR）", "在这台电脑上完成：Mac 用系统自带的文字识别，Windows 用系统自带的 OCR。不联网，不上传。"],
+    ["分类建议与去重", "按本机的关键词规则和文件内容哈希（SHA-256）判断，不调用任何在线服务。"],
+    ["识别结果存在哪里", "只存在你的数据文件夹里（data/inbox.json 保存前 600 个字的摘录）。归档后摘录随待整理条目一起清除。"],
+    ["文件副本", "归档时 Charter 把文件复制进数据文件夹；移到废纸篓或清空，都只作用于这份副本，不碰你原来的文件。"],
+    ["同步", "Charter 不运营服务器。数据文件夹放在 iCloud 云盘或 OneDrive 时，由它们负责同步。"],
+  ];
+  return (
+    <Scroll>
+      <PaneHeader title="隐私与本地处理" detail="人员材料里有护照、身份证件和 KYC。下面说明 Charter 怎么处理它们。" />
+      <SGroup>{rows.map(([t, d]) => <SRow key={t} title={t} detail={d} />)}</SGroup>
+      <span className="t-meta muted" style={{ padding: "0 4px" }}>加密存储、敏感文件标记、缩略图遮罩和导出脱敏在后续版本单独评估。</span>
+    </Scroll>
+  );
+}
+
+// MARK: - 5.4 自动同步到系统日历
+
+function CalendarAutoSync() {
+  const { store } = useApp();
+  const p = platform();
+  const [on, setOn] = useState(autoSyncOn());
+  const [busy, setBusy] = useState(false);
+  const st = autoSyncStatus();
+  const name = store.data.settings.calendarName || "Charter";
+  if (!autoSyncSupported()) return null;
+  const mac = p.os === "mac";
+  const toggle = async (v: boolean) => {
+    if (!v) { p.prefSet(autoSyncPref, "0"); setOn(false); return; }
+    setBusy(true);
+    try {
+      const r = await runCalendarSync(store, { checkOnly: true });
+      if (!r || !("ok" in r && r.ok)) { store.setError(`没有打开自动同步：${r ? describeError(r) : "同步不可用。"}`); return; }
+      p.prefSet(autoSyncPref, "1"); setOn(true);
+      await runCalendarSync(store, { manual: true });
+      store.showToast(`已开启：事项会同步到“${name}”日历。`);
+    } finally { setBusy(false); }
+  };
+  return (
+    <SGroup footer={`只写入名为“${name}”的日历，不会改动你其他日历里的事件。完成或删除的事项会从这本日历里删掉。${mac ? "第一次开启时 macOS 会询问日历权限。" : "需要桌面版 Outlook；新版 Outlook 和 Windows 自带日历不支持。"}`}>
+      <SRow title="自动同步到系统日历" detail={!store.isPrimaryDevice ? `这台电脑不发通知，不会同步；现在由“${store.data.settings.primaryDeviceName ?? "另一台电脑"}”负责。` : mac ? "申报事项和证件到期写进 Apple 日历，新增、改期、完成和删除都会自动更新。" : "申报事项和证件到期写进 Outlook 日历，新增、改期、完成和删除都会自动更新。"}>
+        <Switch checked={on} disabled={busy || !store.isPrimaryDevice} onChange={(v) => void toggle(v)} />
+      </SRow>
+      {on && <SRow title="上次同步" detail={st ? `${new Date(st.at).toLocaleString()} · ${st.ok ? st.message : "失败：" + st.message}` : "还没有同步过"}>
+        <Button size="small" disabled={busy} onClick={async () => { setBusy(true); try { const r = await runCalendarSync(store, { manual: true }); if (r && "ok" in r && r.ok) store.showToast(`已同步：新增 ${r.added ?? 0}、更新 ${r.updated ?? 0}、删除 ${r.removed ?? 0}。`); } finally { setBusy(false); } }}>{busy ? "正在同步…" : "立即同步"}</Button>
+      </SRow>}
+    </SGroup>
   );
 }

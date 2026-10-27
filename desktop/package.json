@@ -1,7 +1,7 @@
 {
   "name": "charter-desktop",
   "private": true,
-  "version": "5.3.2",
+  "version": "5.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -79,14 +79,16 @@
         }
       ],
       "icon": "electron/resources/icon.icns",
-      "artifactName": "Charter-${version}-Mac-${arch}.${ext}",
       "category": "public.app-category.business",
       "identity": null,
       "minimumSystemVersion": "12.0",
       "extendInfo": {
         "NSHumanReadableCopyright": "Charter",
-        "LSApplicationCategoryType": "public.app-category.business"
-      }
+        "LSApplicationCategoryType": "public.app-category.business",
+        "NSCalendarsFullAccessUsageDescription": "Charter 把申报事项和证件到期写进你的“Charter”日历，并在事项变化时自动更新。",
+        "NSCalendarsUsageDescription": "Charter 把申报事项和证件到期写进你的“Charter”日历，并在事项变化时自动更新。"
+      },
+      "artifactName": "Charter-${version}-Mac-${arch}.${ext}"
     },
     "win": {
       "target": [
@@ -104,8 +106,8 @@
         }
       ],
       "icon": "electron/resources/icon.ico",
-      "artifactName": "Charter-${version}-Windows-${arch}.${ext}",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "artifactName": "Charter-${version}-Windows-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,

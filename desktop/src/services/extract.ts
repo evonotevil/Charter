@@ -79,22 +79,40 @@ export async function recognizeFile(path: string, ctx: RecognitionContext): Prom
 }
 
 /** PDF 首页缩略图（data URL）。 */
-export async function thumbnail(path: string, width = 240): Promise<string | null> {
+// 5.3.3：缩略图——同时最多解析 2 份；PDF 和图片都缩成小 JPEG（约 240px 宽），不再把原图当缩略图显示。
+const thumbQueue: (() => void)[] = [];
+let thumbActive = 0;
+const thumbSlot = () => new Promise<void>((res) => { if (thumbActive < 2) { thumbActive++; res(); } else thumbQueue.push(() => { thumbActive++; res(); }); });
+const thumbDone = () => { thumbActive--; thumbQueue.shift()?.(); };
+
+export async function thumbnail(path: string, width = 240, signal?: { cancelled: boolean }): Promise<string | null> {
+  await thumbSlot();
   try {
+    if (signal?.cancelled) return null;
     const bytes = await platform().readBytes(path);
-    if (extname(path).toLowerCase() !== "pdf") return platform().fileURL(path);
+    if (signal?.cancelled) return null;
+    const out = Math.round(width * 2);
+    if (extname(path).toLowerCase() !== "pdf") {
+      const bmp = await createImageBitmap(new Blob([bytes.slice()]), { resizeWidth: out, resizeQuality: "medium" });
+      const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
+      c.getContext("2d")!.drawImage(bmp, 0, 0); bmp.close();
+      const url = c.toDataURL("image/jpeg", 0.8); c.width = c.height = 0;
+      return url;
+    }
     const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
-    const page = await doc.getPage(1);
-    const base = page.getViewport({ scale: 1 });
-    const vp = page.getViewport({ scale: (width * 2) / base.width });
-    const canvas = document.createElement("canvas");
-    canvas.width = vp.width; canvas.height = vp.height;
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
-    await doc.destroy();
-    return canvas.toDataURL("image/png");
-  } catch { return null; }
+    try {
+      const page = await doc.getPage(1);
+      const base = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: out / base.width });
+      const canvas = document.createElement("canvas");
+      canvas.width = vp.width; canvas.height = vp.height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      const url = canvas.toDataURL("image/jpeg", 0.82); canvas.width = canvas.height = 0;
+      return url;
+    } finally { await doc.destroy(); }
+  } catch { return null; } finally { thumbDone(); }
 }
 
 export { pdfjs };

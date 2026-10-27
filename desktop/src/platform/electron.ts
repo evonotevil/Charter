@@ -1,6 +1,6 @@
 // 桌面端（Electron）实现。系统能力由 electron/main.cjs 提供，经 preload 暴露为 window.charter。
 
-import type { DirEntry, FileStat, Platform, SyncState } from "./platform";
+import type { CalendarSyncResult, DirEntry, FileStat, Platform, SyncState } from "./platform";
 
 interface Bridge {
   invoke(cmd: string, ...args: unknown[]): Promise<{ ok: true; value: any } | { ok: false; error: string; raw: string }>;
@@ -30,6 +30,8 @@ export async function createElectronPlatform(): Promise<Platform> {
     readBytes: async (path) => new Uint8Array(await call<Uint8Array>("read_bytes", path)),
     writeText: (path, text) => call("write_text", path, text),
     writeBytes: (path, data) => call("write_bytes", path, data),
+    calendarSync: (input) => call<CalendarSyncResult>("calendar_sync", input),
+    zipFiles: (target, entries) => call<number>("zip_files", target, entries),
     stat: (path) => call<FileStat>("stat", path),
     listDir: (path) => call<DirEntry[]>("list_dir", path),
     mkdirs: (path) => call("mkdirs", path),

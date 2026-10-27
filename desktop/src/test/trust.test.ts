@@ -5,8 +5,6 @@ import { setPlatform } from "../platform/platform";
 import { Store } from "../state/store";
 import { installSampleData } from "../state/sample";
 import { normHolding, normAppointment } from "../domain/normalize";
-import { expiryLabel, freshnessOf } from "../domain/engine";
-import { type Document, type DocumentType, ref } from "../domain/models";
 import { rolesFor, guessRole } from "../domain/roles";
 import * as D from "../domain/day";
 
@@ -66,45 +64,5 @@ describe("4.4 可信台账", () => {
     expect(rolesFor("JP", "株式会社").map((r) => r.name)).not.toContain("社員");
     expect(guessRole("Company Secretary", "SG")?.id).toBe("common.secretary");
     expect(D.daysBetween("2026-01-01", "2026-01-31")).toBe(30);
-  });
-
-  it("treats documents marked as having no expiry as valid", () => {
-    const type = { validity: "expiryOnDocument" } as DocumentType;
-    const doc: Document = {
-      id: "d", typeID: "person.idcard", owner: ref("person", "p"), noExpiry: true,
-      form: "扫描件", filePath: "files/id.pdf", originalFileName: "id.pdf", needsUpdate: false,
-      addedOn: "2026-01-01", notes: "",
-    };
-    expect(freshnessOf(doc, type, "2026-10-23")).toEqual({ kind: "valid" });
-    expect(expiryLabel(doc, type)).toBe("长期");
-    expect(freshnessOf({ ...doc, expiryDate: "2026-09-01" }, type, "2026-10-23")).toEqual({ kind: "expired", days: 52 });
-    expect(expiryLabel({ ...doc, expiryDate: "2027-09-01" }, type)).toBe("2027-09-01");
-  });
-
-  it("only counts material you are responsible for toward missing items", async () => {
-    const s = await fresh();
-    const company = s.createCompany("材料范围测试有限公司", "HK");
-    const typeIDs = s.archive(company).map((item) => item.typeID);
-    expect(typeIDs.length).toBeGreaterThan(1);
-    s.setCustody([ref("company", company.id)], typeIDs, "agent");
-    s.setCustody([ref("company", company.id)], [typeIDs[0]], "mine");
-    const counts = s.companyCounts(s.company(company.id)!);
-    expect(counts.configured).toBe(true);
-    expect(counts.total).toBe(1);
-    expect(counts.missing).toBe(1);
-    expect(counts.agent).toBe(typeIDs.length - 1);
-  });
-
-  it("saves evidence links and resolves them from the target record", async () => {
-    const s = await fresh();
-    const doc = s.data.documents[0];
-    const company = s.data.companies.find((item) => item.id !== doc.owner.id) ?? s.data.companies[0];
-    s.setLinks(doc.id, [{ target: "company", id: company.id, kind: "kyc", page: "2" }]);
-    expect(s.linksOf(s.data.documents.find((item) => item.id === doc.id)!)).toEqual([
-      { target: "company", id: company.id, kind: "kyc", page: "2" },
-    ]);
-    expect(s.evidenceFor("company", company.id).map((item) => item.doc.id)).toContain(doc.id);
-    s.setLinks(doc.id, []);
-    expect(s.data.documents.find((item) => item.id === doc.id)!.links).toBeUndefined();
   });
 });

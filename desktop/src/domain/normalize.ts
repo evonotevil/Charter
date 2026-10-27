@@ -2,7 +2,7 @@
 // Swift 版读取不会因缺键失败。
 
 import type {
-  Appointment, ChangeRecord, Company, CorporateGroup, Document, DocumentLink, DocumentRequest, Holding, ObligationRecord, Party,
+  Appointment, ChangeRecord, Company, CorporateGroup, Document, DocumentRequest, Holding, ObligationRecord, Party,
   Person, SharedSettings, TemplateLibrary,
 } from "./models";
 import { defaultSettings } from "./models";
@@ -49,13 +49,6 @@ export const normParty = (r: Raw): Party =>
 export const normDocument = (r: Raw): Document =>
   ({
     ...r, form: str(r.form, "扫描件"), originalFileName: str(r.originalFileName), needsUpdate: !!r.needsUpdate,
-    ...(r.noExpiry !== undefined ? { noExpiry: !!r.noExpiry } : {}),
-    ...(r.sourcePath !== undefined ? { sourcePath: str(r.sourcePath) } : {}),
-    ...(r.sha256 !== undefined ? { sha256: str(r.sha256) } : {}),
-    ...(r.links !== undefined ? {
-      links: arr(r.links).filter((x) => x && ["company", "person", "appointment", "holding"].includes(x.target) && typeof x.id === "string")
-        .map((x) => ({ target: x.target, id: x.id, kind: ["identity", "address", "appointment", "shareholding", "kyc", "board", "other"].includes(x.kind) ? x.kind : "other", ...(x.page ? { page: String(x.page) } : {}) })) as DocumentLink[],
-    } : {}),
     notes: str(r.notes),
   }) as Document;
 

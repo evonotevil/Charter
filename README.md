@@ -2,7 +2,7 @@
 
 管理海外子公司的跨平台桌面应用：股权结构、到期事项、中介、公司档案、文件与人员。
 
-当前安装包版本：**5.4.0**（仓库应用源码仍为 5.3.2）。Charter 5 使用 Electron + React + TypeScript，Mac 与 Windows 共用一套产品代码。
+当前版本：**5.4.0**（源码与已发布安装包已核验一致）。Charter 5 使用 Electron + React + TypeScript，Mac 与 Windows 共用一套产品代码。
 
 产品网站：[https://evonotevil.github.io/Charter/](https://evonotevil.github.io/Charter/)
 
@@ -16,7 +16,7 @@
 - **Windows 免安装**：`Charter-5.3.2-Windows-x64.zip`
 - **SHA-256 校验值**：`SHA256SUMS.txt`
 
-5.4.0 发布用户提供的预构建安装包，Mac Intel 和 Windows ZIP 暂为 5.3.2。应用没有使用 Apple Developer ID 或 Windows 商业代码签名证书：Mac 首次打开时可能需要在访达中右键 Charter →「打开」；Windows 可能显示 SmartScreen 提示，选择「更多信息」→「仍要运行」。
+5.4.0 安装包与仓库源码的前端构建、Electron 主程序已核验一致。Mac Intel 和 Windows ZIP 暂为 5.3.2。应用没有使用 Apple Developer ID 或 Windows 商业代码签名证书：Mac 首次打开时可能需要在访达中右键 Charter →「打开」；Windows 可能显示 SmartScreen 提示，选择「更多信息」→「仍要运行」。
 
 ## 5.3.2 更新
 

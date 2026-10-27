@@ -151,9 +151,11 @@ export async function exportAll(c: Company, s: Store, includeOld: boolean, onPro
   }
   const exLines: string[] = [], naLines: string[] = [];
   for (const item of plan.excluded) {
-    const line = `${nameOf(item)}：${archiveStateLabel(item.state)}${item.note ? `（${item.note}）` : ""}`;
-    (isNotApplicable(item.state) ? naLines : exLines).push(line);
-    rows.push(["", nameOf(item), archiveStateLabel(item.state), "", "", "", item.note]);
+    // 5.3：按保管范围说明为什么没有附上
+    const why = item.custody === "na" ? "不适用" : item.custody === "agent" ? "中介保管" : item.custody === "outOfScope" ? "不在我的范围" : archiveStateLabel(item.state);
+    const line = `${nameOf(item)}：${why}${item.note ? `（${item.note}）` : ""}`;
+    (item.custody === "na" || item.custody === "outOfScope" || isNotApplicable(item.state) ? naLines : exLines).push(line);
+    rows.push(["", nameOf(item), why, "", "", "", item.note]);
   }
   const summary = s.companySummary(c);
   const sections: PDFSection[] = [{ heading: `已包含（${incLines.length} 份）`, lines: incLines, alert: false }];

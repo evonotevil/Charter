@@ -22,6 +22,10 @@ export interface Platform {
   /** 原子写入：先写临时文件再替换，避免同步盘读到写了一半的文件。 */
   writeText(path: string, text: string): Promise<void>;
   writeBytes(path: string, data: Uint8Array): Promise<void>;
+  /** 5.3.3：流式打包 ZIP（只在桌面端提供）。返回写入的字节数。 */
+  /** 5.4：同步到系统日历（Mac：EventKit；Windows：桌面版 Outlook）。只在桌面端提供。 */
+  calendarSync?(input: CalendarSyncInput): Promise<CalendarSyncResult>;
+  zipFiles?(target: string, entries: ({ name: string; path: string } | { name: string; text: string })[]): Promise<number>;
   stat(path: string): Promise<FileStat>;
   listDir(path: string): Promise<DirEntry[]>;
   mkdirs(path: string): Promise<void>;
@@ -74,3 +78,9 @@ export function extname(path: string): string {
   const i = b.lastIndexOf(".");
   return i > 0 ? b.slice(i + 1) : "";
 }
+
+export interface CalendarEvent { key: string; title: string; date: string; notes: string }
+export interface CalendarSyncInput { name: string; calendarId?: string; checkOnly?: boolean; events: CalendarEvent[] }
+export type CalendarSyncResult =
+  | { ok: true; calendarId?: string; added?: number; updated?: number; removed?: number }
+  | { ok?: undefined; error: "denied" | "writeOnly" | "noOutlook" | "unsupported" | "failed" | "noSource" | "createCalendar" | "commit" | "outlook"; message?: string };

@@ -2,6 +2,8 @@
 
 import { useApp } from "../state/hooks";
 import { CompanyItemsSheet } from "./Companies";
+import { ScopeSheet } from "./Scope";
+import { TrashConfirmSheet } from "./Lifecycle";
 import { CompanyEditor } from "./Editors";
 import { RelationSheet } from "./Groups";
 import { ImportView } from "./Import";
@@ -25,6 +27,8 @@ export function SheetHost() {
     case "groupMembers": { const id = s.group; queueMicrotask(() => { router.sheet = null; router.openSettings("groups", id); }); return null; }
     case "addRelation": return <RelationSheet key={key} companyID={s.companyID} upward={s.upward} onClose={close} />;
     case "companyItems": return <CompanyItemsSheet key={key} companyID={s.companyID} onClose={close} />;
+    case "trashDocs": return <TrashConfirmSheet key={key} ids={s.ids} onClose={close} />;
+    case "scope": return <ScopeSheet key={key} kind={s.ownerKind} owners={s.owners} onClose={close} />;
     case "quickSearch": return <QuickSearch key={key} onClose={close} />;
     case "chainQuery": return <ChainQuery key={key} from={s.from} to={s.to} onClose={close} />;
     case "exportAll": return <ExportSheet key={key} companyID={s.companyID} onClose={close} />;

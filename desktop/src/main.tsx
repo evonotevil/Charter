@@ -15,6 +15,7 @@ import { Ctx, useApp } from "./state/hooks";
 import { sectionShortcuts } from "./state/router";
 import { Shell } from "./screens/Shell";
 import { startReminderLoop, writeCalendarFile } from "./services/packets";
+import { scheduleCalendarSync } from "./services/calendarSync";
 import { installSampleData } from "./state/sample";
 import { dragEnd, dragOver } from "./ui/drop";
 
@@ -47,6 +48,7 @@ async function boot() {
       const key = s.openObligations.map((o) => o.key + o.due + (o.record?.status ?? "")).join("|");
       if (key !== lastCalendar) { lastCalendar = key; void writeCalendarFile(s).catch(() => {}); }
     }
+    scheduleCalendarSync(s);
   };
   await store.load();
   if (!inTauri && !inElectron && store.data.companies.length === 0 && new URLSearchParams(location.search).has("sample")) {
@@ -54,6 +56,8 @@ async function boot() {
     if (new URLSearchParams(location.search).has("stress")) await (await import("./state/stress")).installStressData(store);
   }
   sync.start(store.folder.root);
+  // 5.4：回到窗口时重新检查源文件（可能刚同步下来，或在外部被移动、删除）
+  window.addEventListener("focus", () => void store.checkFiles(true));
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <Ctx.Provider value={{ store, router, sync }}>

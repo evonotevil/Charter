@@ -9,7 +9,7 @@ import { type SettingsPane, settingsPaneSymbol, settingsPaneTitle, settingsPanes
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Avatar, Button, FieldRow, FormGroup, JurisdictionBadge, Modal, SelectField, SheetScaffold } from "../ui/kit";
-import { ReissueRequestSheet } from "./common";
+import { ReissueRequestSheet, refInfo, companyInfo } from "./common";
 
 type Act = { kind: "packet"; companyID: string; purposeID?: string } | { kind: "upload"; companyID: string } | { kind: "reissue"; companyID: string; typeIDs: string[] }
   | { kind: "change"; companyID: string } | { kind: "structure"; companyID: string } | { kind: "newCompany" } | { kind: "newGroup" } | { kind: "uploadAny" } | { kind: "calendar" }
@@ -194,7 +194,7 @@ export function ChainQuery({ from: initialFrom, to: initialTo, onClose }: { from
   const [to, setTo] = useState<string | null>(initialTo ?? null);
   const people = [...store.data.people].sort((a, b) => a.name.localeCompare(b.name, "zh"));
   const companies = [...store.data.companies].sort((a, b) => a.name.localeCompare(b.name, "zh"));
-  const fromOptions: [NodeRef, string][] = [...people.map((p) => [ref("person", p.id), `人：${p.name}`] as [NodeRef, string]), ...companies.map((c) => [ref("company", c.id), c.name] as [NodeRef, string])];
+  const fromOptions: [NodeRef, string][] = [...people.map((p) => [ref("person", p.id), p.name] as [NodeRef, string]), ...companies.map((c) => [ref("company", c.id), c.name] as [NodeRef, string])];
   const chains = from && to && !sameRef(from, ref("company", to)) ? chainPaths(from, to, store.data.holdings, store.today) : [];
   const total = chains.reduce((a, c) => a + c.percent, 0);
   const b = to ? breakdown(to, store.data.holdings, store.today) : null;
@@ -205,8 +205,8 @@ export function ChainQuery({ from: initialFrom, to: initialTo, onClose }: { from
         trailing={<Button kind="primary" onClick={onClose}>完成</Button>}>
         <div className="col" style={{ gap: 18 }}>
           <FormGroup title="查询">
-            <FieldRow label="起点"><SelectField options={fromOptions} value={from as NodeRef} onChange={setFrom} placeholder="选择人或公司" minWidth={320} keyOf={(r) => (r ? `${r.kind}:${r.id}` : "")} /></FieldRow>
-            <FieldRow label="目标公司"><SelectField options={companies.map((c) => [c.id, c.name] as [string, string])} value={to as string} onChange={setTo} placeholder="选择公司" minWidth={320} /></FieldRow>
+            <FieldRow label="起点"><SelectField describe={(r) => refInfo(store, r)} options={fromOptions} value={from as NodeRef} onChange={setFrom} placeholder="选择人或公司" minWidth={320} keyOf={(r) => (r ? `${r.kind}:${r.id}` : "")} /></FieldRow>
+            <FieldRow label="目标公司"><SelectField describe={(id) => companyInfo(store, id)} options={companies.map((c) => [c.id, c.name] as [string, string])} value={to as string} onChange={setTo} placeholder="选择公司" minWidth={320} /></FieldRow>
           </FormGroup>
           <div className="col gap10">
             {!from || !to ? <span className="t-body muted">选好起点和目标公司，Charter 会列出所有持股路径。</span>

@@ -178,8 +178,6 @@ export interface StagedFile {
   id: string;
   path: string;
   originalName: string;
-  sourcePath: string;
-  sha256?: string;
   recognition: Recognition;
   typeID?: string;
   owner?: NodeRef;
@@ -199,13 +197,6 @@ export function recognitionContext(s: Store): RecognitionContext {
 
 export const staged = new Map<string, StagedFile>();
 
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  const digest = await crypto.subtle.digest("SHA-256", copy);
-  return [...new Uint8Array(digest)].map((x) => x.toString(16).padStart(2, "0")).join("");
-}
-
 /** 复制到临时区并识别；不触碰档案目录。 */
 export async function stage(s: Store, path: string, opts: { typeID?: string; owner?: NodeRef; replaces?: Document; form?: string; onArchived?: (d: Document) => void } = {}): Promise<StagedFile> {
   const p = platform();
@@ -215,21 +206,17 @@ export async function stage(s: Store, path: string, opts: { typeID?: string; own
   const copy = p.join(dir, basename(path));
   try { await p.copyFile(path, copy); } catch (e) { try { await p.removeDir(dir); } catch { /* 忽略 */ } throw e; }
   const r = await recognizeFile(copy, recognitionContext(s));
-  const sha256 = await p.readBytes(path).then(sha256Hex).catch(() => undefined);
   const f: StagedFile = { id, path: copy, originalName: basename(path), recognition: r, typeID: opts.typeID ?? r.typeID, owner: opts.owner,
-    replaces: opts.replaces, form: opts.form ?? "扫描件", onArchived: opts.onArchived, sourcePath: path, sha256 };
+    replaces: opts.replaces, form: opts.form ?? "扫描件", onArchived: opts.onArchived };
   staged.set(id, f);
   return f;
 }
 
-export async function commitStaged(s: Store, id: string, a: { typeID: string; owner: NodeRef; issued?: Day; expiry?: Day; noExpiry?: boolean; form: string; note?: string; keepBoth?: boolean }): Promise<Document> {
+export async function commitStaged(s: Store, id: string, a: { typeID: string; owner: NodeRef; issued?: Day; expiry?: Day; form: string; note?: string; keepBoth?: boolean }): Promise<Document> {
   const f = staged.get(id);
   if (!f) throw new Error("待确认的文件已经不存在，请重新上传。");
   const before = s.data;
-  const req: ArchiveRequest = {
-    path: f.path, typeID: a.typeID, owner: a.owner, issued: a.issued, expiry: a.expiry, noExpiry: a.noExpiry,
-    form: a.form, note: a.note, keepBoth: a.keepBoth, sourcePath: f.sourcePath, sha256: f.sha256,
-  };
+  const req: ArchiveRequest = { path: f.path, typeID: a.typeID, owner: a.owner, issued: a.issued, expiry: a.expiry, form: a.form, note: a.note, keepBoth: a.keepBoth };
   const [doc] = await s.archiveBatch([req]);
   await discardStaged(id);
   let received = "";

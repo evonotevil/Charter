@@ -135,8 +135,8 @@ export function StructureView() {
           {q && <span className="t-meta muted" style={{ position: "absolute", right: 10 }}>{matches.length ? `${matches.length} 个` : "没有"}</span>}
         </div>
         <div className="seg" role="tablist" aria-label="视图">
-          <button role="tab" className={view === "chart" ? "on" : ""} aria-selected={view === "chart"} onClick={() => setView("chart")} style={view === "chart" ? { background: "var(--surface)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}><Icon name="point.3.connected.trianglepath.dotted" size={13} />结构图</button>
-          <button role="tab" className={view === "list" ? "on" : ""} aria-selected={view === "list"} onClick={() => setView("list")} style={view === "list" ? { background: "var(--surface)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}><Icon name="list.bullet.indent" size={13} />列表</button>
+          <button role="tab" className={view === "chart" ? "on" : ""} aria-selected={view === "chart"} onClick={() => setView("chart")} style={view === "chart" ? { background: "var(--seg-on)", color: "var(--seg-on-text)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}><Icon name="point.3.connected.trianglepath.dotted" size={13} />结构图</button>
+          <button role="tab" className={view === "list" ? "on" : ""} aria-selected={view === "list"} onClick={() => setView("list")} style={view === "list" ? { background: "var(--seg-on)", color: "var(--seg-on-text)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}><Icon name="list.bullet.indent" size={13} />列表</button>
         </div>
         <button className={`v4-toggle ${checkOn ? "on" : ""}`} aria-pressed={checkOn} title="按股东录入情况给公司标注，列出需要补充的公司" onClick={() => router.set("structureCheck", !checkOn)}>核对股东{checkOn && unchecked ? ` · ${unchecked}` : ""}</button>
         {stops.length > 1 && <button className={`v4-toggle ${showHistory ? "on" : ""}`} aria-pressed={showHistory} title="回看历年的持股结构" onClick={() => setShowHistory(!showHistory)}>历史</button>}
@@ -151,7 +151,7 @@ export function StructureView() {
       </div>
       {showHistory && stops.length > 1 && <div className="seg" style={{ alignSelf: "flex-start", maxWidth: "100%", overflowX: "auto" }} role="tablist" aria-label="历史年份">
         {stops.map((d, i) => { const on = d === asOf; return (
-          <button key={d} role="tab" aria-selected={on} className={`num ${on ? "on" : ""}`} onClick={() => setStopIndex(i)} style={on ? { background: "var(--surface)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}>{d === store.today ? "今天" : D.year(d)}</button>); })}
+          <button key={d} role="tab" aria-selected={on} className={`num ${on ? "on" : ""}`} onClick={() => setStopIndex(i)} style={on ? { background: "var(--seg-on)", color: "var(--seg-on-text)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}>{d === store.today ? "今天" : D.year(d)}</button>); })}
       </div>}
       <div className="row grow" style={{ gap: 16, alignItems: "stretch", minHeight: 0 }}>
         {view === "chart"
@@ -200,7 +200,7 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
   };
   const fitXf = (): Xf => {
     // 太大的图不缩到看不清：最小 55%，从顶层居中开始，其余拖动或滚动查看
-    const k = Math.max(0.55, clampK(Math.min((size.w - 48) / layout.width, (size.h - 72) / layout.height, 1.1)));
+    const k = Math.max(0.7, clampK(Math.min((size.w - 48) / layout.width, (size.h - 72) / layout.height, 1.1)));
     const top = layout.roots.map((r) => layout.nodes.get(r)!).filter(Boolean);
     const cx = layout.width * k <= size.w ? (size.w - layout.width * k) / 2
       : size.w / 2 - (top.length ? (Math.min(...top.map((n) => n.x)) + Math.max(...top.map((n) => n.x))) / 2 : layout.width / 2) * k;
@@ -221,6 +221,19 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
     if (lastKey.current !== snapshotKey) { lastKey.current = snapshotKey; userMoved.current = false; setXf(fitXf()); return; }
     if (!userMoved.current) setXf(fitXf());
   }, [snapshotKey, layout, size.w, size.h]);
+
+  // 5.3.1：选中节点后（右侧摘要打开、画布变窄），把节点和左右一段关系留在安全区内；只平移，不改缩放
+  useLayoutEffect(() => {
+    if (!selectedKey || !size.w) return;
+    const n = layout.nodes.get(selectedKey); if (!n) return;
+    // 同一次提交里上面的自动适配刚算过新视野：没手动动过时以它为基准
+    const { k, x, y } = userMoved.current ? xfRef.current : fitXf();
+    const padX = 150 * k + 32, padY = 70 * k + 32;
+    const sx = x + n.x * k, sy = y + n.y * k;
+    const dx = sx < padX ? padX - sx : sx > size.w - padX ? size.w - padX - sx : 0;
+    const dy = sy < padY ? padY - sy : sy > size.h - padY ? size.h - padY - sy : 0;
+    if (dx || dy) smooth({ k, x: x + dx, y: y + dy });
+  }, [selectedKey, size.w, size.h]);
 
   // 生长动画：首次打开和切换集团后整棵树按层生长；之后只让新增的节点和连线生长。
   const [grow, setGrow] = useState<Map<string, number> | null>(null);
@@ -296,8 +309,8 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
   const hasKids = (k: string) => layout.nodes.get(k)!.children.length > 0 || layout.nodes.get(k)!.hiddenBelow > 0;
   const lvl = (k: string) => grow?.get(k);
   return (
-    <div ref={wrap} className={`chart-wrap ${animating ? "animating" : ""} ${focusing ? "focusing" : ""}`} tabIndex={0} onKeyDown={onKey} onPointerDown={panStart}
-      role="application" aria-label="股权结构图。方向键在节点间移动，回车打开，空格折叠。" style={{ cursor: "grab" }}>
+    <div ref={wrap} className={`chart-wrap ${animating ? "animating" : ""} ${focusing ? "focusing" : ""} ${xf.k < 0.6 ? "lod" : ""}`} tabIndex={0} onKeyDown={onKey} onPointerDown={panStart}
+      role="application" aria-label="股权结构图。方向键在节点间移动，回车打开，空格折叠。" style={{ cursor: "grab", ["--k" as any]: xf.k }}>
       <div className="chart-canvas" style={{ width: layout.width, height: layout.height, transform: `translate(${xf.x}px, ${xf.y}px) scale(${xf.k})` }}>
         <svg className="edges" width={layout.width} height={layout.height} style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none" }} aria-hidden>
           {layout.edges.map((e) => {
@@ -324,7 +337,7 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
           const l = lvl(n.key);
           return (
             <div key={n.key} className={`node ${chain.nodes.has(n.key) && focusing ? "chain" : ""} ${matches.has(n.key) ? "match" : ""} ${l !== undefined ? "grow" : ""}`} aria-selected={sel}
-              role="button" tabIndex={-1} aria-label={store.nameOf(n.ref)}
+              role="button" tabIndex={-1} aria-label={store.nameOf(n.ref)} title={store.nameOf(n.ref)}
               style={{ left: n.x - NODE_W / 2, top: n.y - NODE_H / 2, width: NODE_W, height: NODE_H, ...(l !== undefined ? { animationDelay: `${l * LEVEL_MS}ms` } : null) }}
               onClick={(e) => { e.stopPropagation(); select(n.key); wrap.current?.focus({ preventScroll: true }); }} onDoubleClick={() => open(n.key)}>
               <NodeBody n={n.ref} isToday={isToday} />
@@ -364,7 +377,7 @@ function NodeBody({ n, isToday }: { n: NodeRef; isToday: boolean }) {
   const left = next ? D.daysBetween(store.today, next.due) : 999;
   const sub = left < 0 ? `逾期：${next!.rule.name}` : left <= 30 ? `${left} 天后：${next!.rule.name}` : store.jurisdictionName(c?.jurisdiction ?? "");
   return <>
-    <span className="jbadge" title={g ? g.name : "各集团共用"} style={{ width: 36, height: 36, borderRadius: 10, fontSize: 11.5, ...(color ? { background: `color-mix(in srgb, ${color} 22%, var(--surface))`, color: `color-mix(in srgb, ${color} 55%, var(--ink))` } : null) }}>{c?.jurisdiction}</span>
+    <span className="jbadge" title={g ? g.name : "各集团共用"} style={{ width: 36, height: 36, borderRadius: 10, fontSize: 12, ...(color ? { background: `color-mix(in srgb, ${color} 22%, var(--surface))`, color: `color-mix(in srgb, ${color} 55%, var(--ink))` } : null) }}>{c?.jurisdiction}</span>
     <span className="col" style={{ minWidth: 0 }}>
       <span className="nm name-2" title={c?.name}>{c?.name}</span>
       <span className="sub ellipsis" style={left <= 30 ? { color: left < 0 ? "var(--red-text)" : "var(--amber-text)", fontWeight: 700 } : undefined}>{sub}</span>

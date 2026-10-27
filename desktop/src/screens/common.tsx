@@ -21,14 +21,14 @@ import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import {
   ActionMenu, Button, Checkbox, CopyTextSheet, DateField, FieldRow, FormGroup, type MenuEntry, Modal, type PillKind, Pill, RadioGroup,
-  SelectField, SheetScaffold, Skeleton, Spinner, TextField, divider, header, item, useContextMenu, JurisdictionBadge,
+  SelectField, SheetScaffold, Skeleton, Spinner, TextField, divider, header, item, useContextMenu, JurisdictionBadge, Avatar, type OptionInfo,
 } from "../ui/kit";
 
 // MARK: - 状态到样式
 
 export function freshnessPill(f: Freshness): PillKind {
   switch (f.kind) {
-    case "expired": return "bad";
+    case "expired": case "fileMissing": return "bad";
     case "expiring": case "needsUpdate": case "unknown": return "warn";
     case "valid": return "valid";
     default: return "neutral";
@@ -39,7 +39,7 @@ export function statePill(s: ArchiveState): PillKind {
   switch (s.kind) {
     case "valid": return "valid";
     case "noDate": case "expiring": case "needsUpdate": return "warn";
-    case "expired": return "bad";
+    case "expired": case "fileMissing": return "bad";
     case "marked": return s.mark === "notObtained" || s.mark === "restricted" ? "outline" : s.mark === "unverified" ? "warn" : "neutral";
     case "missing": return "outline";
   }
@@ -67,7 +67,7 @@ export function TrustBadge({ trust, showConfirmed }: { trust: RuleTrust; showCon
   const style = trust.kind === "confirmed" ? { background: "var(--lime-soft)", color: "var(--lime-text)" }
     : trust.kind === "needsReview" ? { background: "var(--amber-soft)", color: "var(--amber-text)" }
       : { color: "var(--muted)", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--muted) 50%, transparent)" };
-  return <span className="row gap4" title={help} style={{ height: 22, padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 600, flex: "none", ...style }}><Icon name={icon} size={11} />{text}</span>;
+  return <span className="row gap4" title={help} style={{ height: 22, padding: "0 8px", borderRadius: 999, fontSize: 12, fontWeight: 600, flex: "none", ...style }}><Icon name={icon} size={11} />{text}</span>;
 }
 
 // MARK: - 数字输入
@@ -176,7 +176,6 @@ export function ArchiveConfirmSheet({ file, onClose }: { file: StagedFile; onClo
   const [owner, setOwner] = useState<NodeRef | null>(file.owner ?? file.replaces?.owner ?? null);
   const [issued, setIssued] = useState<Day | undefined>(file.recognition.issueDate);
   const [expiry, setExpiry] = useState<Day | undefined>(file.recognition.expiryDate);
-  const [noExpiry, setNoExpiry] = useState(false);
   const [note, setNote] = useState("");
   const [ack, setAck] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,8 +183,6 @@ export function ArchiveConfirmSheet({ file, onClose }: { file: StagedFile; onClo
   const [keepBoth, setKeepBoth] = useState(false);
   const target = owner?.kind === "company" ? store.company(owner.id) : undefined;
   const typeChoices = store.data.library.documentTypes.filter((t) => owner?.kind === "person" ? t.owner === "person" : !target || (t.owner === "company" && typeAppliesTo(t, target.jurisdiction)));
-  const selectedType = typeChoices.find((t) => t.id === typeID);
-  const needsPrintedExpiry = selectedType?.validity === "expiryOnDocument";
   useEffect(() => { setAck(false); if (!typeChoices.some((t) => t.id === typeID)) setTypeID(""); }, [owner?.id]);
   const conflicts: string[] = [];
   if (owner?.kind === "company" && target) {
@@ -203,7 +200,7 @@ export function ArchiveConfirmSheet({ file, onClose }: { file: StagedFile; onClo
     if (!canConfirm || !owner) return;
     setWorking(true);
     try {
-      await commitStaged(store, file.id, { typeID, owner, issued, expiry, noExpiry, form: file.form, note, keepBoth: keepBoth && !!current });
+      await commitStaged(store, file.id, { typeID, owner, issued, expiry, form: file.form, note, keepBoth: keepBoth && !!current });
       onClose();
     } catch (e) { setError(`归档未完成：${(e instanceof Error ? e.message : String(e))}`); }
     finally { setWorking(false); }
@@ -226,20 +223,10 @@ export function ArchiveConfirmSheet({ file, onClose }: { file: StagedFile; onClo
           {!file.recognition.typeID && !file.recognition.issueDate && <div className="row gap6 muted"><Icon name="info.circle" />这份文件没有被自动识别。请手动选择类别和日期。</div>}
           <FormGroup title="这份文件将归档为">
             <FieldRow label="文件"><span className="ellipsis" title={file.originalName}>{file.originalName}</span></FieldRow>
-            <FieldRow label="归属"><SelectField options={ownerOptions} value={owner} onChange={setOwner} minWidth={280} /></FieldRow>
+            <FieldRow label="归属"><SelectField describe={(r) => refInfo(store, r)} options={ownerOptions} value={owner} onChange={setOwner} minWidth={280} /></FieldRow>
             <FieldRow label="材料类别"><SelectField options={typeChoices.map((t) => [t.id, t.name] as [string, string])} value={typeID} onChange={(v) => { setTypeID(v); setAck(false); }} placeholder="请选择（未识别）" minWidth={280} /></FieldRow>
             <FieldRow label="签发日期" hint={issued ? undefined : "尚未填写签发日期，建议补充。"}><DateField value={issued} onChange={setIssued} /></FieldRow>
-            <FieldRow
-              label="到期日期"
-              hint={selectedType?.validity === "permanent" || selectedType?.validity === "untilChanged"
-                ? "这类文件长期有效，无需填写。"
-                : needsPrintedExpiry && !expiry && !noExpiry
-                  ? "文件上写明长期有效的，请勾选下方选项；否则留空会显示为“未填日期”。"
-                  : "填写到期日后，Charter 会按设置中的天数提前提醒；留空则按条目的有效期规则判断。"}
-            >
-              <DateField value={expiry} onChange={(value) => { setExpiry(value); if (value) setNoExpiry(false); }} placeholder={noExpiry ? "长期有效" : selectedType?.validity === "permanent" || selectedType?.validity === "untilChanged" ? "长期有效，无需填写" : "填写文件上的到期日"} relativeTo={issued} />
-            </FieldRow>
-            {needsPrintedExpiry && <Checkbox checked={noExpiry && !expiry} disabled={!!expiry} title={expiry ? "已填写到期日" : undefined} onChange={(value) => setNoExpiry(value)}>文件上写明长期有效 / 没有到期日</Checkbox>}
+            <FieldRow label="到期日期" hint="填写到期日后，Charter 会按设置中的天数提前提醒；留空则按条目的有效期规则判断。"><DateField value={expiry} onChange={setExpiry} placeholder="可留空" relativeTo={issued} /></FieldRow>
             <FieldRow label="备注"><TextField value={note} onChange={setNote} placeholder="可选" /></FieldRow>
           </FormGroup>
           {current && (
@@ -367,23 +354,39 @@ export function ObligationRow({ o, detail, emphasize, onTap }: { o: Obligation; 
 
 // MARK: - 文件行
 
+// 5.3.3：缩略图缓存最多 120 张（LRU，小 JPEG 约 30 MB 以内）；离开缩略图视图时清空。
 const thumbCache = new Map<string, string | null>();
+const THUMB_MAX = 120;
+const cacheGet = (k: string) => { if (!thumbCache.has(k)) return undefined; const v = thumbCache.get(k)!; thumbCache.delete(k); thumbCache.set(k, v); return v; };
+const cacheSet = (k: string, v: string | null) => { thumbCache.delete(k); thumbCache.set(k, v); while (thumbCache.size > THUMB_MAX) thumbCache.delete(thumbCache.keys().next().value!); };
+export const clearThumbCache = () => thumbCache.clear();
+
 export function FileThumb({ doc, alert, width = 34, height = 42 }: { doc: Document; alert?: boolean; width?: number; height?: number }) {
   const { store } = useApp();
   const path = store.fileURL(doc);
   const key = path + "|" + width;
-  const [src, setSrc] = useState<string | null | undefined>(thumbCache.get(key));
+  const [src, setSrc] = useState<string | null | undefined>(() => cacheGet(key));
+  const [visible, setVisible] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  // 只给进入可见区域（含上下 400px 预读）的缩略图排队解析
   useEffect(() => {
-    if (thumbCache.has(key)) { setSrc(thumbCache.get(key)); return; }
-    let live = true;
-    void thumbnail(path, width).then((s) => { thumbCache.set(key, s); if (live) setSrc(s); });
-    return () => { live = false; };
-  }, [key]);
+    const el = box.current; if (!el || visible) return;
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { setVisible(true); io.disconnect(); } }, { rootMargin: "400px 0px" });
+    io.observe(el); return () => io.disconnect();
+  }, [visible]);
+  useEffect(() => {
+    const hit = cacheGet(key);
+    if (hit !== undefined) { setSrc(hit); return; }
+    if (!visible) return;
+    const sig = { cancelled: false };
+    void thumbnail(path, width, sig).then((s) => { if (sig.cancelled) return; cacheSet(key, s); setSrc(s); });
+    return () => { sig.cancelled = true; };
+  }, [key, visible]);
   const frame = { width, height, borderRadius: 6, flex: "none", boxShadow: `0 2px 6px rgba(0,0,0,.12), 0 0 0 ${alert ? 1.5 : 0.5}px ${alert ? "var(--danger)" : "rgba(0,0,0,.12)"}` } as const;
-  if (src === undefined && width >= 80) return <Skeleton width={width} height={height} />;
-  if (src) return <img src={src} alt="" style={{ ...frame, objectFit: "cover", objectPosition: "top", background: "#fff" }} />;
+  if (src === undefined && width >= 80) return <span ref={box} style={{ display: "inline-flex" }}><Skeleton width={width} height={height} /></span>;
+  if (src) return <img src={src} alt="" decoding="async" style={{ ...frame, objectFit: "cover", objectPosition: "top", background: "#fff" }} />;
   return (
-    <span className="col" style={{ ...frame, background: "var(--surface)", padding: 7 * (width / 36), gap: 3 * (width / 36), alignItems: "flex-start" }}>
+    <span ref={box} className="col" style={{ ...frame, background: "var(--surface)", padding: 7 * (width / 36), gap: 3 * (width / 36), alignItems: "flex-start" }}>
       <span style={{ width: 14 * (width / 36), height: 3, borderRadius: 2, background: alert ? "var(--danger)" : "var(--ink)" }} />
       {[0.9, 0.7, 0.84].map((w, i) => <span key={i} style={{ width: 22 * w * (width / 36), height: 2, borderRadius: 2, background: "color-mix(in srgb, var(--muted) 30%, transparent)" }} />)}
     </span>
@@ -422,7 +425,7 @@ export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect
     item("归档新版…", "square.and.arrow.up", upload),
     item(d.needsUpdate ? "取消“需要更新”" : "标为需要更新", "exclamationmark.triangle", () => store.commit((x) => { const doc = x.documents.find((y) => y.id === d.id); if (doc) doc.needsUpdate = !doc.needsUpdate; })),
     divider,
-    item("从 Charter 移除记录", "trash", () => store.deleteDocument(d), { destructive: true }),
+    item("移到废纸篓…", "trash", () => router.open({ kind: "trashDocs", ids: [d.id] }), { destructive: true }),
   ];
   return (
     <div className="row hover-band" tabIndex={0} role="button" onClick={(e) => (onSelect ? onSelect(e) : router.open({ kind: "document", id: d.id }))}
@@ -437,7 +440,7 @@ export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect
           <span className="ellipsis" style={{ fontSize: 14, fontWeight: 600 }}>{t?.name ?? "文件"}</span>
           <span className="row gap6 muted" style={{ fontSize: 12 }}>
             {showOwner ? <>
-              {owner && <span style={{ fontSize: 10, fontWeight: 700, padding: "0 5px", height: 16, lineHeight: "16px", borderRadius: 5, background: "var(--band)", color: "var(--ink)" }}>{owner.jurisdiction}</span>}
+              {owner && <span style={{ fontSize: 12, fontWeight: 700, padding: "0 5px", height: 16, lineHeight: "16px", borderRadius: 5, background: "var(--band)", color: "var(--ink)" }}>{owner.jurisdiction}</span>}
               <span className="ellipsis">{store.nameOf(d.owner)}</span>
             </> : <span className="ellipsis">{sub}</span>}
           </span>
@@ -613,3 +616,17 @@ export function PurposeReadinessAction({ row, onReissue }: { row: PurposeReadine
 }
 
 export { isHandedOff };
+
+// MARK: - 5.3.3 下拉选项的展示信息（分组、头像、法域徽章）
+
+/** 人或公司（NodeRef）选项：分“人员 / 公司”两组，人用头像，公司用法域徽章。 */
+export function refInfo(store: Store, r: NodeRef | null | undefined): OptionInfo | undefined {
+  if (!r) return undefined;
+  if (r.kind === "person") { const p = store.person(r.id); return { group: "人员", lead: <Avatar name={p?.name ?? "?"} size={22} />, sub: p ? store.personHint(p.id) : undefined }; }
+  const c = store.company(r.id);
+  return c ? { group: "公司", lead: <JurisdictionBadge code={c.jurisdiction} size={22} tint={companyTint(store, c.id)} />, sub: store.jurisdictionName(c.jurisdiction) } : undefined;
+}
+/** 只有公司的选项（值是公司 id）。 */
+export const companyInfo = (store: Store, id: string | null | undefined) => { const i = id ? refInfo(store, ref("company", id)) : undefined; return i && { ...i, group: undefined }; };
+/** 只有人员的选项（值是人员 id）。 */
+export const personInfo = (store: Store, id: string | null | undefined) => { const i = id ? refInfo(store, ref("person", id)) : undefined; return i && { ...i, group: undefined }; };

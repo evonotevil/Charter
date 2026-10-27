@@ -73,7 +73,8 @@ export interface Person {
   email: string;
   notes: string;
   position?: GraphPoint;
-  archive?: PersonArchive;
+  /** 5.3：个人材料的保管范围（条目 → 状态）和备注。 */
+  archive?: { custody: Record<string, Custody>; notes: Record<string, string> };
 }
 export const newPerson = (name: string): Person => ({ id: uuid(), name, aliases: [], email: "", notes: "" });
 
@@ -160,43 +161,17 @@ export const newParty = (name: string): Party => ({
 
 // MARK: 文件
 
-export type EvidenceTarget = "company" | "person" | "appointment" | "holding";
-export type EvidenceLinkKind = "identity" | "address" | "appointment" | "shareholding" | "kyc" | "board" | "other";
-export const evidenceLinkKindLabel: Record<EvidenceLinkKind, string> = {
-  identity: "身份证明",
-  address: "住址证明",
-  appointment: "任职证明",
-  shareholding: "持股证明",
-  kyc: "KYC",
-  board: "董事会文件",
-  other: "其他",
-};
-
-/** 一份文件除了自己的归属，还能作为哪些公司、人员、任职或持股的证据。 */
-export interface DocumentLink {
-  target: EvidenceTarget;
-  id: string;
-  kind: EvidenceLinkKind;
-  page?: string;
-}
-
 export interface Document {
   id: string;
   typeID: string;
   owner: NodeRef;
   issueDate?: Day;
   expiryDate?: Day;
-  /** 文件自身写明长期有效，或没有到期日。 */
+  /** 5.3.2：证件上写明长期有效 / 没有到期日（例如长期居民身份证）。只在没填到期日时起作用。 */
   noExpiry?: boolean;
   form: string;
   filePath: string;
   originalFileName: string;
-  /** 导入前原文件所在的位置；Charter 只记录，不改动原文件。 */
-  sourcePath?: string;
-  /** 归档副本的 SHA-256，用于核对副本是否完整。 */
-  sha256?: string;
-  /** 这份文件作为其他档案记录的核实依据。 */
-  links?: DocumentLink[];
   supersededBy?: string;
   needsUpdate: boolean;
   addedOn: Day;
@@ -205,9 +180,70 @@ export interface Document {
   signedOn?: Day;
   /** 与原件核对过的日期（文件层面的“已核实”）。 */
   verifiedOn?: Day;
-  /** 个人文件同时关联的公司（例如某家公司的董事同意书）。 */
+  /** 5.1 旧字段：个人文件同时关联的公司。5.3 起迁移到 links。 */
   relatedCompanyID?: string;
+  /** 5.3 证据链：这份文件还能证明哪些公司、人、任职、持股（主人 owner 之外）。 */
+  links?: EvidenceLink[];
+  /** 导入时的原始位置（只作记录，不再读取）。 */
+  sourcePath?: string;
+  /** 文件内容的 SHA-256，用于去重。 */
+  sha256?: string;
 }
+
+// MARK: 待整理与废纸篓（5.3）
+
+export type InboxCategory = "company" | "person" | "evidence" | "irrelevant";
+export const inboxCategoryLabel: Record<InboxCategory, string> = { company: "公司文件", person: "个人文件", evidence: "任职证据", irrelevant: "无关文件" };
+/** 待整理队列里的一份文件：已复制到数据文件夹 inbox/，还没进正式档案。 */
+export interface InboxItem {
+  id: string;
+  fileName: string;
+  /** 数据文件夹内的相对路径（inbox/…）。 */
+  path: string;
+  sourcePath: string;
+  sha256: string;
+  size: number;
+  addedOn: Day;
+  /** 本地识别结果。 */
+  textExcerpt?: string;
+  typeID?: string;
+  companyID?: string;
+  personIDs?: string[];
+  companyNameGuess?: string;
+  issueDate?: Day;
+  expiryDate?: Day;
+  category?: InboxCategory;
+  confidence: number;
+  reasons: string[];
+  /** 与已归档文件（document:…）或队列里另一份（inbox:…）内容相同。 */
+  duplicateOf?: string;
+  /** 用户的选择（覆盖建议）。 */
+  chosen?: { category?: InboxCategory; owner?: NodeRef; typeID?: string; appointmentIDs?: string[] };
+}
+/** 废纸篓里的一条：文件移到 trash/，记录保存在这里，30 天后清除。 */
+export interface TrashEntry {
+  id: string;
+  kind: "document" | "inbox";
+  trashedOn: Day;
+  /** trash/ 里的相对路径；原位置用于恢复。 */
+  path: string;
+  originalPath: string;
+  document?: Document;
+  inbox?: InboxItem;
+  /** 移除时一并清掉的“核实依据”，恢复时放回。 */
+  evidenceRefs?: { kind: "holding" | "appointment"; id: string; page?: string; note?: string }[];
+  /** 移除后变回现行的旧版本 id。 */
+  promoted?: string[];
+}
+export const trashKeepDays = 30;
+
+export type EvidenceKind = "identity" | "address" | "appointment" | "shareholding" | "kyc" | "board" | "other";
+export const evidenceKinds: EvidenceKind[] = ["identity", "address", "appointment", "shareholding", "kyc", "board", "other"];
+export const evidenceKindLabel: Record<EvidenceKind, string> = {
+  identity: "身份证明", address: "地址证明", appointment: "任职证明", shareholding: "持股证明", kyc: "KYC", board: "董事会文件", other: "其他",
+};
+export type EvidenceTarget = "company" | "person" | "appointment" | "holding";
+export interface EvidenceLink { target: EvidenceTarget; id: string; kind: EvidenceKind; page?: string; note?: string }
 
 
 // MARK: 合规事项记录
@@ -292,6 +328,8 @@ export interface SharedSettings {
   calendarName: string;
   notificationHour: number;
   complianceEnabled?: boolean;
+  /** 5.3 材料范围方案。 */
+  scopePresets?: { id: string; name: string; kind: "company" | "person"; plan: Record<string, Custody> }[];
 }
 export const defaultSettings = (): SharedSettings => ({
   reminderDays: [30, 7, 1], calendarEnabled: true, calendarName: "Charter", notificationHour: 9,
@@ -441,40 +479,31 @@ const itemMarkExplanation: Record<ItemMark, string> = {
   notApplicable: "此公司不适用该条目；不纳入本公司的归档比例。",
 };
 
-/** 材料范围。只有“我负责”的缺项算缺件。 */
-export type MaterialCustody = "mine" | "agent" | "pending" | "outOfScope" | "na";
-export const materialCustodies: MaterialCustody[] = ["mine", "agent", "pending", "outOfScope", "na"];
-export const materialCustodyLabel: Record<MaterialCustody, string> = {
-  mine: "我负责", agent: "中介保管", pending: "待确认", outOfScope: "不在我的范围", na: "不适用",
-};
-export const materialCustodyExplanation: Record<MaterialCustody, string> = {
-  mine: "由你保管；没有归档时算缺件。",
-  agent: "由中介或其他机构保管，不算缺件，单独计数。",
-  pending: "还没有决定；不算缺件，在完整性审阅里提醒你确认。",
-  outOfScope: "不归你管，普通归档视图不显示。",
-  na: "这家公司或这个人用不到，普通归档视图不显示。",
-};
-export const legacyMarkToCustody = (mark: ItemMark): MaterialCustody =>
-  mark === "external" || mark === "restricted" ? "agent"
-    : mark === "notApplicable" ? "na"
-      : mark === "unverified" ? "pending"
-        : "mine";
-export const custodyIsVisible = (custody: MaterialCustody) => custody !== "outOfScope" && custody !== "na";
-
 export interface CompanyArchive {
   added: string[];
   removed: string[];
+  /** 4.x 旧标记，读取时迁移为 custody。 */
   marks: Record<string, ItemMark>;
   notes: Record<string, string>;
-  custody?: Record<string, MaterialCustody>;
+  /** 5.3：每个条目的保管范围。 */
+  custody?: Record<string, Custody>;
 }
-export const emptyArchive = (): CompanyArchive => ({ added: [], removed: [], marks: {}, notes: {} });
 
-export interface PersonArchive {
-  custody: Record<string, MaterialCustody>;
-  notes: Record<string, string>;
-}
-export const emptyPersonArchive = (): PersonArchive => ({ custody: {}, notes: {} });
+// MARK: 保管范围（5.3）
+
+/** 我负责 / 中介保管 / 不在我的范围 / 不适用 / 待确认。只有“我负责”的缺项才算缺件。 */
+export type Custody = "mine" | "agent" | "outOfScope" | "na" | "pending";
+export const custodies: Custody[] = ["mine", "agent", "pending", "outOfScope", "na"];
+export const custodyLabel: Record<Custody, string> = { mine: "我负责", agent: "中介保管", outOfScope: "不在我的范围", na: "不适用", pending: "待确认" };
+export const custodyHint: Record<Custody, string> = {
+  mine: "由你保管；没有归档时算缺件。", agent: "由中介或其他机构保管，不算缺件，单独计数。",
+  outOfScope: "不归你管，任何视图都不显示。", na: "这家公司或这个人用不到。", pending: "还没决定；不算缺件，在完整性审阅里提醒你确认。",
+};
+/** 旧标记 → 保管范围。 */
+export const custodyFromMark = (m: ItemMark): Custody =>
+  m === "external" || m === "restricted" ? "agent" : m === "notApplicable" ? "na" : m === "unverified" ? "pending" : "mine";
+export const inView = (c: Custody) => c !== "outOfScope" && c !== "na";
+export const emptyArchive = (): CompanyArchive => ({ added: [], removed: [], marks: {}, notes: {} });
 
 export type ArchiveState =
   | { kind: "valid" }
@@ -482,6 +511,8 @@ export type ArchiveState =
   | { kind: "expired"; days: number }
   | { kind: "needsUpdate" }
   | { kind: "noDate" }
+  /** 5.4：有记录，但源文件不在数据文件夹里。 */
+  | { kind: "fileMissing" }
   | { kind: "marked"; mark: ItemMark }
   | { kind: "missing" };
 
@@ -492,30 +523,44 @@ export function archiveStateLabel(s: ArchiveState): string {
     case "expired": return `已过期 ${s.days} 天`;
     case "needsUpdate": return "需要更新";
     case "noDate": return "日期待核对";
+    case "fileMissing": return "源文件不可用";
     case "marked": return itemMarkLabel[s.mark];
     case "missing": return "未归档";
   }
 }
 export const hasFile = (s: ArchiveState) =>
-  s.kind === "valid" || s.kind === "expiring" || s.kind === "expired" || s.kind === "needsUpdate" || s.kind === "noDate";
+  s.kind === "valid" || s.kind === "expiring" || s.kind === "expired" || s.kind === "needsUpdate" || s.kind === "noDate" || s.kind === "fileMissing";
 export const stateNeedsAttention = (s: ArchiveState) =>
-  s.kind === "expiring" || s.kind === "expired" || s.kind === "needsUpdate" || s.kind === "noDate";
+  s.kind === "expiring" || s.kind === "expired" || s.kind === "needsUpdate" || s.kind === "noDate" || s.kind === "fileMissing";
 export const isNotApplicable = (s: ArchiveState) => s.kind === "marked" && s.mark === "notApplicable";
-/** “已有”：有现行文件，或标记为外部保管 / 权限受限（材料存在但不在本地）。 */
-export const isHeld = (s: ArchiveState) => hasFile(s) || (s.kind === "marked" && (s.mark === "external" || s.mark === "restricted"));
-/** “缺件”（待取得）：没有文件且没有标记，或标记为未取得 / 待核对。 */
-export const isMissing = (s: ArchiveState) => s.kind === "missing" || (s.kind === "marked" && (s.mark === "notObtained" || s.mark === "unverified"));
-/** 公司页“档案 x/y”、公司列表、数字条共用的口径。 */
-export function archiveCounts(items: { state: ArchiveState }[]) {
-  const counted = items.filter((i) => !isNotApplicable(i.state));
+/** 有现行文件。 */
+export const isHeld = (s: ArchiveState) => hasFile(s);
+/** 没有现行文件。是否算“缺件”还要看保管范围（只有“我负责”才算）。 */
+export const isMissing = (s: ArchiveState) => !hasFile(s);
+/**
+ * 5.3 完整度口径：只算“我负责”的条目。held = 我负责且已归档；total = 我负责的条目数。
+ * 中介保管、待确认单独计数；不在范围 / 不适用不计。configured = 是否设置过范围（没设置时界面显示“未配置材料范围”）。
+ */
+export function archiveCounts(items: { state: ArchiveState; custody?: Custody; others?: unknown[] }[], configured = true) {
+  const c = (i: { custody?: Custody }) => i.custody ?? "mine";
+  const mine = items.filter((i) => c(i) === "mine");
   return {
-    held: counted.filter((i) => isHeld(i.state)).length,
-    total: counted.length,
-    missing: counted.filter((i) => isMissing(i.state)).length,
-    attention: counted.filter((i) => stateNeedsAttention(i.state)).length,
-    notApplicable: items.length - counted.length,
+    held: mine.filter((i) => hasFile(i.state) && i.state.kind !== "fileMissing").length,
+    total: mine.length,
+    missing: mine.filter((i) => !hasFile(i.state) || i.state.kind === "fileMissing").length,
+    agent: items.filter((i) => c(i) === "agent").length,
+    pending: items.filter((i) => c(i) === "pending").length,
+    attention: items.filter((i) => inView(c(i)) && stateNeedsAttention(i.state)).length,
+    /** 有文件的条目数（类）。 */
+    files: items.filter((i) => hasFile(i.state)).length,
+    /** 现行文件份数（同类多份逐份计）。 */
+    docs: items.filter((i) => hasFile(i.state)).reduce((n, i) => n + 1 + (i.others?.length ?? 0), 0),
+    notApplicable: items.filter((i) => !inView(c(i))).length,
+    configured,
   };
 }
+/** 完整度：未配置或没有“我负责”的条目时返回 null（界面不显示百分比）。 */
+export const completeness = (n: { held: number; total: number; configured: boolean }) => (n.configured && n.total ? n.held / n.total : null);
 
 export interface ArchiveItem {
   typeID: string;
@@ -528,46 +573,15 @@ export interface ArchiveItem {
   /** 当前这份之外的同类现行文件。 */
   others: Document[];
   state: ArchiveState;
-  custody: MaterialCustody;
-  explicit: boolean;
-  suggested: boolean;
   note: string;
   isExtra: boolean;
+  /** 5.3 保管范围；explicit = 用户明确设置过（含旧标记迁移）。 */
+  custody: Custody;
+  explicit: boolean;
+  /** 法域模板建议的条目（法定应有）。 */
+  suggested: boolean;
 }
 export const archiveItemName = (i: ArchiveItem) => i.type?.name ?? "未知条目";
-
-export interface MaterialCounts {
-  held: number;
-  total: number;
-  missing: number;
-  agent: number;
-  pending: number;
-  attention: number;
-  files: number;
-  docs: number;
-  notApplicable: number;
-  configured: boolean;
-}
-
-/** 材料范围口径：只有“我负责”进入缺件比例，中介保管和待确认单独计数。 */
-export function materialCounts(items: ArchiveItem[], configured = true): MaterialCounts {
-  const mine = items.filter((i) => i.custody === "mine");
-  return {
-    held: mine.filter((i) => hasFile(i.state)).length,
-    total: mine.length,
-    missing: mine.filter((i) => !hasFile(i.state)).length,
-    agent: items.filter((i) => i.custody === "agent").length,
-    pending: items.filter((i) => i.custody === "pending").length,
-    attention: items.filter((i) => custodyIsVisible(i.custody) && stateNeedsAttention(i.state)).length,
-    files: items.filter((i) => hasFile(i.state)).length,
-    docs: items.filter((i) => hasFile(i.state)).reduce((n, i) => n + 1 + i.others.length, 0),
-    notApplicable: items.filter((i) => !custodyIsVisible(i.custody)).length,
-    configured,
-  };
-}
-
-export const materialRatio = (counts: MaterialCounts) =>
-  counts.configured && counts.total ? counts.held / counts.total : null;
 
 // MARK: 补发请求
 
@@ -603,12 +617,23 @@ export interface CorporateGroup {
   /** Charter 4：品牌色标。 */
   color?: string;
 }
-/** 集团颜色：前 6 个保持原顺序（未设颜色的老集团按此推算），其后按色相补齐，共 18 个。 */
+/** 集团颜色（5.3）：不含红、琥珀、绿——这三种只表示状态（过期、快到期、正常），避免把集团误读成风险。 */
 export const brandPalette = [
-  "#4F7CF7", "#2BA889", "#E07A2E", "#B05CD6", "#D64F6E", "#3AA0C9",
-  "#2F4FB5", "#5E9E3A", "#C99A1E", "#7A5AF0", "#E0559C", "#178F8F",
-  "#B5452B", "#8A6D4E", "#5C6B80", "#9C8F2A", "#C2417A", "#4B4B57",
+  "#4F7CF7", "#7A5AF0", "#3AA0C9", "#B05CD6", "#2F4FB5", "#5C6B80",
+  "#178F9F", "#8E4E8A", "#8A6D4E", "#4A7A9C", "#6B5BA8", "#4B4B57",
 ];
+/** 看起来像状态色（饱和的红、橙、黄、绿）的颜色。 */
+export function isStatusLike(hex: string): boolean {
+  if (!isHexColor(hex)) return false;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  if (d < 0.0001) return false;
+  const s = d / (1 - Math.abs(2 * l - 1));
+  if (s < 0.35) return false;
+  let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = (h * 60 + 360) % 360;
+  return h < 65 || h >= 330 || (h >= 75 && h < 172);
+}
 export const isHexColor = (s: string) => /^#[0-9a-fA-F]{6}$/.test(s);
 
 export interface GroupRow {

@@ -1,7 +1,7 @@
 // 申报日历：横幅、范围页签、按月时间线（打勾完成）+ 右侧详情（找谁办、对接人、邮件草稿）。
 
 import { companyTint } from "../ui/uistyle";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../state/hooks";
 import * as D from "../domain/day";
 import { type Obligation, obligationStatus } from "../domain/engine";
@@ -26,6 +26,9 @@ export function DueView() {
     .filter((o) => !range || D.daysBetween(store.today, o.due) <= range)
     .sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : a.company.name.localeCompare(b.company.name))), [store.data, range, store.today]);
   const sel = list.find((o) => o.key === router.selectedObligationKey) ?? store.openObligations.find((o) => o.key === router.selectedObligationKey) ?? list[0];
+  // 5.4：窄窗口（单栏）里详情改成右侧抽屉，点击事项后打开并聚焦
+  const narrow = useNarrow(1080);
+  const [drawer, setDrawer] = useState(false);
   const soon = list.filter((o) => D.daysBetween(store.today, o.due) <= 30).length;
   const shownCount = useTweenNumber(list.length);
   // #14 完成：这一行先打勾（lime），280ms 后淡出，再真正完成；件数随后递减。
@@ -81,30 +84,33 @@ export function DueView() {
           item("导出清单 CSV（Excel 可打开）…", "tablecells", () => void exportList(true)),
         ]} />
       </PageHeader>
-      <Banner tone={tone} title={overdue ? `${overdue} 件已逾期` : soon ? `30 天内有 ${soon} 件` : list.length ? "都还来得及" : "全部完成！"}>
-        {overdue ? "先联系中介处理逾期的事项，再看快到期的。" : soon ? "按日期一件件来，做完点左边的圆圈打勾。" : list.length ? `接下来 ${shownCount} 件都在 30 天以后。` : "这段时间没有要申报的事。"}
-      </Banner>
+      {overdue || soon ? <Banner tone={tone} title={overdue ? `${overdue} 件已逾期` : `30 天内有 ${soon} 件`}>
+        {overdue ? "先联系中介处理逾期的事项，再看快到期的。" : "按日期一件件来，做完点左边的圆圈打勾。"}
+      </Banner> : <span className="t-meta muted" style={{ padding: "2px 2px 6px" }}>{list.length ? `30 天内没有到期事项。接下来 ${shownCount} 件都在 30 天以后。` : "这段时间没有要申报的事。"}</span>}
       <Tabs<Range> value={range} onChange={setRange} tabs={[[90, "90 天内"], [365, "一年内"], [0, "全部"]]} />
       {!list.length ? (
         <Card><div className="celebrate"><span className="emblem"><Icon name="checkmark" size={30} strokeWidth={3} /></span><div className="t-headline">{done.length ? "全部完成！" : "这段时间没有申报事项"}</div><p className="muted">事项按公司的法域和成立日期自动排出。新建公司后这里会出现它的年审。</p></div></Card>
       ) : (
         <div className="two">
           <Card flush>
-            <div ref={listRef} style={{ position: "relative" }}>
+            <div ref={listRef} style={{ position: "relative" }} role="list" aria-label="申报事项">
               {months.map((m) => (
                 <div key={m.label}>
-                  <div className="tl-month"><span>{m.label}</span><span className="num">{m.items.length} 件</span></div>
+                  <div className="tl-month"><span>{m.label}</span><span className="row gap10"><span className="num">{m.items.length} 件</span>{m === months[0] && <span className="muted" style={{ fontWeight: 500 }}>做完点右边的圆圈</span>}</span></div>
                   {m.items.map((o) => {
                     const on = o.key === sel?.key, left = D.daysBetween(store.today, o.due), party = store.responsibleParty(o);
                     return (
-                      <div key={o.key} data-mid={o.key} className={`req ${leaving === o.key ? "leaving" : ""}`} aria-selected={on} role="button" tabIndex={0}
-                        onClick={() => router.set("selectedObligationKey", o.key)} onKeyDown={(e) => e.key === "Enter" && router.set("selectedObligationKey", o.key)}>
+                      // 5.4：行本身不再是按钮；选中用 aria-current 标在行内的按钮上，“标为已完成”是并列的独立控件
+                      <div key={o.key} data-mid={o.key} role="listitem" className={`req ${leaving === o.key ? "leaving" : ""}`} data-on={on || undefined}>
+                        <button type="button" className="req-main" aria-current={on ? "true" : undefined} data-key={o.key}
+                          onClick={() => { router.set("selectedObligationKey", o.key); if (narrow) setDrawer(true); }}>
                         <span className="date col"><span>{D.short(o.due)}</span><span className="t-meta muted" style={{ fontWeight: 600 }}>{D.weekdayName(o.due).replace("星期", "周")}</span></span>
                         <span className="col" style={{ minWidth: 0 }}>
                           <span className="title ellipsis" style={{ fontWeight: 700 }}>{o.rule.name}</span>
                           <span className="row gap6 t-meta muted" style={{ minWidth: 0 }}><span className="v4-code" style={{ width: 22, height: 18, borderRadius: 5, fontSize: 9, ...companyTint(store, o.company.id) }}>{o.company.jurisdiction}</span><span className="ellipsis">{o.company.name}{party ? " · " + party.name : " · 未指定中介"}</span></span>
                         </span>
                         <span className={`pill ${left < 0 ? "bad" : left <= 30 ? "warn" : "neutral"}`}>{leftText(left)}</span>
+                        </button>
                         <button className="check" role="checkbox" aria-checked={leaving === o.key} aria-label={`标为已完成：${o.rule.name}`} title="标为已完成"
                           onClick={(e) => { e.stopPropagation(); if (!leaving) tick(o); }}>
                           <Icon name="checkmark" size={14} strokeWidth={3.5} />
@@ -117,7 +123,8 @@ export function DueView() {
               ))}
             </div>
           </Card>
-          {sel && <div className="detail-pane"><DueDetail o={sel} onFinish={finish} /></div>}
+          {sel && !narrow && <div className="detail-pane"><DueDetail o={sel} onFinish={finish} /></div>}
+          {sel && narrow && drawer && <DueDrawer onClose={() => { setDrawer(false); requestAnimationFrame(() => document.querySelector<HTMLElement>(`.req-main[data-key="${CSS.escape(sel.key)}"]`)?.focus()); }}><DueDetail o={sel} onFinish={(o2, r) => { setDrawer(false); finish(o2, r); }} /></DueDrawer>}
         </div>
       )}
     </div></div>
@@ -155,9 +162,9 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
         <div className="t-title">{o.rule.name}</div>
         <div className="muted t-meta">{D.long(o.due)}截止 · {leftText(D.daysBetween(store.today, o.due))}{o.rule.localName ? " · " + o.rule.localName : ""}</div>
       </div>
-      <div className="row gap10 wrap" style={{ padding: "12px 14px", borderRadius: 14, background: o.record?.dateConfirmed ? "var(--surface-sunken)" : "var(--amber-soft)" }}>
+      <div className="row gap10 wrap" style={{ padding: "12px 14px", borderRadius: 14, background: "var(--surface-sunken)" }}>
         <span className="col grow" style={{ minWidth: 0, gap: 2 }}>
-          <span style={{ fontWeight: 600 }}>{o.record?.dateConfirmed ? "日期已确认" : "日期按规则推算"}</span>
+          <span className="row gap6" style={{ fontWeight: 600 }}><Icon name={o.record?.dateConfirmed ? "checkmark.circle" : "info.circle"} size={13} />{o.record?.dateConfirmed ? "日期已确认" : "日期按规则推算"}</span>
           <span className="t-meta muted">{o.record?.dateConfirmed ? "可随时改。" : `${store.scheduleText(o.rule.schedule)}。和中介核对后确认或修改。`}</span>
         </span>
         <DateField value={o.due} onChange={(d) => d && store.confirmDue(o, d)} allowsClear={false} minWidth={150} />
@@ -199,5 +206,32 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
         {stageNode}
       </div>
     </section>
+  );
+}
+
+/** 窗口宽度不超过 px 时为 true（与 .two 的单栏断点一致）。 */
+function useNarrow(px: number) {
+  const q = `(max-width: ${px}px)`;
+  const [m, setM] = useState(() => window.matchMedia(q).matches);
+  useEffect(() => { const mq = window.matchMedia(q); const f = () => setM(mq.matches); mq.addEventListener("change", f); return () => mq.removeEventListener("change", f); }, [q]);
+  return m;
+}
+
+/** 右侧抽屉：打开时焦点移到标题，Esc 或点遮罩关闭，焦点回到原来的行。 */
+function DueDrawer({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current; el?.querySelector<HTMLElement>(".t-title")?.setAttribute("tabindex", "-1");
+    (el?.querySelector<HTMLElement>(".t-title") ?? el)?.focus();
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(".popover")) { e.stopPropagation(); onClose(); } };
+    document.addEventListener("keydown", key, true); return () => document.removeEventListener("keydown", key, true);
+  }, []);
+  return (
+    <div className="drawer-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={box} className="drawer" role="dialog" aria-modal="true" aria-label="申报事项详情" tabIndex={-1}>
+        <div className="row" style={{ justifyContent: "flex-end" }}><button className="v4-x" aria-label="关闭详情" onClick={onClose}><Icon name="xmark" size={12} /></button></div>
+        {children}
+      </div>
+    </div>
   );
 }

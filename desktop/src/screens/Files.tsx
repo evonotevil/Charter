@@ -4,21 +4,56 @@ import { companyTint } from "../ui/uistyle";
 import { useEffect, useRef, useState } from "react";
 import * as D from "../domain/day";
 import { type Document, type NodeRef } from "../domain/models";
-import { type Freshness, expiryLabel, expiryOf, freshnessLabel, freshnessNeedsAttention, freshnessRank } from "../domain/engine";
+import { type Freshness, expiryOf, freshnessLabel, freshnessNeedsAttention, freshnessRank } from "../domain/engine";
 import { snapshotTitle } from "../domain/folder";
 import { useApp } from "../state/hooks";
 import { pendingRemaining } from "../state/store";
 import { writeZip } from "../services/files";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { Avatar, Button, EmptyStateView, JurisdictionBadge, type MenuEntry, Pill, Segmented, SelectField, divider, header, item, useContextMenu, PageHeader } from "../ui/kit";
+import { InboxPane, TrashPane } from "./Lifecycle";
+import { addToInbox } from "../state/lifecycle";
+import { Tabs, Avatar, Button, EmptyStateView, JurisdictionBadge, type MenuEntry, Pill, Segmented, SelectField, divider, header, item, useContextMenu, PageHeader } from "../ui/kit";
 import { DropTarget } from "../ui/drop";
-import { FileThumb, ReissueRequestSheet, freshnessPill, useStageFile } from "./common";
+import { FileThumb, clearThumbCache, ReissueRequestSheet, freshnessPill, useStageFile } from "./common";
 import { ExtraTags, StatusTag, statusOfFreshness } from "./Status";
 
 interface Snap { d: Document; f: Freshness; owner: string; type: string; expiry?: D.Day }
 
 export function FilesView() {
+  const { store, router } = useApp();
+  if (router.filesPane !== "files") return <FilesSubPage />;
+  return <DocumentsView />;
+}
+
+function FilesTabs() {
+  const { store, router } = useApp();
+  return <Tabs<"files" | "inbox" | "trash"> value={router.filesPane} onChange={(v) => router.set("filesPane", v)}
+    tabs={[["files", "文件", store.data.documents.filter((d) => !d.supersededBy).length], ["inbox", "待整理", store.data.inbox.length], ["trash", "废纸篓", store.data.trash.length]]} />;
+}
+
+function FilesSubPage() {
+  const { store, router } = useApp();
+  const inbox = router.filesPane === "inbox";
+  // 拖进窗口或“上传材料”的文件：先加入待整理
+  useEffect(() => {
+    if (!inbox || !router.inboxPaths.length) return;
+    const paths = router.inboxPaths; router.inboxPaths = [];
+    void addToInbox(store, paths).then((r) => store.showToast(`已加入待整理 ${r.added} 份${r.duplicates ? `，其中 ${r.duplicates} 份和已有文件重复` : ""}。`))
+      .catch((e) => store.setError(`加入待整理失败：${e instanceof Error ? e.message : String(e)}`));
+  }, [inbox, router.inboxPaths.length]);
+  return (
+    <DropTarget message="松开即可加入待整理" onDrop={(paths) => router.startImport(paths, null)} style={{ flex: 1, minHeight: 0, display: "flex" }}>
+      <div className="page"><div className="page-inner">
+        <PageHeader title="文件" subtitle={inbox ? `${store.data.inbox.length} 份待整理` : `废纸篓 ${store.data.trash.length} 份：30 天内可恢复。`} />
+        <FilesTabs />
+        {inbox ? <InboxPane /> : <TrashPane />}
+      </div></div>
+    </DropTarget>
+  );
+}
+
+function DocumentsView() {
   const { store, router } = useApp();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -26,7 +61,17 @@ export function FilesView() {
   const [exporting, setExporting] = useState(false);
   const [grid, setGridState] = useState(platform().prefGet("files.grid") === "1");
   const search = useRef<HTMLInputElement>(null);
-  const setGrid = (g: boolean) => { setGridState(g); platform().prefSet("files.grid", g ? "1" : "0"); };
+  type FSort = "status" | "type" | "issue" | "expiry";
+  const [fsort, setFsortState] = useState<FSort>(() => (platform().prefGet("files.sort") as FSort) || "status");
+  const setFsort = (k: FSort) => { setFsortState(k); platform().prefSet("files.sort", k); };
+  const sortDocs = (l: Document[]) => fsort === "status" ? l : [...l].sort((a, b) => {
+    if (fsort === "type") return (store.docType(a.typeID)?.name ?? "").localeCompare(store.docType(b.typeID)?.name ?? "", "zh") || (b.issueDate ?? "").localeCompare(a.issueDate ?? "");
+    const ka = fsort === "issue" ? a.issueDate : expiryOf(a, store.docType(a.typeID)), kb = fsort === "issue" ? b.issueDate : expiryOf(b, store.docType(b.typeID));
+    return (kb ?? "").localeCompare(ka ?? "");
+  });
+  const th = (k: FSort, label: string) => <th aria-sort={fsort === k ? "descending" : "none"}><button className="row gap4" style={{ font: "inherit", color: fsort === k ? "var(--ink)" : "inherit" }} onClick={() => setFsort(fsort === k ? "status" : k)} title={fsort === k ? "恢复按状态排序" : `按${label}排序`}>{label}{fsort === k && <Icon name="chevron.down" size={9} />}</button></th>;
+  const setGrid = (g: boolean) => { setGridState(g); platform().prefSet("files.grid", g ? "1" : "0"); if (!g) clearThumbCache(); };
+  useEffect(() => () => clearThumbCache(), []);
   const filter = router.filesFilter, horizon = router.filesHorizon, ownerKind = router.filesOwnerKind;
 
   const q = query.trim().toLowerCase();
@@ -36,7 +81,7 @@ export function FilesView() {
   if (q) scoped = scoped.filter((s) => s.type.toLowerCase().includes(q) || s.owner.toLowerCase().includes(q) || s.d.originalFileName.toLowerCase().includes(q));
   let list = scoped;
   if (filter === 1) list = list.filter((s) => s.expiry && D.daysBetween(store.today, s.expiry) >= 0 && D.daysBetween(store.today, s.expiry) <= horizon).sort((a, b) => (a.expiry! < b.expiry! ? -1 : 1));
-  else if (filter === 2) list = list.filter((s) => freshnessNeedsAttention(s.f) && (ownerKind != null || s.d.owner.kind === "company"));
+  else if (filter === 2) list = list.filter((s) => freshnessNeedsAttention(s.f));
   else if (filter === 3) list = list.filter((s) => { const n = D.daysBetween(s.d.addedOn, store.today); return n >= 0 && n <= 30; }).sort((a, b) => (a.d.addedOn < b.d.addedOn ? 1 : -1));
   if (filter === 0 || filter === 2) list = [...list].sort((a, b) => freshnessRank(a.f) - freshnessRank(b.f) || a.owner.localeCompare(b.owner, "zh"));
   const docs = list.map((s) => s.d);
@@ -46,7 +91,9 @@ export function FilesView() {
     const ra = Math.min(...a.docs.map((d) => freshnessRank(store.freshness(d)))), rb = Math.min(...b.docs.map((d) => freshnessRank(store.freshness(d))));
     return ra - rb || store.nameOf(a.owner).localeCompare(store.nameOf(b.owner), "zh");
   });
-  const attention = ownerKind === "person" ? store.attentionPersonalCount : store.attentionCount(router.groupFilter);
+  // 5.3.1：指标卡、标签、分组徽标、行状态用同一口径——当前范围内 freshnessNeedsAttention（含“未填日期”），公司和人员都算
+  const attention = scoped.filter((s) => freshnessNeedsAttention(s.f)).length;
+  const expiredN = scoped.filter((s) => s.f.kind === "expired").length, undated = scoped.filter((s) => s.f.kind === "unknown").length;
   const ordered = filter === 1 || filter === 3 ? docs : grouped.flatMap((g) => g.docs);
   const selectedDocs = ordered.filter((d) => selected.has(d.id));
 
@@ -76,8 +123,7 @@ export function FilesView() {
   };
   const removeSelected = async (list: Document[]) => {
     if (!list.length) return;
-    if (list.length > 1) await store.snapshotBeforeChange(`移除 ${list.length} 份文件记录前`);
-    store.removeDocuments(new Set(list.map((d) => d.id)));
+    router.open({ kind: "trashDocs", ids: list.map((d) => d.id) });
     setSelected(new Set()); setAnchor(null);
   };
   const revealLabel = platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示";
@@ -116,11 +162,12 @@ export function FilesView() {
     const list = ordered.filter((d) => selected.has(d.id));
     return [header(`已选 ${list.length} 份`), item(`打开 ${list.length} 份`, "arrow.up.forward.app", () => list.forEach((d) => void store.openDocument(d))),
       item(`${revealLabel} ${list.length} 份`, "folder", () => list.forEach((d) => void store.revealDocument(d))),
-      item("导出为 ZIP…", "archivebox", () => void exportZIP(list)), item(`从 Charter 移除 ${list.length} 份`, "trash", () => void removeSelected(list))];
+      item("导出为 ZIP…", "archivebox", () => void exportZIP(list)), item(`移到废纸篓 ${list.length} 份…`, "trash", () => void removeSelected(list))];
   };
 
   const pending = store.pendingImport;
-  const section = (title: string, owner: NodeRef | null, list: Document[]) => {
+  const section = (title: string, owner: NodeRef | null, raw: Document[]) => {
+    const list = sortDocs(raw);
     const bad = list.filter((d) => freshnessNeedsAttention(store.freshness(d))).length;
     const c = owner?.kind === "company" ? store.company(owner.id) : undefined;
     return (
@@ -142,16 +189,9 @@ export function FilesView() {
         ) : (
           <div className="card flush" style={{ overflowX: "auto" }}>
             <table className="table files-table" aria-label={`${title}的文件`}>
-              <colgroup>
-                <col style={{ width: 52 }} />
-                <col />
-                {!owner && <col style={{ width: 220 }} />}
-                <col style={{ width: 132 }} />
-                <col style={{ width: 132 }} />
-                <col style={{ width: 168 }} />
-                <col style={{ width: 132 }} />
-              </colgroup>
-              <thead><tr><th style={{ width: 28 }} aria-label="选择" /><th>文件</th>{!owner && <th>归属</th>}<th>签发</th><th>到期</th><th>状态</th><th style={{ width: 120 }} aria-label="操作" /></tr></thead>
+              {/* 5.3.2：各分组共用同一套列宽，跨分组竖向对齐 */}
+              <colgroup><col style={{ width: 52 }} /><col />{!owner && <col style={{ width: 220 }} />}<col style={{ width: 132 }} /><col style={{ width: 132 }} /><col style={{ width: 168 }} /><col style={{ width: 132 }} /></colgroup>
+              <thead><tr><th><span className="sr-only">选择</span></th>{th("type", "文件")}{!owner && <th>归属</th>}{th("issue", "签发")}{th("expiry", "到期")}{th("status", "状态")}<th><span className="sr-only">操作</span></th></tr></thead>
               <tbody>{list.map((d) => <FileTableRow key={d.id} d={d} showOwner={!owner} selected={selected.has(d.id)} extraMenu={batchMenu(d.id)} onSelect={(e) => click(e, d.id)}
                 onToggle={() => { const s2 = new Set(selected); if (s2.has(d.id)) s2.delete(d.id); else s2.add(d.id); setSelected(s2); setAnchor(d.id); }} />)}</tbody>
             </table>
@@ -170,7 +210,7 @@ export function FilesView() {
   };
 
   return (
-    <DropTarget message="松开以开始识别" radius={20} onDrop={(paths) => router.startImport(paths, null)} style={{ flex: 1, minHeight: 0, display: "flex" }}>
+    <DropTarget message="松开即可加入待整理" radius={20} onDrop={(paths) => router.startImport(paths, null)} style={{ flex: 1, minHeight: 0, display: "flex" }}>
       <div className="page">
         <div className="page-inner" style={{ paddingBottom: selectedDocs.length ? 96 : undefined }}>
           <div className="col gap12">
@@ -179,9 +219,10 @@ export function FilesView() {
               { label: "已过期", value: scoped.filter((x) => x.f.kind === "expired").length, unit: "份", tone: scoped.some((x) => x.f.kind === "expired") ? "bad" : undefined },
               { label: "需处理", value: attention, unit: "份", tone: attention ? "warn" : undefined, onClick: attention ? () => router.set("filesFilter", 2) : undefined },
               ...(ownerKind !== "person" ? [{ label: "缺件", value: store.missingSummary(router.groupFilter).items, unit: "项", tone: store.missingSummary(router.groupFilter).items ? "warn" as const : undefined }] : []),
-            ]} subtitle={(docs.length === scoped.length ? `${scoped.length} 份现行文件` : `显示 ${docs.length} / ${scoped.length} 份`) + (attention ? `，${attention} 份需处理` : "，都在有效期内") + "。把 PDF、照片或文件夹拖进窗口即可导入。"}>
-              <Button kind="primary" icon="square.and.arrow.down" title="选择 PDF、照片或文件夹；也可以直接拖进窗口" onClick={() => void router.chooseFiles(null)}>导入文件</Button>
+            ]} subtitle={(docs.length === scoped.length ? `${scoped.length} 份现行文件` : `显示 ${docs.length} / ${scoped.length} 份`) + (attention ? `，${attention} 份需处理（${[expiredN ? `${expiredN} 份已过期` : "", undated ? `${undated} 份日期待补` : "", attention - expiredN - undated ? `${attention - expiredN - undated} 份快到期或需更新` : ""].filter(Boolean).join("、")}）` : "，都在有效期内") + "。把 PDF、照片或文件夹拖进窗口即可导入。"}>
+              <Button kind="primary" icon="square.and.arrow.down" title="选择 PDF、照片或文件夹；也可以直接拖进窗口" onClick={() => void router.chooseFiles(null)}>加入待整理</Button>
             </PageHeader>
+            <FilesTabs />
             <div className="row gap10 wrap">
               <span className="row gap6" title="按归属筛选：公司材料或个人材料"><span className="t-meta muted">范围</span>
                 <SelectField options={[[0, "公司与人员"], [1, "公司文件"], [2, "个人文件"]]} value={ownerKind === "company" ? 1 : ownerKind === "person" ? 2 : 0}
@@ -219,7 +260,7 @@ export function FilesView() {
           <span className="num" style={{ fontSize: 13, fontWeight: 600, padding: "0 4px 0 8px" }}>已选 {selectedDocs.length} 份</span>
           <Button kind="quiet" size="small" onClick={() => selectedDocs.forEach((d) => void store.openDocument(d))}>打开</Button>
           <Button kind="quiet" size="small" onClick={() => selectedDocs.forEach((d) => void store.revealDocument(d))}>{revealLabel}</Button>
-          <Button size="small" onClick={() => void removeSelected(selectedDocs)}>从 Charter 移除</Button>
+          <Button size="small" onClick={() => void removeSelected(selectedDocs)}>移到废纸篓…</Button>
           <Button kind="primary" size="small" disabled={exporting} onClick={() => void exportZIP(selectedDocs)}>{exporting ? "正在导出…" : "导出为 ZIP…"}</Button>
           <span style={{ width: 1, height: 20, background: "var(--hairline)" }} />
           <button className="muted" style={{ width: 28, height: 28, display: "grid", placeItems: "center" }} title="取消选择（Esc）" aria-label="取消选择" onClick={() => { setSelected(new Set()); setAnchor(null); }}><Icon name="xmark" size={11} /></button>
@@ -241,7 +282,7 @@ function FileCard({ d, showOwner, selected, extraMenu, onClick }: { d: Document;
     item(platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示", undefined, () => void store.revealDocument(d)),
     item("归档新版…", undefined, () => void startStage({ typeID: d.typeID, owner: d.owner, replaces: d, form: d.form, onArchived: (n) => router.open({ kind: "document", id: n.id }) })),
     divider,
-    item("从 Charter 移除记录", undefined, () => store.deleteDocument(d), { destructive: true }),
+    item("移到废纸篓…", undefined, () => router.open({ kind: "trashDocs", ids: [d.id] }), { destructive: true }),
   ];
   return (
     <button className="col gap12 file-card" onClick={onClick} onContextMenu={(e) => ctx.open(e, menu)} title={d.originalFileName} aria-label={`${store.docType(d.typeID)?.name ?? "文件"}，${freshnessLabel(f)}`} aria-pressed={selected}
@@ -269,32 +310,35 @@ function FileTableRow({ d, showOwner, selected, extraMenu, onSelect, onToggle }:
   const t = store.docType(d.typeID);
   const f = store.freshness(d);
   const st = statusOfFreshness(f);
-  const expiry = expiryLabel(d, t);
-  const same = store.data.documents.filter((x) => !x.supersededBy && x.typeID === d.typeID && x.owner.kind === d.owner.kind && x.owner.id === d.owner.id);
-  const older = store.data.documents.filter((x) => x.supersededBy === d.id).length;
+  const expiry = expiryOf(d, t);
+  const same = store.siblingsOf(d);
+  const older = store.olderCountOf(d);
   const c = d.owner.kind === "company" ? store.company(d.owner.id) : undefined;
   const fileName = /^[0-9A-F-]{36}\.[a-z]+$/i.test(d.originalFileName) ? "（无原始文件名）" : d.originalFileName;
-  const sub = [t?.name ?? "未知类型", same.length > 1 ? `同类 ${same.indexOf(d) + 1}/${same.length} 份` : "", older ? `替代了 ${older} 个旧版` : "", d.notes].filter(Boolean).join(" · ");
+  // 第二行只放类型，便于扫读比较；同类份数、旧版和备注放进悬停提示和详情
+  const sub = t?.name ?? "未知类型";
+  const subTitle = [sub, same.length > 1 ? `同类 ${same.indexOf(d) + 1}/${same.length} 份` : "", older ? `替代了 ${older} 个旧版` : "", d.notes].filter(Boolean).join("\n");
   const upload = () => void startStage({ typeID: d.typeID, owner: d.owner, replaces: d, form: d.form, onArchived: (n) => router.open({ kind: "document", id: n.id }) });
   const menu: MenuEntry[] = [
     ...(extraMenu ? [...extraMenu, divider] : []),
-    item("打开", "arrow.up.forward.app", () => void store.openDocument(d)),
-    item(platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示", "folder", () => void store.revealDocument(d)),
+    ...(f.kind === "fileMissing" ? [item("重新定位…", "folder", () => void store.relocateDocument(d))] : [item("打开", "arrow.up.forward.app", () => void store.openDocument(d)),
+      item(platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示", "folder", () => void store.revealDocument(d))]),
     item("归档新版…", "square.and.arrow.up", upload),
     divider,
-    item("从 Charter 移除记录", "trash", () => store.deleteDocument(d), { destructive: true }),
+    item("移到废纸篓…", "trash", () => router.open({ kind: "trashDocs", ids: [d.id] }), { destructive: true }),
   ];
   return (
     <tr className={selected ? "sel" : ""} tabIndex={0} onClick={onSelect} onContextMenu={(e) => ctx.open(e, menu)} aria-selected={selected}
       onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) router.open({ kind: "document", id: d.id }); if (e.key === " " && e.target === e.currentTarget) { e.preventDefault(); onToggle(); } }}>
-      <td onClick={(e) => { e.stopPropagation(); onToggle(); }}><span className={`mark sq ${selected ? "on" : ""}`} role="checkbox" aria-checked={selected} aria-label="选择">{selected && <Icon name="checkmark" size={10} strokeWidth={3.5} />}</span></td>
-      <td><div className="col" style={{ minWidth: 0, gap: 1 }}><span className="fname name-1" title={d.originalFileName}>{fileName}</span><span className="t-meta muted name-1" title={sub}>{sub}</span></div></td>
+      <td onClick={(e) => { e.stopPropagation(); onToggle(); }}><span className={`mark sq ${selected ? "on" : ""}`} role="checkbox" aria-checked={selected} aria-label={`选择 ${fileName}`}>{selected && <Icon name="checkmark" size={10} strokeWidth={3.5} />}</span></td>
+      <td><div className="col" style={{ minWidth: 0, gap: 1 }}><span className="fname name-1" title={d.originalFileName}>{fileName}</span><span className="t-meta muted name-1" title={subTitle}>{sub}</span></div></td>
       {showOwner && <td className="owner"><span className="row gap6" style={{ minWidth: 0 }}>{c && <span className="v4-code" style={{ width: 24, height: 20, fontSize: 9.5, borderRadius: 6, ...companyTint(store, c.id) }}>{c.jurisdiction}</span>}<span className="name-1" title={store.nameOf(d.owner)}>{store.nameOf(d.owner)}</span></span></td>}
-      <td className="date mono">{d.issueDate ?? <span className="missing-val">未填</span>}</td>
-      <td className="date mono" style={{ color: f.kind === "expired" ? "var(--risk-bad)" : undefined }}>{expiry === "长期" ? <span className="muted">长期</span> : expiry === "未填日期" ? <span className="missing-val">未填日期</span> : expiry}</td>
+      <td className="date mono">{d.issueDate ?? <span className="missing-val">未填日期</span>}</td>
+      <td className="date mono" style={{ color: f.kind === "expired" ? "var(--risk-bad)" : undefined }}>{expiry ?? (d.noExpiry || t?.validity === "permanent" || t?.validity === "untilChanged" ? <span className="muted">长期</span> : <span className="missing-val">未填日期</span>)}</td>
       <td><span className="row gap4" style={{ flexWrap: "nowrap" }}><StatusTag s={st} /><ExtraTags d={d} t={t} /></span></td>
       <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
-        {f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补日期</Button>
+        {f.kind === "fileMissing" ? <Button size="small" onClick={() => void store.relocateDocument(d)} title="源文件不在数据文件夹里：选回它现在的位置，Charter 复制一份进来">重新定位…</Button>
+          : f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补日期</Button>
           : freshnessNeedsAttention(f) ? <Button size="small" onClick={upload} title="类型和归属沿用这份，旧版保留">归档新版</Button>
             : <Button size="small" kind="quiet" onClick={() => void store.openDocument(d)}>打开</Button>}
         {ctx.node}{stageNode}

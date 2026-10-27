@@ -4,7 +4,7 @@ import type { ArchiveState, Document, DocumentType } from "../domain/models";
 import type { Freshness } from "../domain/engine";
 import { Icon } from "../ui/Icon";
 
-export type StatusKey = "held" | "expiring" | "expired" | "noDate" | "needsUpdate" | "missing" | "unverifiedMark" | "notApplicable" | "external" | "restricted" | "superseded";
+export type StatusKey = "fileMissing" | "held" | "expiring" | "expired" | "noDate" | "needsUpdate" | "missing" | "unverifiedMark" | "notApplicable" | "external" | "restricted" | "superseded";
 
 export interface StatusView { key: StatusKey; text: string; icon: string; cls: string; hint: string }
 
@@ -13,8 +13,9 @@ export function statusOfArchive(s: ArchiveState): StatusView {
     case "valid": return { key: "held", text: "已归档", icon: "checkmark.circle", cls: "held", hint: "有现行文件，在有效期内或长期有效" };
     case "expiring": return { key: "expiring", text: `${s.days} 天后到期`, icon: "hourglass", cls: "warn", hint: "30 天内到期" };
     case "expired": return { key: "expired", text: `已过期 ${s.days} 天`, icon: "exclamationmark.triangle", cls: "bad", hint: "过了到期日，需要取得新版" };
-    case "noDate": return { key: "noDate", text: "缺日期", icon: "questionmark.circle", cls: "warn-o", hint: "有效期取决于日期，但签发或到期日没填" };
+    case "noDate": return { key: "noDate", text: "未填日期", icon: "calendar", cls: "quiet", hint: "签发或到期日还没填，填上后 Charter 才能判断有效期" };
     case "needsUpdate": return { key: "needsUpdate", text: "需更新", icon: "arrow.triangle.2.circlepath", cls: "warn-o", hint: "公司信息变了，文件内容可能已过时" };
+    case "fileMissing": return { key: "fileMissing", text: "源文件不可用", icon: "exclamationmark.triangle", cls: "bad", hint: "有记录，但数据文件夹里找不到文件：可能还没同步下来，或被移动、删除。可以重新定位或归档新版。" };
     case "missing": return { key: "missing", text: "待取得", icon: "circle.dashed", cls: "miss", hint: "还没有这份材料" };
     case "marked":
       switch (s.mark) {
@@ -34,6 +35,7 @@ export function statusOfFreshness(f: Freshness): StatusView {
     case "expired": return statusOfArchive({ kind: "expired", days: f.days });
     case "needsUpdate": return statusOfArchive({ kind: "needsUpdate" });
     case "unknown": return statusOfArchive({ kind: "noDate" });
+    case "fileMissing": return statusOfArchive({ kind: "fileMissing" });
     case "superseded": return { key: "superseded", text: "旧版", icon: "clock.arrow.circlepath", cls: "quiet", hint: "已被新版本替代" };
   }
 }
