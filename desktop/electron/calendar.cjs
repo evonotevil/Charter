@@ -2,7 +2,7 @@
 // Mac：EventKit（经 JXA 调用，第一次会弹出“Charter 想访问你的日历”）；Windows：桌面版 Outlook（COM）。
 // 只动名为“Charter”（可在设置里改名）的那一本日历；每个事件用 URL / 自定义属性记下 Charter 的键，
 // 再次同步时按键新增、修改、删除，不会重复，也不会碰其他日历里的事件。
-// 输入：JSON 文件 { name, calendarId?, checkOnly?, events: [{ key, title, date: "YYYY-MM-DD", notes }] }
+// 输入：JSON 文件 { name, calendarId?, checkOnly?, chunks?: [[fromDay, toDay]...]（相对今天的天数，每段 ≤ 3 年）, events: [{ key, title, date: "YYYY-MM-DD", notes }] }
 // 输出（stdout）：JSON { ok, calendarId, added, updated, removed } 或 { error: "denied" | "noOutlook" | ... , message? }
 
 const MAC_SCRIPT = String.raw`
@@ -34,7 +34,8 @@ function run(argv) {
     cal = $.EKCalendar.calendarForEntityTypeEventStore($.EKEntityTypeEvent, store);
     cal.title = input.name;
     var def = store.defaultCalendarForNewEvents, src = (def && !def.isNil()) ? def.source : null;
-    if (!src || src.isNil()) { var ss = store.sources; for (i = 0; i < ss.count; i++) { if (Number(ss.objectAtIndex(i).sourceType) === 0) { src = ss.objectAtIndex(i); break; } } }
+    // 没有默认日历时：优先 iCloud / CalDAV（2），其次“在我的 Mac 上”（0）
+    if (!src || src.isNil()) { var ss = store.sources; [2, 0].some(function (want) { for (i = 0; i < ss.count; i++) { if (Number(ss.objectAtIndex(i).sourceType) === want) { src = ss.objectAtIndex(i); return true; } } return false; }); }
     if (!src || src.isNil()) return out({ error: 'noSource' });
     cal.source = src;
     var e1 = Ref();
@@ -44,14 +45,18 @@ function run(argv) {
   var greg = $.NSCalendar.currentCalendar;
   function day(s) { var p = s.split('-'); var dc = $.NSDateComponents.alloc.init; dc.year = +p[0]; dc.month = +p[1]; dc.day = +p[2]; dc.hour = 0; return greg.dateFromComponents(dc); }
   function ymd(d) { var f = $.NSDateFormatter.alloc.init; f.dateFormat = 'yyyy-MM-dd'; return ObjC.unwrap(f.stringFromDate(d)); }
-  var start = $.NSDate.dateWithTimeIntervalSinceNow(-86400 * 800), end = $.NSDate.dateWithTimeIntervalSinceNow(86400 * 1500);
-  var found = store.eventsMatchingPredicate(store.predicateForEventsWithStartDateEndDateCalendars(start, end, $([cal])));
-  var existing = {};
-  for (i = 0; i < found.count; i++) {
-    var ev = found.objectAtIndex(i), u = ev.URL;
-    var k = (u && !u.isNil()) ? ObjC.unwrap(u.absoluteString) : '';
-    if (k.indexOf('charter://item/') === 0) existing[decodeURIComponent(k.slice(15))] = ev;
-  }
+  // 5.4.1：EventKit 单次查询最多 4 年，超出会被静默截断。查询窗口覆盖本次最早到最晚的事项（至少过去 800 天到未来 450 天，
+  // 以便找到以前同步过、现在要删掉的事件），按每段不超过 3 年分段查询再合并。
+  var DAY = 86400, existing = {};
+  var chunks = input.chunks && input.chunks.length ? input.chunks : [[-800, 295], [295, 450]];
+  chunks.forEach(function (c) {
+    var found = store.eventsMatchingPredicate(store.predicateForEventsWithStartDateEndDateCalendars($.NSDate.dateWithTimeIntervalSinceNow(c[0] * DAY), $.NSDate.dateWithTimeIntervalSinceNow(c[1] * DAY), $([cal])));
+    for (var j = 0; j < found.count; j++) {
+      var ev = found.objectAtIndex(j), u = ev.URL;
+      var k = (u && !u.isNil()) ? ObjC.unwrap(u.absoluteString) : '';
+      if (k.indexOf('charter://item/') === 0) existing[decodeURIComponent(k.slice(15))] = ev;
+    }
+  });
   var added = 0, updated = 0, removed = 0, err = Ref();
   input.events.forEach(function (e) {
     var ev = existing[e.key];

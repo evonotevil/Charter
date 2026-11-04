@@ -50,7 +50,7 @@ export function CompanyPage({ company: c }: { company: Company }) {
     <DropTarget message={`松开即可归档到 ${c.name}`} onDrop={(p) => void onDrop(p)} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <div className="page"><div className="page-inner">
         <PageHeader crumb={<><button onClick={() => router.go("companies")}>公司总览</button><Icon name="chevron.right" size={10} />{gs.length ? gs.map((g) => g.name).join("、") : store.jurisdictionName(c.jurisdiction)}</>}
-          title={<span className="row gap14" style={{ minWidth: 0 }}><JurisdictionBadge code={c.jurisdiction} size={44} tint={companyTint(store, c.id)} />
+          title={<span className="row gap14" style={{ minWidth: 0 }}><span aria-hidden="true" style={{ display: "inline-flex" }}><JurisdictionBadge code={c.jurisdiction} size={44} tint={companyTint(store, c.id)} /></span>
             <InlineText wrap value={c.name} label="公司名称" onCommit={(v) => v.trim() && store.editCompanyField(c, "name", v.trim(), "公司名称")} style={{ font: "inherit" }} /></span>}
           subtitle={<span className="row gap6 wrap"><CompanyChips c={c} />{unv > 0 && <button className="v4-chip btnlike chip-pending" onClick={() => router.go("verify")}>{unv} 条待核实 ›</button>}</span>}>
           {busy && <span className="busy-chip" role="status"><span className="ring" />正在识别…</span>}
@@ -388,16 +388,19 @@ function Archive({ c, onUpload }: { c: Company; onUpload: (typeID: string) => vo
     const d = i.document;
     const date = d ? (d.expiryDate ? `${d.expiryDate} 到期` : d.issueDate ? `${d.issueDate} 签发` : "") : "";
     return (
-      <div key={i.typeID} className="cp-line archive-line" role="button" tabIndex={0} style={{ cursor: "default" }}
-        title={d ? d.originalFileName : itemStatus(i).hint}
-        onClick={(e) => { if ((e.target as HTMLElement).closest("button")) return; if (d) router.open({ kind: "document", id: d.id }); else if (i.custody === "mine") onUpload(i.typeID); }}
-        onKeyDown={(e) => e.key === "Enter" && (d ? router.open({ kind: "document", id: d.id }) : onUpload(i.typeID))}>
+      // 5.4.1：主按钮（打开详情 / 上传）与右侧的保管范围、上传按钮并列，不再嵌套
+      <div key={i.typeID} className="cp-line archive-line" title={d ? d.originalFileName : itemStatus(i).hint}>
+        <button type="button" className="row row-main grow" style={{ minWidth: 0, gap: 10, textAlign: "left", alignSelf: "stretch" }}
+          disabled={!d && i.custody !== "mine"}
+          aria-label={d ? `${archiveItemName(i)}：查看文件` : `${archiveItemName(i)}：上传`}
+          onClick={() => { if (d) router.open({ kind: "document", id: d.id }); else if (i.custody === "mine") onUpload(i.typeID); }}>
         <span className="col grow" style={{ minWidth: 0, gap: 1 }}>
           <span className="name-1" style={{ fontSize: 13.5, fontWeight: 600, color: d ? undefined : "var(--muted)" }}>{archiveItemName(i)}{i.suggested && !i.explicit && !d ? <span className="t-meta muted" style={{ fontWeight: 400 }}>　法域常见</span> : null}</span>
           {(i.copies > 0 || i.olderVersions > 0 || i.note) && <span className="t-meta muted name-1">
             {[i.copies > 0 ? `另有 ${i.copies} 份同类现行` : "", i.olderVersions > 0 ? `${i.olderVersions} 个旧版` : "", i.note].filter(Boolean).join(" · ")}</span>}
         </span>
         <span className="t-meta muted num" style={{ whiteSpace: "nowrap" }}>{date}</span>
+        </button>
         <StatusTag s={itemStatus(i)} />
         {d && <ExtraTags d={d} t={i.type} />}
         {view === "review" && <CustodyChip owner={owner} item={i} />}

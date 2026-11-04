@@ -867,9 +867,11 @@ function CalendarAutoSync() {
     try {
       const r = await runCalendarSync(store, { checkOnly: true });
       if (!r || !("ok" in r && r.ok)) { store.setError(`没有打开自动同步：${r ? describeError(r) : "同步不可用。"}`); return; }
-      p.prefSet(autoSyncPref, "1"); setOn(true);
-      await runCalendarSync(store, { manual: true });
-      store.showToast(`已开启：事项会同步到“${name}”日历。`);
+      // 5.4.1：先试同步一次，成功才算开启；失败时保持关闭并说明原因（runCalendarSync 已用 setError 提示）
+      p.prefSet(autoSyncPref, "1");
+      const r2 = await runCalendarSync(store, { manual: true });
+      if (r2 && "ok" in r2 && r2.ok) { setOn(true); store.showToast(`已开启：事项会同步到“${name}”日历（新增 ${r2.added ?? 0} 件）。`); }
+      else p.prefSet(autoSyncPref, "0");
     } finally { setBusy(false); }
   };
   return (

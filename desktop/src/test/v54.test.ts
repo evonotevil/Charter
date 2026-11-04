@@ -69,3 +69,16 @@ describe("5.4 日历同步内容", () => {
     void ref;
   });
 });
+
+describe("5.4.1 Mac 日历查询窗口", () => {
+  it("每段不超过 3 年，并覆盖最早和最晚的事项", async () => {
+    const { queryChunks } = await import("../services/calendarSync");
+    const ev = (date: string) => ({ key: date, title: "", date, notes: "" });
+    const chunks = queryChunks([ev("2022-01-01"), ev("2026-11-04"), ev("2027-12-01")], "2026-11-04");
+    for (const [a, b] of chunks) expect(b - a).toBeLessThanOrEqual(1095);
+    expect(chunks[0][0]).toBeLessThanOrEqual(-1768); // 2022-01-01 约在 1768 天前
+    expect(chunks[chunks.length - 1][1]).toBeGreaterThanOrEqual(392);
+    for (let i = 1; i < chunks.length; i++) expect(chunks[i][0]).toBe(chunks[i - 1][1]); // 首尾相接，无缝隙
+    expect(queryChunks([], "2026-11-04")).toEqual([[-800, 295], [295, 450]]);
+  });
+});

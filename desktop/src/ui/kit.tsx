@@ -66,7 +66,7 @@ export function Popover({ anchor, open, onClose, children, placement = "bottom",
   align?: "start" | "end" | "center"; minWidth?: number; style?: CSSProperties;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; side: "top" | "bottom" } | null>(null);
   useLayoutEffect(() => {
     if (!open || !anchor.current) return;
     const place = () => {
@@ -80,7 +80,7 @@ export function Popover({ anchor, open, onClose, children, placement = "bottom",
       if (placement === "top" && top < 12) top = a.bottom + 6;
       left = Math.max(12, Math.min(left, window.innerWidth - w - 12));
       top = Math.max(12, Math.min(top, window.innerHeight - h - 12));
-      setPos({ left, top });
+      setPos({ left, top, side: top + h <= a.top + 1 ? "top" : "bottom" });
     };
     place();
     const r = requestAnimationFrame(place);
@@ -91,12 +91,17 @@ export function Popover({ anchor, open, onClose, children, placement = "bottom",
     if (!open) return;
     // 5.4：弹层可以嵌套（例如面板里的下拉）。下拉列表挂在 body 上，不在本面板的 DOM 里，
     // 所以点在“其他弹层”里不算外部点击；Esc 只关最上面的一层。
-    const isTop = () => { const all = document.querySelectorAll(".popover"); return all[all.length - 1] === ref.current; };
+    // 5.4.1：离场中的残影（.ghost-out）不算；点在“比我后打开的”弹层（我派生的子下拉）里不关，点在父面板里要关
+    const live = () => [...document.querySelectorAll(".popover:not(.ghost-out)")];
+    const isTop = () => { const all = live(); return all[all.length - 1] === ref.current; };
     const down = (e: MouseEvent) => {
       const t = e.target as Node;
       if (ref.current?.contains(t) || anchor.current?.contains(t)) return;
-      const other = (t as Element).closest?.(".popover");
-      if (other && other !== ref.current) return;
+      const other = (t as Element).closest?.(".popover:not(.ghost-out)");
+      if (other && other !== ref.current) {
+        const all = live();
+        if (all.indexOf(other) > all.indexOf(ref.current!)) return;
+      }
       onClose();
     };
     const key = (e: KeyboardEvent) => { if (e.key === "Escape" && isTop()) { e.stopPropagation(); onClose(); } };
@@ -107,7 +112,7 @@ export function Popover({ anchor, open, onClose, children, placement = "bottom",
   useExitGhost(ref, open);
   if (!open) return null;
   return createPortal(
-    <div ref={ref} className="popover" style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, minWidth, ...style }} role="dialog">{children}</div>,
+    <div ref={ref} className="popover" data-side={pos?.side} style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, minWidth, ...style }} role="dialog">{children}</div>,
     document.body,
   );
 }
@@ -275,9 +280,9 @@ export function DateField({ value, onChange, placeholder = "选择日期", relat
     if (d) { onChange(d); setInvalid(false); } else setInvalid(true);
   };
   return (
-    <div ref={ref} className="row gap6" title={invalid ? "日期格式应为 2026-10-27" : undefined}
-      style={{ minWidth, minHeight: 38, padding: "0 10px 0 8px", borderRadius: "var(--r-field)", background: "var(--field-fill)",
-        boxShadow: `inset 0 0 0 ${focused || open || invalid ? 1.5 : 1}px ${invalid ? "var(--danger)" : focused || open ? "color-mix(in srgb, var(--ink) 70%, transparent)" : "var(--hairline)"}`, display: "inline-flex" }}>
+    // 5.4.1：外观与 .field 一致（高度、圆角、2px 边框、悬停、绿色聚焦环、错误红框）
+    <div ref={ref} className={`row gap6 date-field ${focused || open ? "focus" : ""} ${invalid ? "invalid" : ""}`} title={invalid ? "日期格式应为 2026-10-27" : undefined}
+      style={{ minWidth }}>
       <button onClick={() => setOpen((o) => !o)} title="打开日历" className="muted row" style={{ width: 22, height: 22, justifyContent: "center" }}><Icon name="calendar" size={14} /></button>
       <input value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onFocus={() => setFocused(true)}
         onBlur={() => { setFocused(false); commit(); }} onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
@@ -529,7 +534,13 @@ export function Modal({ onClose, children, dismissOnEscape = true }: { onClose: 
   useFocusReturn(overlay);
   useEffect(() => {
     if (!dismissOnEscape) return;
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(".popover")) { e.stopPropagation(); onClose(); } };
+    // 5.4.1：有弹层或更上层的对话框时，Esc 先交给它们
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || document.querySelector(".popover:not(.ghost-out)")) return;
+      const overlays = [...document.querySelectorAll(".overlay:not(.ghost-out)")];
+      if (overlays.length && overlays[overlays.length - 1] !== overlay.current) return;
+      e.stopPropagation(); onClose();
+    };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [onClose, dismissOnEscape]);

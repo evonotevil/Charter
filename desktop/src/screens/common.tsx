@@ -420,21 +420,22 @@ export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect
   const upload = () => void startStage({ typeID: d.typeID, owner: d.owner, replaces: d, form: d.form, onArchived: (n) => router.open({ kind: "document", id: n.id }) });
   const menu: MenuEntry[] = [
     ...(extraMenu ? [...extraMenu, divider] : []),
-    item("打开", "arrow.up.forward.app", () => void store.openDocument(d)),
-    item(platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示", "folder", () => void store.revealDocument(d)),
+    ...openEntries(store, d),
     item("归档新版…", "square.and.arrow.up", upload),
     item(d.needsUpdate ? "取消“需要更新”" : "标为需要更新", "exclamationmark.triangle", () => store.commit((x) => { const doc = x.documents.find((y) => y.id === d.id); if (doc) doc.needsUpdate = !doc.needsUpdate; })),
     divider,
     item("移到废纸篓…", "trash", () => router.open({ kind: "trashDocs", ids: [d.id] }), { destructive: true }),
   ];
   return (
-    <div className="row hover-band" tabIndex={0} role="button" onClick={(e) => (onSelect ? onSelect(e) : router.open({ kind: "document", id: d.id }))}
-      onDoubleClick={() => router.open({ kind: "document", id: d.id })}
-      onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) router.open({ kind: "document", id: d.id }); }}
-      onContextMenu={(e) => ctx.open(e, menu)}
-      style={{ gap: FileColumns.spacing, padding: "0 16px", minHeight: 60, borderRadius: "var(--r-row)", background: selected ? "color-mix(in srgb, var(--lime) 30%, transparent)" : undefined }}
-      aria-label={`${t?.name ?? "文件"}，${store.nameOf(d.owner)}，${freshnessLabel(f)}`}>
-      <div className="row gap12 grow">
+    // 5.4.1：行内主按钮（打开详情）与右侧操作按钮并列，不再“按钮里套按钮”
+    <div className="row hover-band" onContextMenu={(e) => ctx.open(e, menu)}
+      style={{ gap: FileColumns.spacing, padding: "0 16px", minHeight: 60, borderRadius: "var(--r-row)", background: selected ? "color-mix(in srgb, var(--lime) 30%, transparent)" : undefined }}>
+      <button type="button" className="row row-main grow" aria-pressed={onSelect ? !!selected : undefined}
+        onClick={(e) => (onSelect ? onSelect(e) : router.open({ kind: "document", id: d.id }))}
+        onDoubleClick={() => router.open({ kind: "document", id: d.id })}
+        style={{ gap: FileColumns.spacing, minHeight: 60, minWidth: 0, textAlign: "left" }}
+        aria-label={`${t?.name ?? "文件"}，${store.nameOf(d.owner)}，${freshnessLabel(f)}`}>
+      <div className="row gap12 grow" style={{ minWidth: 0 }}>
         <FileThumb doc={d} alert={freshnessPill(f) === "bad"} />
         <div className="col grow" style={{ gap: 2 }}>
           <span className="ellipsis" style={{ fontSize: 14, fontWeight: 600 }}>{t?.name ?? "文件"}</span>
@@ -449,8 +450,10 @@ export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect
       <span style={{ width: FileColumns.state, flex: "none" }}><Pill text={freshnessLabel(f)} kind={freshnessPill(f)} /></span>
       <span className="mono" style={{ width: FileColumns.date, flex: "none", fontSize: 12.5, color: d.issueDate ? "var(--ink)" : "var(--muted)" }}>{d.issueDate ?? "—"}</span>
       <span className="mono" style={{ width: FileColumns.date, flex: "none", fontSize: 12.5, color: freshnessPill(f) === "bad" && expiry ? "var(--danger)" : expiry ? "var(--ink)" : "var(--muted)" }}>{expiryLabel(d, t)}</span>
-      <span className="row gap6" style={{ width: FileColumns.actions, flex: "none", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
-        {busy ? <Spinner /> : f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补充日期</Button>
+      </button>
+      <span className="row gap6" style={{ width: FileColumns.actions, flex: "none", justifyContent: "flex-end" }}>
+        {busy ? <Spinner /> : f.kind === "fileMissing" ? <Button size="small" onClick={() => void store.relocateDocument(d)}>重新定位…</Button>
+          : f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补充日期</Button>
           : freshnessNeedsAttention(f) ? <>
             <Button size="small" onClick={upload} title="类型和归属沿用这份，旧版保留">归档新版</Button>
           </> : <Button size="small" kind="quiet" onClick={() => void store.openDocument(d)}>打开</Button>}
@@ -630,3 +633,17 @@ export function refInfo(store: Store, r: NodeRef | null | undefined): OptionInfo
 export const companyInfo = (store: Store, id: string | null | undefined) => { const i = id ? refInfo(store, ref("company", id)) : undefined; return i && { ...i, group: undefined }; };
 /** 只有人员的选项（值是人员 id）。 */
 export const personInfo = (store: Store, id: string | null | undefined) => { const i = id ? refInfo(store, ref("person", id)) : undefined; return i && { ...i, group: undefined }; };
+
+// MARK: - 5.4.1 文件菜单：源文件不可用时，“打开 / 在访达中显示”换成“重新定位…”
+
+export function openEntries(store: Store, d: Document): MenuEntry[] {
+  if (store.fileMissing(d)) return [item("重新定位…", "folder", () => void store.relocateDocument(d))];
+  return [item("打开", "arrow.up.forward.app", () => void store.openDocument(d)),
+    item(platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示", "folder", () => void store.revealDocument(d))];
+}
+/** 批量打开 / 显示：跳过源文件不可用的，并说明跳过了几份。 */
+export function batchOpen(store: Store, list: Document[], reveal = false) {
+  const ok = list.filter((d) => !store.fileMissing(d)), skipped = list.length - ok.length;
+  ok.forEach((d) => void (reveal ? store.revealDocument(d) : store.openDocument(d)));
+  if (skipped) store.showToast(`${skipped} 份源文件不可用，已跳过；在文件详情里可以重新定位。`);
+}

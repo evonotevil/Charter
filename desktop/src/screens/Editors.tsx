@@ -196,7 +196,7 @@ export function CompanyEditor({ companyID, groupID: initialGroup, onClose }: { c
             <FieldRow label="法域"><SelectField options={store.data.library.jurisdictions.map((j) => [j.code, `${j.name}（${j.code}）`] as [string, string])} value={draft.jurisdiction} onChange={(jurisdiction) => set({ jurisdiction })} minWidth={220} /></FieldRow>
             <FieldRow label="公司类型"><SelectField options={formChoices} value={draft.entityForm} onChange={(entityForm) => set({ entityForm })} minWidth={220} /></FieldRow>
             <FieldRow label="注册编号" error={regDup ? `与 ${regDup.name} 的注册编号相同，请核对` : null}><TextField value={draft.registrationNumber} onChange={(registrationNumber) => set({ registrationNumber })} placeholder="可选" /></FieldRow>
-            {possibleDuplicate && <div className="row gap8 amber-text t-meta appear" style={{ paddingLeft: "calc(var(--label-w, 120px) + 12px)" }}>
+            {possibleDuplicate && <div className="row gap8 amber-text t-meta appear" style={{ paddingLeft: "calc(var(--label-w) + 12px)" }}>
               <Icon name="exclamationmark.triangle.fill" />可能已存在：{possibleDuplicate.name}
               <Button kind="quiet" size="small" onClick={() => { router.companyTab = 0; router.openCompany(possibleDuplicate.id); onClose(); }}>打开这家公司</Button>
             </div>}

@@ -34,6 +34,19 @@ export function calendarEvents(s: Store): CalendarEvent[] {
   return out;
 }
 
+/**
+ * 5.4.1：Mac 日历查询窗口。EventKit 单次查询最多 4 年，超出会被静默截断；
+ * 窗口覆盖本次最早到最晚的事项（至少过去 800 天到未来 450 天，以便找到要删除的旧事件），按每段 ≤ 3 年切分。
+ * 返回相对今天的天数区间。
+ */
+export function queryChunks(events: CalendarEvent[], today: string, maxDays = 1095): [number, number][] {
+  let lo = -800, hi = 450;
+  for (const e of events) { const off = D.daysBetween(today, e.date); lo = Math.min(lo, off - 2); hi = Math.max(hi, off + 2); }
+  const out: [number, number][] = [];
+  for (let from = lo; from < hi; from += maxDays) out.push([from, Math.min(hi, from + maxDays)]);
+  return out;
+}
+
 export const describeError = (r: CalendarSyncResult) => "error" in r && r.error ? ({
   denied: "没有日历权限。请在“系统设置 → 隐私与安全性 → 日历”里允许 Charter，然后再试。",
   writeOnly: "Charter 只有“仅添加”日历权限，无法更新或删除已同步的事件。请在“系统设置 → 隐私与安全性 → 日历”里改为“完全访问”。",
@@ -54,7 +67,7 @@ export async function runCalendarSync(s: Store, opts: { checkOnly?: boolean; man
   if (running && !opts.checkOnly) { again = true; return null; }
   let result: CalendarSyncResult | null = null;
   running = (async () => {
-    result = await p.calendarSync!({ name: s.data.settings.calendarName || "Charter", calendarId: p.prefGet(idPref) ?? undefined, checkOnly: opts.checkOnly, events: opts.checkOnly ? [] : calendarEvents(s) });
+    result = await p.calendarSync!({ name: s.data.settings.calendarName || "Charter", calendarId: p.prefGet(idPref) ?? undefined, checkOnly: opts.checkOnly, ...(() => { const events = opts.checkOnly ? [] : calendarEvents(s); return { events, chunks: queryChunks(events, s.today) }; })() });
     const r = result!;
     if ("ok" in r && r.ok && r.calendarId) p.prefSet(idPref, r.calendarId);
     if (!opts.checkOnly) {

@@ -15,7 +15,7 @@ import { InboxPane, TrashPane } from "./Lifecycle";
 import { addToInbox } from "../state/lifecycle";
 import { Tabs, Avatar, Button, EmptyStateView, JurisdictionBadge, type MenuEntry, Pill, Segmented, SelectField, divider, header, item, useContextMenu, PageHeader } from "../ui/kit";
 import { DropTarget } from "../ui/drop";
-import { FileThumb, clearThumbCache, ReissueRequestSheet, freshnessPill, useStageFile } from "./common";
+import { FileThumb, batchOpen, clearThumbCache, openEntries, ReissueRequestSheet, freshnessPill, useStageFile } from "./common";
 import { ExtraTags, StatusTag, statusOfFreshness } from "./Status";
 
 interface Snap { d: Document; f: Freshness; owner: string; type: string; expiry?: D.Day }
@@ -105,7 +105,7 @@ function DocumentsView() {
       const cmd = e.metaKey || e.ctrlKey;
       if (cmd && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); return; }
       if (cmd && e.key.toLowerCase() === "a" && !editing && ordered.length) { e.preventDefault(); setSelected(new Set(ordered.map((d) => d.id))); setAnchor(ordered[0].id); return; }
-      if (e.key === "Escape" && selected.size && !document.querySelector(".popover")) { setSelected(new Set()); setAnchor(null); }
+      if (e.key === "Escape" && selected.size && !document.querySelector(".popover:not(.ghost-out)")) { setSelected(new Set()); setAnchor(null); }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
@@ -160,8 +160,9 @@ function DocumentsView() {
   const batchMenu = (id: string): MenuEntry[] | undefined => {
     if (!selected.has(id) || selected.size < 2) return undefined;
     const list = ordered.filter((d) => selected.has(d.id));
-    return [header(`已选 ${list.length} 份`), item(`打开 ${list.length} 份`, "arrow.up.forward.app", () => list.forEach((d) => void store.openDocument(d))),
-      item(`${revealLabel} ${list.length} 份`, "folder", () => list.forEach((d) => void store.revealDocument(d))),
+    const usable = list.filter((d) => !store.fileMissing(d)).length;
+    return [header(`已选 ${list.length} 份`), ...(usable ? [item(`打开 ${usable} 份`, "arrow.up.forward.app", () => batchOpen(store, list)),
+      item(`${revealLabel} ${usable} 份`, "folder", () => batchOpen(store, list, true))] : []),
       item("导出为 ZIP…", "archivebox", () => void exportZIP(list)), item(`移到废纸篓 ${list.length} 份…`, "trash", () => void removeSelected(list))];
   };
 
@@ -258,8 +259,10 @@ function DocumentsView() {
       {selectedDocs.length > 0 && (
         <div className="row gap8 floating appear" style={{ position: "absolute", left: "50%", bottom: 24, transform: "translateX(-50%)", height: 48, padding: "0 10px", borderRadius: 999, zIndex: 4 }}>
           <span className="num" style={{ fontSize: 13, fontWeight: 600, padding: "0 4px 0 8px" }}>已选 {selectedDocs.length} 份</span>
-          <Button kind="quiet" size="small" onClick={() => selectedDocs.forEach((d) => void store.openDocument(d))}>打开</Button>
-          <Button kind="quiet" size="small" onClick={() => selectedDocs.forEach((d) => void store.revealDocument(d))}>{revealLabel}</Button>
+          {selectedDocs.some((d) => !store.fileMissing(d)) && <>
+            <Button kind="quiet" size="small" onClick={() => batchOpen(store, selectedDocs)}>打开</Button>
+            <Button kind="quiet" size="small" onClick={() => batchOpen(store, selectedDocs, true)}>{revealLabel}</Button>
+          </>}
           <Button size="small" onClick={() => void removeSelected(selectedDocs)}>移到废纸篓…</Button>
           <Button kind="primary" size="small" disabled={exporting} onClick={() => void exportZIP(selectedDocs)}>{exporting ? "正在导出…" : "导出为 ZIP…"}</Button>
           <span style={{ width: 1, height: 20, background: "var(--hairline)" }} />
@@ -278,11 +281,10 @@ function FileCard({ d, showOwner, selected, extraMenu, onClick }: { d: Document;
   const f = store.freshness(d);
   const menu: MenuEntry[] = [
     ...(extraMenu ? [...extraMenu, divider] : []),
-    item("打开", undefined, () => void store.openDocument(d)),
-    item(platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示", undefined, () => void store.revealDocument(d)),
-    item("归档新版…", undefined, () => void startStage({ typeID: d.typeID, owner: d.owner, replaces: d, form: d.form, onArchived: (n) => router.open({ kind: "document", id: n.id }) })),
+    ...openEntries(store, d),
+    item("归档新版…", "square.and.arrow.up", () => void startStage({ typeID: d.typeID, owner: d.owner, replaces: d, form: d.form, onArchived: (n) => router.open({ kind: "document", id: n.id }) })),
     divider,
-    item("移到废纸篓…", undefined, () => router.open({ kind: "trashDocs", ids: [d.id] }), { destructive: true }),
+    item("移到废纸篓…", "trash", () => router.open({ kind: "trashDocs", ids: [d.id] }), { destructive: true }),
   ];
   return (
     <button className="col gap12 file-card" onClick={onClick} onContextMenu={(e) => ctx.open(e, menu)} title={d.originalFileName} aria-label={`${store.docType(d.typeID)?.name ?? "文件"}，${freshnessLabel(f)}`} aria-pressed={selected}

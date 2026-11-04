@@ -27,7 +27,8 @@ export function DueView() {
     .sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : a.company.name.localeCompare(b.company.name))), [store.data, range, store.today]);
   const sel = list.find((o) => o.key === router.selectedObligationKey) ?? store.openObligations.find((o) => o.key === router.selectedObligationKey) ?? list[0];
   // 5.4：窄窗口（单栏）里详情改成右侧抽屉，点击事项后打开并聚焦
-  const narrow = useNarrow(1080);
+  const pageRef = useRef<HTMLDivElement>(null);
+  const narrow = useNarrow(pageRef, 720);
   const [drawer, setDrawer] = useState(false);
   const soon = list.filter((o) => D.daysBetween(store.today, o.due) <= 30).length;
   const shownCount = useTweenNumber(list.length);
@@ -76,7 +77,7 @@ export function DueView() {
   };
   const tone = overdue ? "bad" : soon ? "warn" : "ok";
   return (
-    <div className="page"><div className="page-inner">
+    <div className="page"><div className="page-inner" ref={pageRef}>
       <PageHeader title="申报日历" subtitle={`全部公司 · 到期前 ${store.data.settings.reminderDays.join(" / ")} 天提醒`}>
         <Button icon="calendar.badge.plus" onClick={subscribe}>订阅到日历</Button>
         <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" showsChevron={false} entries={[
@@ -85,7 +86,7 @@ export function DueView() {
         ]} />
       </PageHeader>
       {overdue || soon ? <Banner tone={tone} title={overdue ? `${overdue} 件已逾期` : `30 天内有 ${soon} 件`}>
-        {overdue ? "先联系中介处理逾期的事项，再看快到期的。" : "按日期一件件来，做完点左边的圆圈打勾。"}
+        {overdue ? "先联系中介处理逾期的事项，再看快到期的。" : "按日期一件件来，做完点右边的圆圈打勾。"}
       </Banner> : <span className="t-meta muted" style={{ padding: "2px 2px 6px" }}>{list.length ? `30 天内没有到期事项。接下来 ${shownCount} 件都在 30 天以后。` : "这段时间没有要申报的事。"}</span>}
       <Tabs<Range> value={range} onChange={setRange} tabs={[[90, "90 天内"], [365, "一年内"], [0, "全部"]]} />
       {!list.length ? (
@@ -209,21 +210,26 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
   );
 }
 
-/** 窗口宽度不超过 px 时为 true（与 .two 的单栏断点一致）。 */
-function useNarrow(px: number) {
-  const q = `(max-width: ${px}px)`;
-  const [m, setM] = useState(() => window.matchMedia(q).matches);
-  useEffect(() => { const mq = window.matchMedia(q); const f = () => setM(mq.matches); mq.addEventListener("change", f); return () => mq.removeEventListener("change", f); }, [q]);
+/** 内容区（.page-inner）宽度小于 px 时为 true，与 .two 的容器断点一致。 */
+function useNarrow(ref: React.RefObject<HTMLElement>, px: number) {
+  const [m, setM] = useState(false);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const ro = new ResizeObserver(() => setM(el.clientWidth - parseFloat(getComputedStyle(el).paddingLeft) - parseFloat(getComputedStyle(el).paddingRight) < px));
+    ro.observe(el); return () => ro.disconnect();
+  }, [ref, px]);
   return m;
 }
 
 /** 右侧抽屉：打开时焦点移到标题，Esc 或点遮罩关闭，焦点回到原来的行。 */
 function DueDrawer({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose); closeRef.current = onClose;
   useEffect(() => {
     const el = box.current; el?.querySelector<HTMLElement>(".t-title")?.setAttribute("tabindex", "-1");
     (el?.querySelector<HTMLElement>(".t-title") ?? el)?.focus();
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(".popover")) { e.stopPropagation(); onClose(); } };
+    // 5.4.1：抽屉里打开的对话框（.overlay）或弹层在上面时，Esc 先关它们
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(".popover:not(.ghost-out), .overlay:not(.ghost-out)")) { e.stopPropagation(); closeRef.current(); } };
     document.addEventListener("keydown", key, true); return () => document.removeEventListener("keydown", key, true);
   }, []);
   return (

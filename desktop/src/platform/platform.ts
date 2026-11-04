@@ -80,7 +80,7 @@ export function extname(path: string): string {
 }
 
 export interface CalendarEvent { key: string; title: string; date: string; notes: string }
-export interface CalendarSyncInput { name: string; calendarId?: string; checkOnly?: boolean; events: CalendarEvent[] }
+export interface CalendarSyncInput { name: string; calendarId?: string; checkOnly?: boolean; chunks?: [number, number][]; events: CalendarEvent[] }
 export type CalendarSyncResult =
   | { ok: true; calendarId?: string; added?: number; updated?: number; removed?: number }
   | { ok?: undefined; error: "denied" | "writeOnly" | "noOutlook" | "unsupported" | "failed" | "noSource" | "createCalendar" | "commit" | "outlook"; message?: string };
