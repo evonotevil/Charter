@@ -90,7 +90,7 @@ export interface PendingImport {
 export const pendingRemaining = (p: PendingImport) => p.rows.filter((r) => r.include).length;
 
 export type ShareholderStatus =
-  | { kind: "missing" } | { kind: "partial"; total: number } | { kind: "pending"; reasons: string[] } | { kind: "complete" };
+  | { kind: "missing" } | { kind: "partial"; total: number } | { kind: "pending"; reasons: string[]; short: string[] } | { kind: "complete" };
 
 // MARK: - Store
 
@@ -1547,21 +1547,22 @@ export class Store {
     if (!hs.length) return { kind: "missing" };
     const total = hs.reduce((a, h) => a + h.percent, 0);
     if (total < 99.5) return { kind: "partial", total };
-    const reasons: string[] = [];
-    if (total > 100.5) reasons.push(`股东合计 ${percentLabel(total)}，超过 100%`);
+    // 5.4.2：每条原因同时给一个短标签，列表里直接显示，不只放在悬停提示里
+    const reasons: string[] = [], short: string[] = [];
+    if (total > 100.5) { reasons.push(`股东合计 ${percentLabel(total)}，超过 100%`); short.push("合计超 100%"); }
     const nominees = hs.filter((h) => h.isNominee && !h.beneficialOwner);
-    if (nominees.length) reasons.push(nominees.map((h) => `${this.nameOf(h.holder)} 代持未填实际受益人`).join("；"));
+    if (nominees.length) { reasons.push(nominees.map((h) => `${this.nameOf(h.holder)} 代持未填实际受益人`).join("；")); short.push("代持未填受益人"); }
     const undated = hs.filter((h) => !h.from);
-    if (undated.length) reasons.push(`${undated.length} 条持股缺起始日期`);
-    return reasons.length ? { kind: "pending", reasons } : { kind: "complete" };
+    if (undated.length) { reasons.push(`${undated.length} 条持股缺生效日期`); short.push("缺生效日期"); }
+    return reasons.length ? { kind: "pending", reasons, short } : { kind: "complete" };
   }
 
   incompleteShareholderCount(scope: Set<string> | null) {
     return this.data.companies.filter((c) => {
       if (scope && !scope.has(c.id)) return false;
       if (!this.shareholderCheckApplies(c)) return false;
-      const s = this.shareholderStatus(c.id);
-      return s.kind === "missing" || s.kind === "partial";
+      // 5.4.2：与股权结构“核对股东”同一口径：不完整（缺股东、合计不足、信息待补）都算
+      return this.shareholderStatus(c.id).kind !== "complete";
     }).length;
   }
 

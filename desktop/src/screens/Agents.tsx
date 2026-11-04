@@ -95,9 +95,18 @@ function AgentDetail({ p }: { p: Party }) {
       </div>
       <div className="col gap8">
         <h3 className="t-card">默认负责的公司</h3>
-        {companies.length ? <div className="row gap6" style={{ flexWrap: "wrap" }}>{companies.map((c) => (
-          <button key={c.id} className="v4-chip btnlike" onClick={() => router.openCompany(c.id)}>{c.jurisdiction} {c.name}</button>
-        ))}</div> : <span className="muted">还没有公司把它设为默认中介。在公司页或新建公司时可以指定。</span>}
+        {/* 5.4.2：与“负责的事项”同一列表行：辖区徽章 + 公司全称 + 待办数，辖区不再拼进名字 */}
+        {companies.length ? <div className="col gap4">{companies.map((c) => {
+          const n = dues.filter((o) => o.company.id === c.id).length;
+          return <button key={c.id} className="v4-item" onClick={() => router.openCompany(c.id)}>
+            <span className="v4-code" style={companyTint(store, c.id)} aria-hidden>{c.jurisdiction}</span>
+            <span className="col grow" style={{ minWidth: 0 }}>
+              <span className="ellipsis" style={{ fontWeight: 600 }}>{c.name}</span>
+              <span className="ellipsis muted t-meta">{store.jurisdictionName(c.jurisdiction)}</span>
+            </span>
+            <span className={`pill ${n ? "neutral" : "valid"}`}>{n ? `${n} 项待办` : "没有待办"}</span>
+          </button>;
+        })}</div> : <span className="muted">还没有公司把它设为默认中介。在公司页或新建公司时可以指定。</span>}
       </div>
       <div className="col gap4">
         <h3 className="t-card" style={{ marginBottom: 6 }}>负责的事项</h3>

@@ -1,6 +1,7 @@
 // 5.3 证据链：一份文件可以同时证明多家公司、多个人、多个具体任职和持股。
 // 每条关联写证据类型、可选页码和备注；来源路径只作记录。
 
+import { companyTint } from "../ui/uistyle";
 import { useState } from "react";
 import { type Document, type EvidenceKind, type EvidenceLink, type EvidenceTarget, evidenceKindLabel, evidenceKinds } from "../domain/models";
 import { useApp } from "../state/hooks";
@@ -31,13 +32,14 @@ export function EvidenceSheet({ doc, onClose }: { doc: Document; onClose: () => 
   const [links, setLinks] = useState<EvidenceLink[]>(() => store.linksOf(doc).map((l) => ({ ...l })));
   const [adding, setAdding] = useState<EvidenceTarget | null>(null);
   const [q, setQ] = useState("");
-  const options = (t: EvidenceTarget): { id: string; name: string }[] => {
+  const options = (t: EvidenceTarget): { id: string; name: string; code?: string }[] => {
     const ql = q.trim().toLowerCase();
-    const raw = t === "company" ? store.data.companies.map((c) => ({ id: c.id, name: `${c.jurisdiction} ${c.name}` }))
+    // 5.4.2：辖区不拼进名字，单独显示徽章；搜索仍可按辖区代码匹配
+    const raw: { id: string; name: string; code?: string }[] = t === "company" ? store.data.companies.map((c) => ({ id: c.id, name: c.name, code: c.jurisdiction }))
       : t === "person" ? store.data.people.map((p) => ({ id: p.id, name: p.name }))
         : t === "appointment" ? store.data.appointments.map((a) => ({ id: a.id, name: store.evidenceTargetName({ target: "appointment", id: a.id, kind: "appointment" }) }))
           : store.data.holdings.map((h) => ({ id: h.id, name: store.evidenceTargetName({ target: "holding", id: h.id, kind: "shareholding" }) }));
-    return raw.filter((o) => !links.some((l) => l.target === t && l.id === o.id) && !(doc.owner.kind === t && doc.owner.id === o.id) && (!ql || o.name.toLowerCase().includes(ql))).slice(0, 30);
+    return raw.filter((o) => !links.some((l) => l.target === t && l.id === o.id) && !(doc.owner.kind === t && doc.owner.id === o.id) && (!ql || o.name.toLowerCase().includes(ql) || o.code?.toLowerCase() === ql)).slice(0, 30);
   };
   const save = () => {
     // 股权、任职上的“核实依据”指向这份文件时，那条关联由核实记录维护；这里只保存文件自己的关联
@@ -76,7 +78,7 @@ export function EvidenceSheet({ doc, onClose }: { doc: Document; onClose: () => 
             {adding && <div className="card" style={{ padding: 10, gap: 6 }}>
               <input className="field" autoFocus placeholder={`搜索${targetLabel[adding]}…`} value={q} onChange={(e) => setQ(e.target.value)} />
               <div className="col scroll" style={{ maxHeight: 240 }}>
-                {options(adding).map((o) => <button key={o.id} className="v4-opt" onClick={() => setLinks((ls) => [...ls, { target: adding, id: o.id, kind: defaultKind(adding, doc.typeID) }])}><span className="ellipsis grow">{o.name}</span><Icon name="plus" size={12} /></button>)}
+                {options(adding).map((o) => <button key={o.id} className="v4-opt" onClick={() => setLinks((ls) => [...ls, { target: adding, id: o.id, kind: defaultKind(adding, doc.typeID) }])}>{o.code && <span className="v4-code" style={{ ...companyTint(store, o.id), width: 22, height: 22, borderRadius: 7, fontSize: 9.5 }} aria-hidden>{o.code}</span>}<span className="ellipsis grow">{o.name}</span><Icon name="plus" size={12} /></button>)}
                 {!options(adding).length && <span className="t-meta muted" style={{ padding: 8 }}>没有可选的。</span>}
               </div>
             </div>}

@@ -24,7 +24,7 @@ import { leftText } from "./InfoCard";
 
 // MARK: - 股东核对的展示
 
-export const holderStatusLabel = (s: ShareholderStatus) => (s.kind === "missing" ? "没有股东" : s.kind === "partial" ? `合计 ${percentLabel(s.total)}` : s.kind === "pending" ? "待确认" : "完整");
+export const holderStatusLabel = (s: ShareholderStatus) => (s.kind === "missing" ? "没有股东" : s.kind === "partial" ? `合计 ${percentLabel(s.total)}` : s.kind === "pending" ? s.short[0] + (s.short.length > 1 ? ` 等 ${s.short.length} 项` : "") : "完整");
 export const holderStatusDetail = (s: ShareholderStatus) => s.kind === "missing" ? "还没有录入任何股东。"
   : s.kind === "partial" ? `已录入的股东合计 ${percentLabel(s.total)}，另有 ${percentLabel(Math.max(0, 100 - s.total))} 未录入。`
     : s.kind === "pending" ? s.reasons.join("；") + "。" : "股东比例合计 100%，信息齐全。";
@@ -492,7 +492,7 @@ function Summary({ k, asOf, isToday, centered, onCenter, onClose, open }: { k: s
         {b.unknown > 0.005 && <div className="row gap8 amber-text"><span className="grow">未识别</span><span className="pct">{percentLabel(b.unknown)}</span></div>}
       </div>}
       <div className="col gap6"><span className="t-label">下属公司</span>
-        {subs.length ? <span className="row gap6 wrap">{subs.map((h) => <button key={h.id} className="v4-chip btnlike" onClick={() => router.update((r) => { r.selectedCompanyID = h.companyID; })}>{store.company(h.companyID)?.jurisdiction} {store.company(h.companyID)?.name} · {percentLabel(h.percent)}</button>)}</span> : <span className="muted">没有</span>}
+        {subs.length ? <span className="row gap6 wrap">{subs.map((h) => <button key={h.id} className="v4-chip btnlike jchip" onClick={() => router.update((r) => { r.selectedCompanyID = h.companyID; })}><span className="v4-code" style={companyTint(store, h.companyID)} aria-hidden>{store.company(h.companyID)?.jurisdiction}</span>{store.company(h.companyID)?.name}<span className="muted num">{percentLabel(h.percent)}</span></button>)}</span> : <span className="muted">没有</span>}
       </div>
       {people.length > 0 && <div className="col gap6"><span className="t-label">董事和高管</span>
         {people.map((pid) => <div key={pid} className="row gap8"><button className="ellipsis grow" style={{ textAlign: "left", fontWeight: 600 }} onClick={() => router.openPerson(pid)}>{store.person(pid)?.name}</button><span className="t-meta muted">{officers.filter((a) => a.personID === pid).map((a) => a.title).join("、")}</span></div>)}
@@ -506,16 +506,24 @@ function Summary({ k, asOf, isToday, centered, onCenter, onClose, open }: { k: s
   );
 }
 
+/** 5.4.2：标题按问题拆开——缺股东（没有或合计不足）与股东信息待补（合计已满但缺日期、受益人等）。 */
+export function checkTitle(list: ShareholderStatus[]) {
+  const lack = list.filter((s) => s.kind === "missing" || s.kind === "partial").length;
+  const info = list.filter((s) => s.kind === "pending").length;
+  if (!lack && !info) return "股东都已录入完整";
+  return [lack ? `缺股东 ${lack} 家` : "", info ? `股东信息待补 ${info} 家` : ""].filter(Boolean).join(" · ");
+}
+
 function CheckList({ companies, asOf, onPick }: { companies: Company[]; asOf: Day; onPick: (c: Company) => void }) {
   const { store } = useApp();
   const rank = (s: ShareholderStatus) => ({ missing: 0, partial: 1, pending: 2, complete: 3 })[s.kind];
   const items = companies.filter((c) => store.shareholderCheckApplies(c)).map((c) => [c, store.shareholderStatus(c.id, asOf)] as const)
     .filter(([, s]) => s.kind !== "complete").sort((a, b) => rank(a[1]) - rank(b[1]) || a[0].name.localeCompare(b[0].name, "zh"));
   return (
-    <Card title={items.length ? `${items.length} 家需要补充股东` : "股东都已录入完整"}>
+    <Card title={checkTitle(items.map(([, s]) => s))}>
       {items.map(([c, s]) => (
-        <button key={c.id} className="row gap8" style={{ textAlign: "left" }} title={holderStatusDetail(s)} onClick={() => onPick(c)}>
-          <span className="gdot" style={{ background: holderStatusColor(s) }} /><span className="ellipsis grow">{c.name}</span><span className="t-meta muted">{holderStatusLabel(s)}</span>
+        <button key={c.id} className="row gap8 check-row" style={{ textAlign: "left" }} data-tip={holderStatusDetail(s)} onClick={() => onPick(c)}>
+          <span className="gdot" style={{ background: holderStatusColor(s) }} /><span className="ellipsis grow" style={{ minWidth: 0 }}>{c.name}</span><span className="t-meta muted nowrap">{holderStatusLabel(s)}</span>
         </button>
       ))}
     </Card>

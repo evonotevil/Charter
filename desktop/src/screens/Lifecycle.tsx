@@ -1,5 +1,6 @@
 // 5.3 文件生命周期界面：移到废纸篓前的影响范围、待整理队列、废纸篓。
 
+import { companyInfo } from "./common";
 import { useEffect, useMemo, useState } from "react";
 import * as D from "../domain/day";
 import { type InboxCategory, type InboxItem, type NodeRef, type TrashEntry, inboxCategoryLabel, ref, trashKeepDays } from "../domain/models";
@@ -126,8 +127,8 @@ export function InboxPane() {
 
 function OwnerPicker({ kind, onPick }: { kind: "company" | "person"; onPick: (o: NodeRef) => void }) {
   const { store } = useApp();
-  const opts = kind === "company" ? store.data.companies.map((c) => [c.id, `${c.jurisdiction} ${c.name}`] as [string, string]) : store.data.people.map((p) => [p.id, p.name] as [string, string]);
-  return <SelectField<string> minWidth={200} placeholder={kind === "company" ? "归到公司…" : "归到人员…"} value="" options={opts} onChange={(id) => onPick(ref(kind, id))} />;
+  const opts = kind === "company" ? store.data.companies.map((c) => [c.id, c.name] as [string, string]) : store.data.people.map((p) => [p.id, p.name] as [string, string]);
+  return <SelectField<string> describe={kind === "company" ? (id) => companyInfo(store, id) : undefined} minWidth={200} placeholder={kind === "company" ? "归到公司…" : "归到人员…"} value="" options={opts} onChange={(id) => onPick(ref(kind, id))} />;
 }
 
 function InboxRow({ i, selected, onToggle }: { i: InboxItem; selected: boolean; onToggle: () => void }) {
@@ -137,7 +138,7 @@ function InboxRow({ i, selected, onToggle }: { i: InboxItem; selected: boolean; 
   const owner = target.req?.owner;
   const typeID = i.chosen?.typeID ?? i.typeID;
   const ownerKind = cat === "company" ? "company" : "person";
-  const ownerOpts = ownerKind === "company" ? store.data.companies.map((c) => [c.id, `${c.jurisdiction} ${c.name}`] as [string, string]) : store.data.people.map((p) => [p.id, p.name] as [string, string]);
+  const ownerOpts = ownerKind === "company" ? store.data.companies.map((c) => [c.id, c.name] as [string, string]) : store.data.people.map((p) => [p.id, p.name] as [string, string]);
   const typeOpts = store.data.library.documentTypes.filter((t) => t.owner === ownerKind).map((t) => [t.id, t.name] as [string, string]);
   const conf = Math.round(i.confidence * 100);
   return (
@@ -163,7 +164,7 @@ function InboxRow({ i, selected, onToggle }: { i: InboxItem; selected: boolean; 
         onChange={(c) => updateInbox(store, [i.id], { category: c as InboxCategory, owner: undefined })} /></td>
       <td>
         {cat && cat !== "irrelevant" ? <span className="col gap6">
-          <SelectField<string> minWidth={200} placeholder={ownerKind === "company" ? "选公司" : "选人员"} value={owner?.id ?? ""} options={ownerOpts}
+          <SelectField<string> describe={ownerKind === "company" ? (id) => companyInfo(store, id) : undefined} minWidth={200} placeholder={ownerKind === "company" ? "选公司" : "选人员"} value={owner?.id ?? ""} options={ownerOpts}
             onChange={(id) => updateInbox(store, [i.id], { owner: ref(ownerKind, id) })} />
           {cat !== "evidence" && <SelectField<string> minWidth={200} placeholder="选文件类型" value={typeID && store.docType(typeID)?.owner === ownerKind ? typeID : ""} options={typeOpts}
             onChange={(t) => updateInbox(store, [i.id], { typeID: t })} />}

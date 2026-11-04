@@ -17,7 +17,7 @@ import { Icon } from "../ui/Icon";
 import { autoSyncOn, autoSyncPref, autoSyncStatus, autoSyncSupported, describeError, runCalendarSync } from "../services/calendarSync";
 import { useChildMotion } from "../ui/motion";
 import { companyTint, groupRing, setDensity, useDensity } from "../ui/uistyle";
-import { Banner, Card, PageHeader, Button, Segmented, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField } from "../ui/kit";
+import { Avatar, Banner, Card, PageHeader, Button, Segmented, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField } from "../ui/kit";
 import { ScheduleEditor } from "./common";
 import { ArchiveItemFields, type ItemDraft, newItemDraft } from "./Companies";
 import { PurposeEditor } from "./Packet";
@@ -421,7 +421,7 @@ function GroupDetail({ g }: { g: CorporateGroup }) {
         <SRow title={<span className="muted" style={{ fontWeight: 500, fontSize: 13 }} title="从这里沿持股往下，自动算出成员">顶层</span>}>
           <span className="row gap6 wrap" style={{ justifyContent: "flex-end", maxWidth: 380 }}>
             {g.tops.map((t) => (
-              <span key={refKey(t)} className="v4-chip" style={{ maxWidth: 320 }}>{t.kind === "company" ? store.company(t.id)?.jurisdiction + " " : ""}{store.nameOf(t)}
+              <span key={refKey(t)} className="v4-chip jchip" style={{ maxWidth: 320 }}>{t.kind === "company" ? <span className="v4-code" style={companyTint(store, t.id)} aria-hidden>{store.company(t.id)?.jurisdiction}</span> : <Avatar name={store.nameOf(t)} size={20} />}<span className="ellipsis">{store.nameOf(t)}</span>
                 <button aria-label={`移除顶层 ${store.nameOf(t)}`} onClick={() => save((x) => { x.tops = x.tops.filter((y) => refKey(y) !== refKey(t)); }, "移除集团顶层")}><Icon name="xmark" size={8} /></button></span>
             ))}
             <button className="link t-meta" style={{ whiteSpace: "nowrap" }} onClick={() => { setPick(pick === "top" ? null : "top"); setQ(""); }}>+ 添加</button>

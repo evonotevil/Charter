@@ -154,6 +154,17 @@ function NextUp({ c }: { c: Company }) {
   );
 }
 
+/** 5.4.2：股东合计已满但信息不全（缺生效日期、代持未填受益人、合计超 100%）时，直接说明缺什么，并给出补填入口。 */
+function HolderGapNote({ c }: { c: Company }) {
+  const { store, router } = useApp();
+  const st = store.shareholderCheckApplies(c) ? store.shareholderStatus(c.id) : null;
+  if (st?.kind !== "pending") return null;
+  return <div className="row gap8 holder-gap" role="note">
+    <Icon name="exclamationmark.triangle.fill" size={13} /><span className="grow">股东信息待补：{st.reasons.join("；")}。</span>
+    <button className="link t-meta" onClick={() => router.open({ kind: "editCompany", companyID: c.id })}>去补填</button>
+  </div>;
+}
+
 /** 公司背后的人：股东和董事一览，点进人员与持股页签编辑。 */
 function PeopleSummary({ c }: { c: Company }) {
   const { store, router } = useApp();
@@ -162,6 +173,7 @@ function PeopleSummary({ c }: { c: Company }) {
   const pids = [...new Set(os.map((a) => a.personID))];
   return (
     <KitCard title="公司背后的人" action={<button className="link t-meta" onClick={() => router.set("companyTab", 1)}>编辑</button>}>
+      <HolderGapNote c={c} />
       {hs.length || pids.length ? <div className="people-grid" role="table" aria-label="股东和董事">
         {hs.map((h) => (
           <div key={h.id} className="people-row" role="row">
@@ -243,6 +255,7 @@ function Shareholders({ c }: { c: Company }) {
   const [adding, setAdding] = useState(false);
   return (
     <Card title="股东" aside={<span className="t-meta muted">合计 <b className="num" style={{ color: total > 0 && Math.abs(total - 100) > 0.01 ? "var(--amber-text)" : "var(--ink)" }}>{percentLabel(total)}</b></span>}>
+      <HolderGapNote c={c} />
       {hs.map((h) => {
         const role = roleByID(h.roleID);
         return (
@@ -253,6 +266,7 @@ function Shareholders({ c }: { c: Company }) {
               <span className="t-meta muted ellipsis cp-role" title={role?.name}>{role?.name ?? ""}</span>
               <InlineText value={String(h.percent)} label="持股比例" className="num" style={{ width: 56, textAlign: "right", fontWeight: 600 }} onCommit={(v) => store.setHoldingPercent(h, parseFloat(v))} />
               <span className="muted">%</span>
+              {!h.from && <button className="pill warn" style={{ height: 20 }} onClick={() => router.open({ kind: "editCompany", companyID: c.id })} data-tip="这条持股没有生效日期。点一下去补填。">缺生效日期</button>}
               <span className="cp-verify"><VerifyChip kind="holding" item={h} companyID={c.id} /></span>
               <button className="v4-x cp-hide" aria-label={`移除股东 ${store.nameOf(h.holder)}`} title="移除（记为不再持股）" onClick={() => store.endHolding(h)}><Icon name="xmark" size={10} /></button>
             </div>

@@ -688,3 +688,25 @@ mark.hl { background: var(--green-soft); color: inherit; border-radius: 3px; pad
 .cp-verify { width: 84px; flex: none; display: inline-flex; justify-content: flex-end; }
 .row-main { border-radius: var(--r-row); }
 .row-main:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+/* 5.4.2 */
+.nowrap { white-space: nowrap; flex: none; }
+.holder-gap { padding: 8px 10px; margin-bottom: 6px; border-radius: var(--r-control); background: var(--amber-soft); color: var(--amber-text); font-size: 12.5px; }
+.holder-gap .link { color: var(--amber-text); font-weight: 700; }
+.group-list { display: flex; flex-direction: column; border: 2px solid var(--line); border-radius: var(--r-control); }
+.group-list > .group-row { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 12px; }
+.group-list > .group-row + .group-row { border-top: 1px solid var(--line); }
+.jchip { display: inline-flex; align-items: center; gap: 6px; padding-left: 3px; }
+.jchip .v4-code { width: 20px; height: 20px; border-radius: 6px; font-size: 9.5px; }
+/* 5.4.2 窗口拖动：侧栏品牌区、页面头部、工具栏的空白都能拖动窗口；可交互元素和说明文字除外。双击按系统设置放大/还原。 */
+.brand, .page-head, .toolbar { -webkit-app-region: drag; app-region: drag; }
+:is(.brand, .page-head, .toolbar) :is(button, input, select, textarea, a, label, [role="button"], [role="tab"], [role="group"], [tabindex], .seg, .no-drag, .sub, .metrics, .crumb button) { -webkit-app-region: no-drag; app-region: no-drag; }
+html.overlay-open :is(.brand, .page-head, .toolbar) { -webkit-app-region: no-drag; app-region: no-drag; }
+/* 5.4.2 悬停提示 */
+.tooltip { position: fixed; z-index: 10000; max-width: 280px; padding: 6px 9px; border-radius: 8px; background: var(--ink); color: var(--surface); font-size: 12px; line-height: 1.45; font-weight: 500;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .18); pointer-events: none; white-space: pre-line; overflow-wrap: anywhere; animation: tip-in var(--fast) var(--ease) both; }
+.tooltip[hidden] { display: none; }
+@keyframes tip-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.tooltip[data-side="bottom"] { animation-name: tip-in-b; }
+@keyframes tip-in-b { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .tooltip { animation: none; } }

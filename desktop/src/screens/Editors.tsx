@@ -1,5 +1,6 @@
 // 公司资料编辑、变更确认、持股与任职行、事项详情。移植自 Editors.swift。
 
+import { sourceLabel } from "../domain/groups";
 import { useEffect, useState } from "react";
 import * as D from "../domain/day";
 import type { Day } from "../domain/day";
@@ -206,17 +207,21 @@ export function CompanyEditor({ companyID, groupID: initialGroup, onClose }: { c
             <FieldRow label="注册地址"><TextField multiline rows={2} value={draft.registeredAddress} onChange={(registeredAddress) => set({ registeredAddress })} placeholder="可选" /></FieldRow>
           </FormGroup>
           <FormGroup title="集团">
-            {original ? <>
-              {!store.data.groups.length && <span className="muted">还没有集团。</span>}
-              {store.data.groups.map((gr) => {
-                const m = store.membership(original.id, gr);
-                return <div key={gr.id} className="row gap8" title={store.membershipExplanation(original.id, gr)}>
-                  <Checkbox checked={memberGroups.has(gr.id)} onChange={(on) => { const s = new Set(memberGroups); if (on) s.add(gr.id); else s.delete(gr.id); setMemberGroups(s); }}>{gr.name}</Checkbox>
-                  {m.kind !== "none" && <Pill text={({ top: "顶层", derived: "股权推导", manual: "手动加入", excluded: "已排除" } as Record<string, string>)[m.kind]} kind={m.kind === "excluded" ? "outline" : "neutral"} />}
-                </div>;
-              })}
-              <span className="t-meta muted">取消勾选即移出。按股权推导出的公司移出后记为“已排除”，之后股权变化也不会再自动纳入。</span>
-            </> : <FieldRow label="归入集团"><SelectField options={[[null, "不归入"] as [string | null, string], ...store.data.groups.map((x) => [x.id, x.name] as [string, string])]} value={groupID} onChange={(v) => { setGroupID(v); setParentRef(topCompany(v)); }} minWidth={220} /></FieldRow>}
+            {original ? (
+              // 5.4.2：标准 FieldRow，每个集团一行；来源用 Pill，悬停（或聚焦）显示原因
+              <FieldRow label="所属集团" hint="取消勾选即移出。按股权推导出的公司移出后记为“已排除”，之后股权变化也不会再自动纳入。">
+                {!store.data.groups.length ? <span className="muted" style={{ paddingTop: 10 }}>还没有集团。</span> : <div className="group-list">
+                  {store.data.groups.map((gr) => {
+                    const m = store.membership(original.id, gr);
+                    return <div key={gr.id} className="group-row">
+                      <Checkbox checked={memberGroups.has(gr.id)} onChange={(on) => { const s = new Set(memberGroups); if (on) s.add(gr.id); else s.delete(gr.id); setMemberGroups(s); }}>{gr.name}</Checkbox>
+                      <span className="spacer" />
+                      {m.kind !== "none" && <span tabIndex={0} data-tip={store.membershipExplanation(original.id, gr)}><Pill text={sourceLabel(m)} kind={m.kind === "excluded" ? "warn" : "neutral"} /></span>}
+                    </div>;
+                  })}
+                </div>}
+              </FieldRow>
+            ) : <FieldRow label="归入集团"><SelectField options={[[null, "不归入"] as [string | null, string], ...store.data.groups.map((x) => [x.id, x.name] as [string, string])]} value={groupID} onChange={(v) => { setGroupID(v); setParentRef(topCompany(v)); }} minWidth={220} /></FieldRow>}
             {!original && g && <>
               <FieldRow label="上级公司" hint="默认挂在集团顶层公司下面，保存后出现在股权结构图里。">
                 <SelectField describe={(r) => refInfo(store, r)} options={[[null, "暂不设置"] as [NodeRef | null, string], ...parentOptions.map((r) => [r, store.nameOf(r)] as [NodeRef, string])]} value={parentRef} onChange={setParentRef} minWidth={220} keyOf={(r) => (r ? `${r.kind}:${r.id}` : "")} />
@@ -307,7 +312,7 @@ function HoldingRow({ h, options, labelOf, onChange, onDelete }: { h: Holding; o
   return (
     <Disclosure label={<span className="row gap8 grow">
       <span style={{ fontWeight: 500 }}>{store.nameOf(h.holder)}</span>{h.isNominee && <Pill text="代持" />}<span className="spacer" />
-      <b className="num">{percentLabel(h.percent)}</b><span className="t-meta muted num">{h.to ? `${h.from ?? "?"} 至 ${h.to}` : h.from ? `自 ${h.from}` : h.asOf ? `最晚自 ${h.asOf}` : "生效日期未知"}</span>{!h.verified && <span className="v4-chip chip-pending" style={{ height: 20, fontSize: 12 }}>待核实</span>}
+      <b className="num">{percentLabel(h.percent)}</b><span className="t-meta muted num">{h.to ? `${h.from ?? "?"} 至 ${h.to}` : h.from ? `自 ${h.from}` : h.asOf ? `最晚自 ${h.asOf}` : ""}</span>{!h.from && <span className="pill warn" style={{ height: 20 }}>缺生效日期</span>}{!h.verified && <span className="v4-chip chip-pending" style={{ height: 20, fontSize: 12 }}>待核实</span>}
     </span>}>
       <FieldRow label="股东"><SelectField describe={(r) => refInfo(store, r)} options={options.map((r) => [r, labelOf(r)] as [NodeRef, string])} value={h.holder} onChange={(holder) => set({ holder })} minWidth={240} keyOf={key} /></FieldRow>
       <FieldRow label="持股比例"><PercentField value={h.percent} onChange={(percent) => set({ percent })} /></FieldRow>
