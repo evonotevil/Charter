@@ -8,7 +8,7 @@ import type { Company } from "../domain/models";
 import type { Store } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { Button, ColorSwatch, ConfirmSheet, MenuList, Note, Popover, Segmented, Slider, Switch, TextField } from "../ui/kit";
+import { Button, ColorSwatch, ConfirmSheet, MenuList, Note, Popover, Segmented, SelectField, Slider, TextField } from "../ui/kit";
 
 export const defaultPacketWatermark = (): PacketWatermark => ({ enabled: false, settings: defaultWatermark(), skip: [], stripMeta: false });
 
@@ -31,24 +31,30 @@ export function eligibilityPill(e?: WMEligibility): { text: string; kind: "warn"
   return "signed" in e ? { text: "电子签名", kind: "warn" } : null;
 }
 
-// ---------- 水印文字：标签 + 自定义文字，可拖动排序 ----------
+// ---------- 水印文字：标签 + 自定义文字，可拖动、左右移 ----------
 
 function TokenBuilder({ parts, onChange }: { parts: WMPart[]; onChange: (p: WMPart[]) => void }) {
   const [drag, setDrag] = useState<number | null>(null);
+  const [over, setOver] = useState<number | null>(null);
+  const [fresh, setFresh] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [menu, setMenu] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
-  const move = (from: number, to: number) => { if (from === to) return; const p = [...parts]; const [x] = p.splice(from, 1); p.splice(to, 0, x); onChange(p); };
-  const addText = () => { const t = draft.trim(); if (!t) return; onChange([...parts, { kind: "text", text: t }]); setDraft(""); };
+  const move = (from: number, to: number) => { if (from === to || to < 0 || to >= parts.length) return; const p = [...parts]; const [x] = p.splice(from, 1); p.splice(to, 0, x); onChange(p); };
+  const append = (x: WMPart) => { onChange([...parts, x]); setFresh(parts.length); };
+  const addText = () => { const t = draft.trim(); if (!t) return; append({ kind: "text", text: t }); setDraft(""); };
+  const name = (p: WMPart) => (p.kind === "tag" ? tagLabel(p.tag) : p.text);
   return <div className="col gap8">
     <div className="wm-tokens" aria-label="水印文字组成，可拖动调整顺序">
       {parts.map((p, i) => (
-        <span key={i} className={`wm-token ${p.kind} ${drag === i ? "dragging" : ""}`} draggable
-          onDragStart={(e) => { setDrag(i); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => setDrag(null)}
-          onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (drag !== null) move(drag, i); setDrag(null); }}>
-          {p.kind === "tag" ? tagLabel(p.tag) : p.text}
-          <button aria-label={`左移 ${p.kind === "tag" ? tagLabel(p.tag) : p.text}`} data-tip="左移" disabled={i === 0} onClick={() => move(i, i - 1)} hidden={i === 0}><Icon name="chevron.left" size={10} /></button>
-          <button aria-label={`移除 ${p.kind === "tag" ? tagLabel(p.tag) : p.text}`} data-tip="移除" onClick={() => onChange(parts.filter((_, k) => k !== i))}><Icon name="xmark" size={10} /></button>
+        <span key={`${i}-${name(p)}`} className={`wm-token ${p.kind} ${drag === i ? "dragging" : ""} ${fresh === i ? "fresh" : ""}`} draggable
+          style={over === i && drag !== null && drag !== i ? { boxShadow: `${drag > i ? "-3px" : "3px"} 0 0 0 var(--green)` } : undefined}
+          onDragStart={(e) => { setDrag(i); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => { setDrag(null); setOver(null); }}
+          onDragOver={(e) => { e.preventDefault(); setOver(i); }} onDrop={(e) => { e.preventDefault(); if (drag !== null) move(drag, i); setDrag(null); setOver(null); }}>
+          {name(p)}
+          <button aria-label={`左移 ${name(p)}`} data-tip="左移" disabled={i === 0} onClick={() => move(i, i - 1)}><Icon name="chevron.left" size={10} /></button>
+          <button aria-label={`右移 ${name(p)}`} data-tip="右移" disabled={i === parts.length - 1} onClick={() => move(i, i + 1)}><Icon name="chevron.right" size={10} /></button>
+          <button aria-label={`移除 ${name(p)}`} data-tip="移除" onClick={() => onChange(parts.filter((_, k) => k !== i))}><Icon name="xmark" size={10} /></button>
         </span>
       ))}
       {!parts.length && <span className="t-meta muted" style={{ padding: "0 4px" }}>添加标签或文字</span>}
@@ -59,7 +65,7 @@ function TokenBuilder({ parts, onChange }: { parts: WMPart[]; onChange: (p: WMPa
       <Button size="small" disabled={!draft.trim()} onClick={addText}>添加</Button>
     </div>
     <Popover anchor={anchor} open={menu} onClose={() => setMenu(false)} minWidth={180}>
-      <MenuList close={() => setMenu(false)} entries={WM_TAGS.map(([t, l]) => ({ kind: "item" as const, title: l, action: () => onChange([...parts, { kind: "tag", tag: t }]) }))} />
+      <MenuList close={() => setMenu(false)} entries={WM_TAGS.map(([t, l]) => ({ kind: "item" as const, title: l, action: () => append({ kind: "tag", tag: t }) }))} />
     </Popover>
   </div>;
 }
@@ -70,103 +76,105 @@ export function WatermarkSettingsPanel({ wm, onChange, recipient, onRecipient }:
   const s = wm.settings;
   const set = (p: Partial<WatermarkSettings>) => onChange({ ...wm, settings: { ...s, ...p } });
   const custom = !WM_COLORS.some(([c]) => c.toLowerCase() === s.color.toLowerCase());
-  const [hex, setHex] = useState(s.color);
-  useEffect(() => setHex(s.color), [s.color]);
   const usesRecipient = s.parts.some((p) => p.kind === "tag" && p.tag === "recipient");
+  const head = (t: string, right?: React.ReactNode) => <div className="row gap8"><span className="t-row grow">{t}</span>{right}</div>;
   return <div className="col" style={{ gap: 18 }}>
-    <section className="col gap8"><span className="t-row">水印文字</span><TokenBuilder parts={s.parts} onChange={(parts) => set({ parts })} /></section>
-    <section className="col gap8"><div className="row gap8"><span className="t-row grow">语言</span>
-      <Segmented options={[["zh", "中文"], ["en", "English"]]} value={s.lang} onChange={(lang) => set({ lang })} /></div>
+    <section className="col gap8">{head("水印文字", <span className="t-meta muted">拖动或用 ‹ › 调整顺序</span>)}<TokenBuilder parts={s.parts} onChange={(parts) => set({ parts })} /></section>
+    <section className="col gap8">{head("语言", <Segmented options={[["zh", "中文"], ["en", "English"]]} value={s.lang} onChange={(lang) => set({ lang })} />)}
       {s.lang === "en" && <span className="t-meta muted">日期写作 10 Nov 2026，文件名称用英文类型名；公司名称、接收方和自定义文字照原样。</span>}</section>
-    <section className="col gap8"><span className="t-row">接收方 <span className="t-meta muted" style={{ fontWeight: 400 }}>每次导出时确认，不随用途保存</span></span>
+    <section className="col gap8">{head("接收方", <span className="t-meta muted">每次导出时确认</span>)}
       <TextField value={recipient} onChange={onRecipient} placeholder="例如 汇丰银行" invalid={usesRecipient && !recipient.trim()} />
       {usesRecipient && !recipient.trim() && <span className="t-meta amber-text">水印里用了【接收方】，请填写。</span>}</section>
-    <section className="col gap8"><span className="t-row">样式</span>
-      <Segmented<WMStyle> options={[["tile", "斜向平铺"], ["center", "居中大字"], ["footer", "页脚一行"]]} value={s.style} onChange={(style) => set({ style })} /></section>
-    <section className="col gap10">
-      <div className="col gap4"><span className="t-label muted">浓淡</span><Slider label="浓淡" min={1} max={100} value={s.opacity} onChange={(opacity) => set({ opacity })} format={(v) => `${v}%`} /></div>
+    <section className="col gap8">{head("样式", <Segmented<WMStyle> options={[["tile", "斜向平铺"], ["center", "居中大字"], ["footer", "页脚一行"]]} value={s.style} onChange={(style) => set({ style })} />)}</section>
+    <section className="col gap12">
+      <div className="col gap4"><div className="row gap8"><span className="t-label muted grow">不透明度</span><span className="wm-sample" style={{ color: s.color, opacity: Math.max(.08, s.opacity / 100) }} aria-hidden>水印 Aa</span></div>
+        <Slider label="不透明度" min={1} max={100} value={s.opacity} onChange={(opacity) => set({ opacity })} format={(v) => `${v}%`} /></div>
       <div className="col gap4"><span className="t-label muted">字号（页宽）</span><Slider label="字号" min={1} max={12} step={0.5} value={s.size} onChange={(size) => set({ size })} format={(v) => `${v}%`} /></div>
       {s.style !== "footer" && <div className="col gap4"><span className="t-label muted">倾斜角度</span><Slider label="倾斜角度" min={-90} max={90} value={s.angle} onChange={(angle) => set({ angle })} format={(v) => `${v}°`} /></div>}
     </section>
-    <section className="col gap8"><span className="t-row">颜色</span>
-      <div className="row gap10 wrap">
-        {WM_COLORS.map(([c, l]) => <ColorSwatch key={c} color={c} label={l} selected={c.toLowerCase() === s.color.toLowerCase()} onPick={() => set({ color: c })} />)}
-        <ColorSwatch color={custom ? s.color : "var(--surface-sunken)"} label="自定义颜色" selected={custom} onPick={() => set({ color: /^#[0-9a-f]{6}$/i.test(hex) ? hex : "#5F6D66" })} />
-        <input className="field num" style={{ width: 104, height: 32, minHeight: 32 }} aria-label="自定义颜色（十六进制）" value={hex} onChange={(e) => setHex(e.target.value)}
-          onBlur={() => { if (/^#[0-9a-f]{6}$/i.test(hex)) set({ color: hex.toUpperCase() }); else setHex(s.color); }} />
+    <section className="col gap8">{head("颜色")}
+      <div className="row gap12 wrap">
+        {WM_COLORS.map(([c, l]) => { const on = c.toLowerCase() === s.color.toLowerCase(); return <ColorSwatch key={c} color={c} label={l} selected={on} onPick={() => set({ color: c })} />; })}
+        <label className={`swatch-custom ${custom ? "on" : ""}`} data-tip="自定义颜色">
+          <span className="wheel" style={custom ? { background: s.color } : undefined} />{custom ? s.color.toUpperCase() : "自定义…"}
+          <input type="color" aria-label="自定义颜色" value={/^#[0-9a-f]{6}$/i.test(s.color) ? s.color : "#25352C"} onChange={(e) => set({ color: e.target.value.toUpperCase() })} />
+        </label>
       </div></section>
-    <section className="col gap6">
-      <Switch checked={s.flatten} onChange={(flatten) => set({ flatten })}><span className="col" style={{ gap: 2 }}><span className="t-row">压平</span><span className="t-meta muted">每页转成图片再合成水印，水印无法被编辑器删除；文字不可再选中，文件会变大。</span></span></Switch>
-    </section>
   </div>;
 }
 
-// ---------- 预览：按文件、按页翻看 ----------
+// ---------- 预览：页面只渲染一次并缓存，水印画在上层，拖动滑块逐帧重绘 ----------
 
-type Src = { item: PacketItem; title: string };
+const pageCache = new Map<string, Promise<{ bmp: ImageBitmap; w: number; h: number; pages: number }>>();
+function renderPage(url: string, kind: "pdf" | "image", page: number, maxW: number) {
+  const key = `${url}#${page}@${maxW}`;
+  if (!pageCache.has(key)) {
+    pageCache.set(key, (async () => {
+      const bytes = await platform().readBytes(url);
+      if (kind === "image") { const bmp = await createImageBitmap(new Blob([bytes as BlobPart])); return { bmp, w: bmp.width, h: bmp.height, pages: 1 }; }
+      const { pdfjs } = await import("../services/extract");
+      const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+      const pg = await doc.getPage(Math.min(page, doc.numPages));
+      const vp1 = pg.getViewport({ scale: 1 }); const vp = pg.getViewport({ scale: maxW / vp1.width });
+      const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+      await pg.render({ canvasContext: c.getContext("2d")!, viewport: vp, canvas: c } as never).promise;
+      const r = { bmp: await createImageBitmap(c), w: vp1.width, h: vp1.height, pages: doc.numPages }; void doc.destroy(); return r;
+    })());
+    pageCache.get(key)!.catch(() => pageCache.delete(key));
+  }
+  return pageCache.get(key)!;
+}
 
-export function WatermarkPreview({ items, template, company, store, wm, recipient }: { items: PacketItem[]; template: PacketTemplate; company: Company; store: Store; wm: PacketWatermark; recipient: string }) {
-  const files: Src[] = useMemo(() => packetIncluded(items).filter((i) => !wm.skip.includes(packetItemID(i)) && kindOf(store.fileURL(i.document!)) !== "other")
-    .map((i) => ({ item: i, title: packetItemTitle(i, store.docType(i.document!.typeID)?.name) })), [items, wm.skip, store]);
-  const [fi, setFi] = useState(0);
+export type PreviewFile = { id: string; title: string; url: string; kind: "pdf" | "image"; text: string };
+
+export function WatermarkPreview({ files, index, onIndex, settings }: { files: PreviewFile[]; index: number; onIndex: (i: number) => void; settings: WatermarkSettings }) {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
+  const [dims, setDims] = useState<{ w: number; h: number; scale: number } | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const cur = files[Math.min(fi, files.length - 1)];
-  const text = cur ? resolveText(wm.settings, wmContext(cur.item, template, company, store, recipient)) : "";
-  useEffect(() => { setPage(1); }, [fi]);
+  const base = useRef<HTMLCanvasElement>(null), top = useRef<HTMLCanvasElement>(null);
+  const cur = files[Math.min(index, files.length - 1)];
+  const maxW = Math.round(560 * (window.devicePixelRatio || 1));
+  useEffect(() => setPage(1), [cur?.id]);
   useEffect(() => {
-    if (!cur) return;
-    let live = true;
-    const t = setTimeout(async () => {
-      try {
-        const bytes = await platform().readBytes(store.fileURL(cur.item.document!));
-        const c = canvas.current; if (!c || !live) return;
-        const ctx = c.getContext("2d")!;
-        const maxW = 520 * (window.devicePixelRatio || 1);
-        if (kindOf(store.fileURL(cur.item.document!)) === "pdf") {
-          const { pdfjs } = await import("../services/extract");
-          const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
-          if (!live) return;
-          setPages(doc.numPages);
-          const pg = await doc.getPage(Math.min(page, doc.numPages));
-          const vp1 = pg.getViewport({ scale: 1 });
-          const scale = maxW / vp1.width;
-          const vp = pg.getViewport({ scale });
-          c.width = vp.width; c.height = vp.height;
-          await pg.render({ canvasContext: ctx, viewport: vp, canvas: c } as never).promise;
-          await drawWatermark(ctx, vp1.width, vp1.height, scale, text, wm.settings);
-          void doc.destroy();
-        } else {
-          setPages(1);
-          const bmp = await createImageBitmap(new Blob([bytes as BlobPart]));
-          const scale = Math.min(1, maxW / bmp.width);
-          c.width = bmp.width * scale; c.height = bmp.height * scale;
-          ctx.drawImage(bmp, 0, 0, c.width, c.height);
-          await drawWatermark(ctx, bmp.width, bmp.height, scale, text, wm.settings);
-        }
-        setErr(null);
-      } catch (e) { if (live) setErr(e instanceof Error ? e.message : String(e)); }
-    }, 180);
-    return () => { live = false; clearTimeout(t); };
-  }, [cur?.item.document?.id, page, text, wm.settings]);
-  if (!cur) return <Note>没有可预览的文件：已选文件都不加水印，或都是 Word、Excel 等无法加水印的格式。</Note>;
-  return <div className="col gap12" style={{ alignItems: "stretch" }}>
+    if (!cur) return; let live = true;
+    void renderPage(cur.url, cur.kind, page, maxW).then((r) => {
+      if (!live) return;
+      const scale = Math.min(maxW / r.w, cur.kind === "image" ? 1 : Infinity);
+      for (const c of [base.current, top.current]) if (c) { c.width = r.bmp.width; c.height = r.bmp.height; }
+      base.current?.getContext("2d")!.drawImage(r.bmp, 0, 0);
+      setPages(r.pages); setDims({ w: r.w, h: r.h, scale: r.bmp.width / r.w || scale }); setErr(null);
+      // 预读下一页
+      if (page < r.pages) void renderPage(cur.url, cur.kind, page + 1, maxW);
+    }).catch((e) => live && setErr(e instanceof Error ? e.message : String(e)));
+    return () => { live = false; };
+  }, [cur?.url, page]);
+  useEffect(() => {
+    const c = top.current; if (!c || !dims || !cur) return;
+    let raf = requestAnimationFrame(() => { const ctx = c.getContext("2d")!; ctx.clearRect(0, 0, c.width, c.height); void drawWatermark(ctx, dims.w, dims.h, dims.scale, cur.text, settings); });
+    return () => cancelAnimationFrame(raf);
+  }, [dims, cur?.text, settings]);
+  if (!cur) return <Note>没有要加水印的文件：在上一步把至少一份文件设为“加水印”。</Note>;
+  return <div className="col gap10">
     <div className="row gap8">
-      <Button size="small" icon="chevron.left" ariaLabel="上一份文件" disabled={fi <= 0} onClick={() => setFi(fi - 1)} />
-      <span className="grow ellipsis t-row" style={{ textAlign: "center" }}>{cur.title}<span className="t-meta muted num" style={{ fontWeight: 400 }}>　{fi + 1} / {files.length} 份</span></span>
-      <Button size="small" icon="chevron.right" ariaLabel="下一份文件" disabled={fi >= files.length - 1} onClick={() => setFi(fi + 1)} />
+      <SelectField options={files.map((f, i) => [String(i), f.title] as [string, string])} value={String(index)} onChange={(v) => onIndex(Number(v))} minWidth={240} />
+      <span className="t-meta muted num">{index + 1} / {files.length} 份</span>
+      <span className="grow" />
+      <span className="t-meta muted">在左侧清单点一份文件，也会切换到它</span>
     </div>
     <div className="row" style={{ justifyContent: "center", padding: 16, borderRadius: "var(--r-tile)", background: "var(--surface-sunken)" }}>
-      {err ? <Note tone="warn">预览失败：{err}</Note> : <canvas ref={canvas} className="wm-page" style={{ width: "100%", maxWidth: 520, height: "auto" }} aria-label={`水印预览：${cur.title} 第 ${page} 页`} />}
+      {err ? <Note tone="warn">预览失败：{err}</Note> :
+        <span className="wm-stage page-fade" key={`${cur.id}-${page}`} style={{ height: 440, aspectRatio: dims ? `${dims.w} / ${dims.h}` : "210 / 297", maxWidth: "100%" }}>
+          <canvas ref={base} className="wm-page" style={{ width: "100%", height: "100%" }} aria-label={`水印预览：${cur.title} 第 ${page} 页`} />
+          <canvas ref={top} aria-hidden />
+        </span>}
     </div>
-    {pages > 1 && <div className="row gap8" style={{ justifyContent: "center" }}>
+    <div className="row gap8" style={{ justifyContent: "center" }}>
       <Button size="small" kind="quiet" icon="chevron.left" ariaLabel="上一页" disabled={page <= 1} onClick={() => setPage(page - 1)} />
-      <span className="t-meta muted num">第 {page} / {pages} 页</span>
+      <span className="t-meta muted num" style={{ minWidth: 88, textAlign: "center" }}>第 {page} / {pages} 页</span>
       <Button size="small" kind="quiet" icon="chevron.right" ariaLabel="下一页" disabled={page >= pages} onClick={() => setPage(page + 1)} />
-    </div>}
-    <span className="t-meta muted selectable" style={{ textAlign: "center" }}>{text || "（水印文字为空）"}</span>
+    </div>
+    <span className="t-meta muted selectable" style={{ textAlign: "center" }}>{cur.text || "（水印文字为空）"}</span>
   </div>;
 }
 

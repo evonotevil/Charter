@@ -84,6 +84,12 @@ export interface BuildOptions {
   signal?: AbortSignal;
   /** done/total 按份计；label 为当前处理的文件（和页码）。 */
   onProgress?: (done: number, total: number, label?: string) => void;
+  /** 每份文件开始 / 进展 / 完成时回调，给导出中的逐行状态用。index 为在“已放入”中的序号。 */
+  onItem?: (index: number, state: "run" | "done", note: string) => void;
+  /** 保存到这个文件夹（自动避开重名）；不给时为公司文件夹。 */
+  outDir?: string;
+  /** 直接保存为这个完整路径（来自系统“存储为”窗口，已由系统确认覆盖）。 */
+  outPath?: string;
 }
 
 /** 每份文件能否加水印，以及原因。 */
@@ -115,7 +121,7 @@ export function wmContext(item: PacketItem, t: PacketTemplate, c: Company, s: St
 
 export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Company, s: Store, opts: BuildOptions = {}): Promise<string> {
   const p = platform();
-  const { watermark: run, signal, onProgress } = opts;
+  const { watermark: run, signal, onProgress, onItem } = opts;
   const abort = () => { if (signal?.aborted) throw new DOMException("已取消", "AbortError"); };
   // 记录在、但文件不在数据文件夹里（比如另一台电脑还没同步过来）：不让整包失败，算作缺件并注明原因。
   const lost = new Set<string>();
@@ -126,10 +132,8 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
   const wm = run?.wm.enabled ? run.wm : undefined;
   const recipient = run?.recipient.trim() ?? "";
   const base = packetBaseName(c, t, s, complete, wm ? recipient : undefined);
-  const entries: { path: string; data: Uint8Array }[] = [];
-  const incLines: string[] = [], wmLines: string[] = [];
-  let watermarked = 0;
-  for (const [i, item] of included.entries()) {
+  type Done = { entry: { path: string; data: Uint8Array }; inc: string; wm: string[]; marked: boolean };
+  const one = async (i: number, item: PacketItem): Promise<Done> => {
     abort();
     const doc = item.document!;
     const title = packetItemTitle(item, s.docType(doc.typeID)?.name);
@@ -137,7 +141,8 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
     let ext = extname(src) || "pdf";
     let data = await p.readBytes(src);
     const label = `${two(i + 1)} ${title}`;
-    onProgress?.(i, included.length + 1, title);
+    const wmLines: string[] = []; let marked = false;
+    onItem?.(i, "run", "");
     const kind = kindOf(src);
     const want = !!wm && !wm.skip.includes(packetItemID(item));
     if (kind === "pdf") {
@@ -145,13 +150,13 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
       if (info.encrypted) { if (want) wmLines.push(`${label}：已加密，无法加水印，原样放入`); }
       else if (want || (wm?.stripMeta && !info.signed)) {
         const text = want ? resolveText(wm!.settings, wmContext(item, t, c, s, recipient)) : "";
-        const onPage = (n: number, total: number) => onProgress?.(i, included.length + 1, `${title}（第 ${n} / ${total} 页）`);
+        const onPage = (n: number, total: number) => onItem?.(i, "run", `第 ${n} / ${total} 页`);
         let ok = true;
         try {
           data = want && wm!.settings.flatten ? await flattenPDF(data, text, wm!.settings, { stripMeta: true, signal, onPage })
             : await watermarkPDF(data, text, want ? wm!.settings : null, { stripMeta: !!wm?.stripMeta, signal, onPage });
         } catch (e) { if (signal?.aborted) throw e; ok = false; if (want) wmLines.push(`${label}：PDF 无法读取，未加水印，原样放入`); }
-        if (want && ok) { watermarked++; wmLines.push(`${label}：已加水印${wm!.settings.flatten ? "（已压平）" : ""}${info.signed ? "；原件带电子签名，本副本签名已失效" : ""}`); }
+        if (want && ok) { marked = true; wmLines.push(`${label}：已加水印${wm!.settings.flatten ? "（已压平）" : ""}${info.signed ? "；原件带电子签名，本副本签名已失效" : ""}`); }
       } else if (wm) wmLines.push(`${label}：${info.signed ? "带电子签名，未加水印，保留原签名" : "未加水印"}`);
     } else if (kind === "image") {
       if (want || wm?.stripMeta) {
@@ -159,13 +164,20 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
         let ok = true;
         try { const r = await watermarkImage(data, ext.toLowerCase(), text, wm!.settings); data = r.bytes; ext = r.ext; }
         catch { ok = false; if (want) wmLines.push(`${label}：图片无法读取，未加水印，原样放入`); }
-        if (want && ok) { watermarked++; wmLines.push(`${label}：已加水印`); }
+        if (want && ok) { marked = true; wmLines.push(`${label}：已加水印`); }
       } else if (wm) wmLines.push(`${label}：未加水印`);
     } else if (wm) wmLines.push(`${label}：${ext.toUpperCase()} 文件无法加水印，原样放入`);
-    const name = safeName(label) + "." + ext;
-    entries.push({ path: `${base}/${name}`, data });
-    incLines.push(`${two(i + 1)}  ${title}：${recencyText(item)}`);
-  }
+    onItem?.(i, "done", marked ? "已加水印" : "原样放入");
+    return { entry: { path: `${base}/${safeName(label)}.${ext}`, data }, inc: `${two(i + 1)}  ${title}：${recencyText(item)}`, wm: wmLines, marked };
+  };
+  // 两份并行：读写和 PDF 处理交错，整体更快；结果按清单顺序装入。
+  const results: Done[] = new Array(included.length);
+  let next = 0, finished = 0;
+  onProgress?.(0, included.length + 1, included[0] ? packetItemTitle(included[0]) : "目录");
+  const worker = async () => { while (next < included.length) { const i = next++; results[i] = await one(i, included[i]); finished++; onProgress?.(finished, included.length + 1, included[next] ? packetItemTitle(included[next]) : "目录"); } };
+  await Promise.all([worker(), worker()]);
+  const entries = results.map((r) => r.entry), incLines = results.map((r) => r.inc), wmLines = results.flatMap((r) => r.wm);
+  const watermarked = results.filter((r) => r.marked).length;
   abort();
   onProgress?.(included.length, included.length + 1, "目录");
   const misLines = missing.map((m) => `—  ${packetItemTitle(m)}：${packetReason(m)}`);
@@ -179,7 +191,9 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
   entries.unshift({ path: `${base}/00 目录.pdf`, data: toc });
   abort();
   const zip = await writeZip(entries, (a, b) => onProgress?.(included.length, included.length + 1, `压缩 ${a} / ${b}`));
-  const out = await writeUnique(s.folder.packetsDir, base, "zip", zip);
+  let out: string;
+  if (opts.outPath) { await p.writeBytes(opts.outPath, zip); out = opts.outPath; }
+  else out = await writeUnique(opts.outDir ?? s.folder.packetsDir, base, "zip", zip);
   // 发送记录
   s.commit((d) => {
     d.sends.unshift({ id: crypto.randomUUID(), companyID: c.id, at: new Date().toISOString(), day: s.today, packetID: t.id, packetName: t.name, recipient,

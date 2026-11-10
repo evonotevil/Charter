@@ -749,3 +749,52 @@ html.overlay-open :is(.brand, .page-head, .toolbar) { -webkit-app-region: no-dra
 .wm-row-toggle { width: 26px; height: 26px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-sunken); color: var(--faint); box-shadow: inset 0 0 0 2px var(--line); }
 .wm-row-toggle[aria-checked="true"] { background: var(--green); color: var(--on-green); box-shadow: none; }
 .wm-row-toggle:disabled { background: var(--disabled-bg); color: var(--disabled-fg); box-shadow: none; cursor: not-allowed; }
+/* ---------- 5.5.1 ---------- */
+.btn.quiet:disabled, .btn.quiet[aria-disabled="true"] { background: transparent !important; color: var(--disabled-fg) !important; }
+.fate { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-input); background: var(--surface-sunken); flex: none; }
+.fate button { height: 26px; padding: 0 10px; border-radius: 8px; font-size: 12px; font-weight: 700; color: var(--muted); transition: background var(--fast) var(--ease), color var(--fast) var(--ease); }
+.fate button:hover:not(:disabled):not(.on) { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.fate button.on { background: var(--seg-on, var(--surface)); color: var(--ink); box-shadow: 0 0 0 1px var(--hairline); }
+.fate button.on.wm { background: var(--green); color: var(--on-green); box-shadow: none; }
+.fate button:disabled { cursor: not-allowed; color: var(--disabled-fg); }
+.stepbar { display: flex; align-items: center; gap: 10px; list-style: none; margin: 0; padding: 0; flex: none; }
+.stepbar li { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.stepbar li.cur { color: var(--ink); font-weight: 700; } .stepbar li.done { color: var(--ink); }
+.stepbar-line { width: 36px; height: 2px; border-radius: 1px; background: var(--line); margin-right: 2px; transition: background var(--standard) var(--ease); }
+.stepbar li.done .stepbar-line, .stepbar li.cur .stepbar-line { background: var(--green); }
+.stepbar-dot { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: var(--surface-sunken); box-shadow: inset 0 0 0 2px var(--line); transition: background var(--standard) var(--ease); }
+.stepbar li.cur .stepbar-dot, .stepbar li.done .stepbar-dot { background: var(--green); color: var(--on-green); box-shadow: none; }
+.option-card { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 16px; text-align: left; border-radius: var(--r-tile); background: var(--surface); box-shadow: inset 0 0 0 2px var(--line); transition: background var(--fast) var(--ease), box-shadow var(--fast) var(--ease); }
+.option-card:hover:not(:disabled) { box-shadow: inset 0 0 0 2px var(--line-strong); }
+.option-card.on { background: var(--green-soft); box-shadow: inset 0 0 0 2px var(--green); }
+.option-card-head { display: flex; align-items: center; gap: 10px; }
+.option-card-icon { width: 32px; height: 32px; border-radius: var(--r-input); display: inline-flex; align-items: center; justify-content: center; background: var(--surface-sunken); color: var(--muted); }
+.option-card.on .option-card-icon { background: var(--green); color: var(--on-green); }
+/* 色块：白内圈 + 品牌绿外圈 + 对勾，用 outline 画，边缘清晰 */
+.swatch { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; color: #FFFFFF; outline: 0 solid transparent; outline-offset: 2px; transition: outline-color var(--fast) var(--ease); position: relative; }
+.swatch.on { box-shadow: inset 0 0 0 1px var(--hairline); outline: 2px solid var(--green); }
+.swatch-custom { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px 0 4px; border-radius: var(--r-pill); box-shadow: inset 0 0 0 2px var(--line); font-size: 12px; font-weight: 700; color: var(--muted); position: relative; cursor: pointer; }
+.swatch-custom.on { box-shadow: inset 0 0 0 2px var(--green); color: var(--ink); }
+.swatch-custom .wheel { width: 24px; height: 24px; border-radius: 50%; background: conic-gradient(#E0524A, #E8B33A, #4FAE4A, #3E7BD9, #8D5BD6, #E0524A); }
+.swatch-custom input[type=color] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.wm-sample { font-size: 12px; font-weight: 800; padding: 0 6px; border-radius: 6px; background: var(--surface-sunken); }
+/* 步骤切换与完成动画 */
+@keyframes step-in-r { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes step-in-l { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+.step-in-r { animation: step-in-r var(--standard) var(--ease) both; } .step-in-l { animation: step-in-l var(--standard) var(--ease) both; }
+@keyframes rise-in { from { opacity: 0; transform: translateY(16px) scale(.98); } to { opacity: 1; transform: none; } }
+.rise-in { animation: rise-in 360ms var(--ease) both; }
+@keyframes tick-pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+.tick-pop { animation: tick-pop 320ms var(--ease) both; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.run-ring { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--green-soft); border-top-color: var(--green); animation: spin .8s linear infinite; flex: none; }
+.state-dot { width: 22px; height: 22px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.state-dot.wait { box-shadow: inset 0 0 0 2px var(--line); }
+.state-dot.done { background: var(--green); color: var(--on-green); }
+@keyframes page-fade { from { opacity: .3; } to { opacity: 1; } }
+.page-fade { animation: page-fade 180ms var(--ease) both; }
+@keyframes token-pop { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
+.wm-token.fresh { animation: token-pop 200ms var(--ease) both; }
+@media (prefers-reduced-motion: reduce) { .step-in-r, .step-in-l, .rise-in, .tick-pop, .page-fade, .wm-token.fresh { animation: none; } .run-ring { animation-duration: 2.4s; } }
+.wm-stage { position: relative; display: inline-block; line-height: 0; }
+.wm-stage canvas + canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }

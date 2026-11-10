@@ -554,17 +554,20 @@ export function Modal({ onClose, children, dismissOnEscape = true }: { onClose: 
   );
 }
 
-export function SheetScaffold({ title, subtitle, width = 560, height, children, leading, trailing, onSubmit }: {
+export function SheetScaffold({ title, subtitle, width = 560, height, children, leading, trailing, onSubmit, headerTrailing, fixedHeight }: {
   title: string; subtitle?: ReactNode; width?: number; height?: number; children: ReactNode; leading?: ReactNode; trailing?: ReactNode; onSubmit?: () => void;
+  /** 标题栏右侧（例如步骤条）。 */ headerTrailing?: ReactNode; /** 固定高度：分步流程切换时窗口不跳动。 */ fixedHeight?: boolean;
 }) {
+  const h = Math.min(height ?? 720, window.innerHeight - 48);
   return (
-    <div className="sheet" style={{ width, maxHeight: Math.min(height ?? 720, window.innerHeight - 48) }}
+    <div className="sheet" style={{ width, maxHeight: h, height: fixedHeight ? h : undefined }}
       onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && onSubmit) { e.preventDefault(); onSubmit(); } }}>
-      <div className="sheet-head">
-        <div className="t-sheet" title={title}>{title}</div>
-        {subtitle && <div className="muted">{subtitle}</div>}
+      <div className="sheet-head" style={headerTrailing ? { display: "flex", flexDirection: "row", alignItems: "center", gap: 24, textAlign: "left" } : undefined}>
+        <div style={{ flex: 1, minWidth: 0 }}><div className="t-sheet" title={title}>{title}</div>
+        {subtitle && <div className="muted">{subtitle}</div>}</div>
+        {headerTrailing}
       </div>
-      <div className="sheet-body">{children}</div>
+      <div className="sheet-body" style={fixedHeight ? { flex: 1 } : undefined}>{children}</div>
       <div className="sheet-foot">{leading}<span className="spacer" />{trailing}</div>
     </div>
   );
@@ -768,7 +771,7 @@ export function Slider({ value, min, max, step = 1, onChange, label, format, par
 
 /** 颜色色块：28px 圆，选中时白色内圈 + 品牌绿外圈。 */
 export function ColorSwatch({ color, selected, onPick, label }: { color: string; selected: boolean; onPick: () => void; label: string }) {
-  return <button className={`swatch ${selected ? "on" : ""}`} style={{ background: color }} aria-label={label} aria-pressed={selected} data-tip={label} onClick={onPick} />;
+  return <button className={`swatch ${selected ? "on" : ""}`} style={{ background: color }} aria-label={label} aria-pressed={selected} data-tip={label} onClick={onPick}>{selected && <Icon name="checkmark" size={13} />}</button>;
 }
 
 /** 容器宽度低于 px 时为 true（容器查询的 JS 版，给需要换结构的布局用）。 */
@@ -780,4 +783,33 @@ export function useNarrow(ref: React.RefObject<HTMLElement>, px: number) {
     ro.observe(el); return () => ro.disconnect();
   }, [ref, px]);
   return narrow;
+}
+
+// ---------- 5.5.1 ----------
+
+export type Fate = "omit" | "asis" | "wm";
+/** 清单每行的去向：不放入 / 原样 / 加水印。limited 时只有前两段（不能加水印或未开水印）。 */
+export function FileFate({ value, onChange, limited, disabled, label }: { value: Fate; onChange: (v: Fate) => void; limited?: boolean; disabled?: boolean; label: string }) {
+  const opts: [Fate, string][] = limited ? [["omit", "不放入"], ["asis", "原样"]] : [["omit", "不放入"], ["asis", "原样"], ["wm", "加水印"]];
+  return <div className="fate" role="radiogroup" aria-label={`${label}的去向`}>
+    {opts.map(([v, l]) => <button key={v} role="radio" aria-checked={value === v} disabled={disabled} className={`${value === v ? "on" : ""} ${v}`} onClick={() => value !== v && onChange(v)}>{l}</button>)}
+  </div>;
+}
+
+/** 步骤条：已完成为绿勾，当前为绿底数字。 */
+export function StepBar({ steps, current }: { steps: string[]; current: number }) {
+  return <ol className="stepbar" aria-label="步骤">
+    {steps.map((s, i) => <li key={s} className={i < current ? "done" : i === current ? "cur" : ""} aria-current={i === current ? "step" : undefined}>
+      {i > 0 && <span className="stepbar-line" aria-hidden />}
+      <span className="stepbar-dot" aria-hidden>{i < current ? <Icon name="checkmark" size={12} /> : i + 1}</span><span>{s}</span>
+    </li>)}
+  </ol>;
+}
+
+/** 带图标和说明的选项卡（复选语义）。 */
+export function OptionCard({ checked, onChange, icon, title, children, disabled }: { checked: boolean; onChange: (v: boolean) => void; icon: string; title: string; children: ReactNode; disabled?: boolean }) {
+  return <button className={`option-card ${checked ? "on" : ""}`} role="checkbox" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)}>
+    <span className="option-card-head"><span className="option-card-icon"><Icon name={icon} size={16} /></span><span className="t-row grow">{title}</span><ChoiceMark on={checked} square /></span>
+    <span className="t-meta muted">{children}</span>
+  </button>;
 }
