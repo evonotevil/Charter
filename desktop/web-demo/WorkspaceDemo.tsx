@@ -1,4 +1,4 @@
-export type DemoView = "structure" | "company" | "deadlines" | "documents" | "people";
+export type DemoView = "structure" | "company" | "deadlines" | "documents" | "people" | "packet";
 
 const titles: Record<DemoView, string> = {
   structure: "股权结构",
@@ -6,6 +6,7 @@ const titles: Record<DemoView, string> = {
   deadlines: "申报到期",
   documents: "文件",
   people: "人员与任职",
+  packet: "准备材料与加水印",
 };
 
 export function WorkspaceDemo({ view }: { view: DemoView }) {

@@ -27,9 +27,18 @@ async function boot() {
   const router = new Router();
   const view = new URLSearchParams(location.search).get("view");
   switch (view) {
-    case "company": {
+    case "company":
+    case "packet": {
       const company = store.data.companies.find((item) => item.registrationNumber === "2891043") ?? store.data.companies[0];
-      if (company) router.openCompany(company.id);
+      if (company) {
+        router.openCompany(company.id);
+        if (view === "packet") {
+          const purpose = store.data.library.packets.find((item) => item.name === "银行开户");
+          router.open(purpose
+            ? { kind: "packetFor", companyID: company.id, purposeID: purpose.id, recipient: "示例银行" }
+            : { kind: "packet", companyID: company.id });
+        }
+      }
       break;
     }
     case "deadlines": router.go("due"); break;

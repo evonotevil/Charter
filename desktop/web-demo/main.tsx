@@ -19,7 +19,8 @@ const views = [
   { label: "看股权", view: "structure", caption: "从集团一路看到子公司和持股比例。" },
   { label: "查到期", view: "deadlines", caption: "查看申报事项和证件的到期日，安排下一步。" },
   { label: "找档案", view: "company", caption: "按公司找回基本资料、登记信息和历史记录。" },
-  { label: "管文件", view: "documents", caption: "按公司和文件类型归档，需要时可打包导出并为副本加水印。" },
+  { label: "管文件", view: "documents", caption: "按公司和文件类型归档，查看现行文件和需要更新的材料。" },
+  { label: "备材料", view: "packet", caption: "准备材料包并加水印：以银行开户为例，核对文件清单，打开「加水印」，再查看副本预览。原件不变。" },
   { label: "查任职", view: "people", caption: "从人员档案查看关联公司与任职情况。" },
 ] as const;
 const release = "https://github.com/evonotevil/Charter/releases";
@@ -32,55 +33,85 @@ function Gallery() {
   const [index, setIndex] = useState(0);
   const view = views[index];
   return <section className="gallery" id="gallery" tabIndex={-1}>
-    <header className="section-intro">
+    <header className="section-intro gallery-heading">
       <h2>从你手头的事开始。</h2>
-      <p>同一个工作区，五种查看方式。</p>
+      <p>选一个你想做的任务，直接打开 Charter 对应的页面。</p>
     </header>
-    <div className="gallery-controls" role="group" aria-label="产品视图">
-      {views.map((item, i) => <button type="button" key={item.label} aria-pressed={i === index} onClick={() => setIndex(i)}>{item.label}</button>)}
+    <div className="gallery-layout">
+      <div className="gallery-controls" role="group" aria-label="产品视图">
+        {views.map((item, i) => <button type="button" key={item.label} aria-pressed={i === index} onClick={() => setIndex(i)}>{item.label}<span aria-hidden="true">→</span></button>)}
+      </div>
+      <figure className="product-frame">
+        <WorkspaceDemo key={view.view} view={view.view} />
+        <figcaption aria-live="polite">{view.caption}</figcaption>
+      </figure>
     </div>
-    <figure className="product-frame">
-      <WorkspaceDemo key={view.view} view={view.view} />
-      <figcaption aria-live="polite">{view.caption}</figcaption>
-    </figure>
   </section>;
 }
 
 function Downloads() {
+  const [platform, setPlatform] = useState(0);
+  const [variant, setVariant] = useState(0);
+  const [copyStatus, setCopyStatus] = useState("");
+  const [platformName, variants] = packages[platform];
+  const [label, file] = variants[variant];
+  const command = "xattr -cr /Applications/Charter.app";
+  async function copyCommand() {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopyStatus("命令已复制。");
+    } catch {
+      setCopyStatus("无法自动复制，请选中命令手动复制。");
+    }
+  }
   return <section className="downloads" id="download">
-    <header className="section-intro">
-      <h2>公司资料，留在自己的文件夹。</h2>
-      <p>无需账户。Charter 将数据保存在你选定的文件夹里。</p>
-    </header>
-    <div className="platforms">
-      {packages.map(([platform, variants]) => <div key={platform}>
-        <h3>{platform}</h3>
-        {variants.map(([label, file]) => <a key={file} href={`${release}/download/v5.5.0/Charter-5.5.0-${file}`}><span>{label}</span><span>下载</span></a>)}
-      </div>)}
+    <div className="download-station">
+      <header className="download-heading">
+        <span className="download-version">Charter 5.5.0</span>
+        <h2>下载 Charter</h2>
+        <p>无需账户。选一个文件夹，就能开始整理公司资料。</p>
+      </header>
+      <div className="download-picker">
+        <div className="picker-label">01 / 选择系统</div>
+        <div className="platform-switch" role="group" aria-label="操作系统">
+          {packages.map(([name], i) => <button type="button" key={name} aria-pressed={platform === i} onClick={() => { setPlatform(i); setVariant(0); setCopyStatus(""); }}>{name}</button>)}
+        </div>
+        <fieldset className="package-options">
+          <legend className="picker-label">02 / 选择{platform === 0 ? "芯片" : "安装方式"}</legend>
+          {variants.map(([name, filename], i) => <label key={filename}><input type="radio" name="package" checked={variant === i} onChange={() => setVariant(i)} /><span>{name}</span><small>{filename.split(".").at(-1)?.toUpperCase()}</small></label>)}
+        </fieldset>
+        <a className="download-primary" href={`${release}/download/v5.5.0/Charter-5.5.0-${file}`}>下载 {platformName} {label}</a>
+      </div>
     </div>
     <div className="install-guide">
-      <h3>首次打开 Charter</h3>
-      <p>首次打开时，系统可能提示无法验证开发者。请先确认安装包来自 <a href={`${release}/tag/v5.5.0`}>官方 GitHub 发布页</a>，并核对 <a href={`${release}/download/v5.5.0/SHA256SUMS.txt`}>SHA-256 校验值</a>。</p>
-      <div className="install-platforms">
+      <details className="install-disclosure" key={platform}>
+        <summary>首次打开 Charter <span>{platformName}</span></summary>
+        <p>如果遇到系统安全提示，请先确认安装包来自官方发布页，并核对 SHA-256 校验值。</p>
+        {platform === 0 ?
         <section>
-          <h4>Mac</h4>
           <ol>
             <li>打开 DMG，把 Charter 拖到「应用程序」，然后从「应用程序」打开一次。</li>
             <li>如果提示无法验证开发者，打开「系统设置 → 隐私与安全性」，找到 Charter 的提示，点「仍要打开」并确认。<a href="https://support.apple.com/zh-cn/102445">Apple 官方说明</a></li>
-            <li>如果已确认来源和校验值，也可以打开「终端」，粘贴下面的命令并按回车，再从「应用程序」打开 Charter：</li>
           </ol>
-          <pre><code>xattr -cr /Applications/Charter.app</code></pre>
-          <p>这会递归清除这个应用包的扩展属性（包括下载隔离标记）。成功时通常没有输出。若提示找不到文件，请先确认 Charter 已放进「应用程序」且名称未改。</p>
+          <details className="terminal-help">
+            <summary>使用终端打开</summary>
+            <p>确认安装包来源和校验值后，打开「终端」，粘贴命令并按回车，再从「应用程序」打开 Charter。</p>
+            <div className="terminal-command"><pre><code>{command}</code></pre><button type="button" onClick={copyCommand}>复制命令</button></div>
+            <p role="status">{copyStatus}</p>
+            <p>命令会递归清除应用包的扩展属性，包括下载隔离标记。成功时通常没有输出。若找不到文件，确认 Charter 已放进「应用程序」且名称未改。</p>
+          </details>
         </section>
+        :
         <section>
-          <h4>Windows</h4>
           <ol>
             <li>安装版：打开下载的 <code>Setup.exe</code>。免安装版：先解压 ZIP，再打开解压目录里的 <code>Charter.exe</code>。</li>
             <li>如果 Microsoft Defender SmartScreen 显示「Windows 已保护你的电脑」，确认来源和校验值后，点「更多信息 → 仍要运行」（如果该选项可用）。</li>
             <li>如果提示检测到威胁，或设备策略不允许继续，请停止安装；公司设备可联系 IT。<a href="https://support.microsoft.com/en-us/windows/security/windows-security/app-browser-control-in-the-windows-security-app">Microsoft 官方说明</a></li>
           </ol>
         </section>
-      </div>
+        }
+      </details>
+      <p className="download-links"><a href={`${release}/tag/v5.5.0`}>官方发布页</a><a href={`${release}/download/v5.5.0/SHA256SUMS.txt`}>SHA-256 校验值</a></p>
     </div>
   </section>;
 }
@@ -155,16 +186,19 @@ function App() {
     <header className="site-nav"><a href="#top" className="brand"><LogoMark size={29} />Charter</a><a href="#workflow">体验工作流</a><a href="#gallery">功能展厅</a><a href="#download">下载 Charter</a></header>
     <main id="top">
       <section className="intro">
-        <Pill text="本地优先的公司治理工作区" />
-        <h1>看清集团关系，<br />管好每一家公司。</h1>
-        <p>Charter 把集团股权、公司档案、申报到期、文件和任职人员串在一起。</p>
-        <div className="hero-actions">
-          <a className="start" href="#workflow">体验工作流 <span aria-hidden="true">↓</span></a>
-          <a className="secondary" href="#download">下载 Charter</a>
+        <div className="hero-copy">
+          <h1>看清集团关系，<br />管好每一家公司。</h1>
+          <div className="hero-summary">
+            <p>把股权、档案和到期事项串在一起。无需账户，资料保存在你选的文件夹。</p>
+            <div className="hero-actions">
+              <a className="start" href="#workflow">体验工作流 <span aria-hidden="true">↓</span></a>
+              <a className="secondary" href="#download">下载 Charter</a>
+            </div>
+          </div>
         </div>
         <figure className="product-frame hero-frame">
+          <figcaption><strong>点一个公司，看看它属于谁。</strong><span>虚构演示数据</span></figcaption>
           <WorkspaceDemo view="structure" />
-          <figcaption>试一试：点击股权节点，或用左侧导航探索其他页面。数据仅供演示。</figcaption>
         </figure>
       </section>
       <section className="section-intro packet-intro" id="workflow">
@@ -198,9 +232,17 @@ function App() {
         </div>}
       </section>
       <Gallery />
+      <section className="local-section" aria-labelledby="local-heading">
+        <div><h2 id="local-heading">公司资料，<br />留在自己的文件夹。</h2><p>安装后，选一个文件夹就能开始。官网演示和你自己的工作区是分开的。</p></div>
+        <dl>
+          <div><dt>无需账户</dt><dd>打开桌面应用即可开始整理。</dd></div>
+          <div><dt>文件夹由你选</dt><dd>公司档案与文件保存在你指定的位置。</dd></div>
+          <div><dt>先试再下载</dt><dd>网页演示使用虚构数据，刷新后重置。</dd></div>
+        </dl>
+      </section>
       <Downloads />
     </main>
-    <footer><span>Charter 5.5.0</span><a href="https://github.com/evonotevil/Charter">GitHub 源码</a></footer>
+    <footer><span>Charter 5.5.0</span><a href="#top">返回顶部</a><a href="https://github.com/evonotevil/Charter">GitHub 源码</a></footer>
   </div>;
 }
 
