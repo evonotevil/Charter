@@ -798,3 +798,19 @@ html.overlay-open :is(.brand, .page-head, .toolbar) { -webkit-app-region: no-dra
 @media (prefers-reduced-motion: reduce) { .step-in-r, .step-in-l, .rise-in, .tick-pop, .page-fade, .wm-token.fresh { animation: none; } .run-ring { animation-duration: 2.4s; } }
 .wm-stage { position: relative; display: inline-block; line-height: 0; }
 .wm-stage canvas + canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+/* ---------- 5.5.3 ---------- */
+.icon-btn { width: 32px; height: 32px; flex: none; border-radius: var(--r-input); display: inline-flex; align-items: center; justify-content: center; color: var(--muted); transition: background var(--fast) var(--ease), color var(--fast) var(--ease); }
+.icon-btn.sunken { background: var(--surface-sunken); }
+.icon-btn:hover:not(:disabled) { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, var(--surface-sunken)); }
+.icon-btn:disabled { color: var(--disabled-fg); cursor: not-allowed; background: transparent; }
+.fate button { height: 26px; padding: 0 12px; font-size: 13px; }
+.slider-line { display: flex; align-items: center; gap: 12px; }
+.slider-line-label { width: 70px; flex: none; }
+.slider-line .slider-row { flex: 1; min-width: 0; }
+.wm-token { height: 28px; }
+.wm-token button { display: none; width: 22px; height: 22px; align-items: center; justify-content: center; background: var(--surface); }
+.wm-token:hover button, .wm-token:focus-within button, .wm-token:focus button { display: inline-flex; }
+.wm-token button:disabled { color: var(--disabled-fg); }
+.wm-token:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.run-note { color: var(--ink); }

@@ -88,6 +88,8 @@ export interface BuildOptions {
   onItem?: (index: number, state: "run" | "done", note: string) => void;
   /** 保存到这个文件夹（自动避开重名）；不给时为公司文件夹。 */
   outDir?: string;
+  /** 改过的文件名（不含 .zip）；为空时用默认名。 */
+  outName?: string;
   /** 直接保存为这个完整路径（来自系统“存储为”窗口，已由系统确认覆盖）。 */
   outPath?: string;
 }
@@ -193,7 +195,7 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
   const zip = await writeZip(entries, (a, b) => onProgress?.(included.length, included.length + 1, `压缩 ${a} / ${b}`));
   let out: string;
   if (opts.outPath) { await p.writeBytes(opts.outPath, zip); out = opts.outPath; }
-  else out = await writeUnique(opts.outDir ?? s.folder.packetsDir, base, "zip", zip);
+  else out = await writeUnique(opts.outDir ?? s.folder.packetsDir, safeName(opts.outName?.replace(/\.zip$/i, "").trim() || base), "zip", zip);
   // 发送记录
   s.commit((d) => {
     d.sends.unshift({ id: crypto.randomUUID(), companyID: c.id, at: new Date().toISOString(), day: s.today, packetID: t.id, packetName: t.name, recipient,

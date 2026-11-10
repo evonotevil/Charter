@@ -554,18 +554,20 @@ export function Modal({ onClose, children, dismissOnEscape = true }: { onClose: 
   );
 }
 
-export function SheetScaffold({ title, subtitle, width = 560, height, children, leading, trailing, onSubmit, headerTrailing, fixedHeight }: {
+export function SheetScaffold({ title, subtitle, width = 560, height, children, leading, trailing, onSubmit, headerTrailing, fixedHeight, onCloseButton }: {
   title: string; subtitle?: ReactNode; width?: number; height?: number; children: ReactNode; leading?: ReactNode; trailing?: ReactNode; onSubmit?: () => void;
   /** 标题栏右侧（例如步骤条）。 */ headerTrailing?: ReactNode; /** 固定高度：分步流程切换时窗口不跳动。 */ fixedHeight?: boolean;
+  /** 右上角 ✕ 关闭按钮。 */ onCloseButton?: () => void;
 }) {
   const h = Math.min(height ?? 720, window.innerHeight - 48);
   return (
     <div className="sheet" style={{ width, maxHeight: h, height: fixedHeight ? h : undefined }}
       onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && onSubmit) { e.preventDefault(); onSubmit(); } }}>
-      <div className="sheet-head" style={headerTrailing ? { display: "flex", flexDirection: "row", alignItems: "center", gap: 24, textAlign: "left" } : undefined}>
+      <div className="sheet-head" style={headerTrailing || onCloseButton ? { display: "flex", flexDirection: "row", alignItems: "center", gap: 24, textAlign: "left" } : undefined}>
         <div style={{ flex: 1, minWidth: 0 }}><div className="t-sheet" title={title}>{title}</div>
         {subtitle && <div className="muted">{subtitle}</div>}</div>
         {headerTrailing}
+        {onCloseButton && <button className="icon-btn sunken" aria-label="关闭" data-tip="关闭（Esc）" onClick={onCloseButton}><Icon name="xmark" size={16} /></button>}
       </div>
       <div className="sheet-body" style={fixedHeight ? { flex: 1 } : undefined}>{children}</div>
       <div className="sheet-foot">{leading}<span className="spacer" />{trailing}</div>
@@ -812,4 +814,9 @@ export function OptionCard({ checked, onChange, icon, title, children, disabled 
     <span className="option-card-head"><span className="option-card-icon"><Icon name={icon} size={16} /></span><span className="t-row grow">{title}</span><ChoiceMark on={checked} square /></span>
     <span className="t-meta muted">{children}</span>
   </button>;
+}
+
+/** 一行滑块：标签 ｜ 滑块 ｜ 数值框。 */
+export function SliderRow(p: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void; format?: (v: number) => string }) {
+  return <div className="slider-line"><span className="t-row slider-line-label">{p.label}</span><Slider {...p} /></div>;
 }

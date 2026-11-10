@@ -12,7 +12,7 @@ import { type PacketItem, buildPacket, packetBaseName, wmContext, exportAll, exp
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { ActionMenu, Button, Checkbox, type Fate, FileFate, Note, OptionCard, ProgressBar, StepBar, Tabs, useNarrow, ConfirmSheet, CopyTextSheet, DateField, FieldRow, FormGroup, Modal, Pill, Segmented, SelectField, SheetScaffold, Switch, TextField, divider, item } from "../ui/kit";
-import { defaultPacketWatermark, eligibilityPill, type PreviewFile, useEligibility, WatermarkPreview, WatermarkSettingsPanel, SignedConfirm } from "./PacketWatermark";
+import { defaultPacketWatermark, inked, eligibilityPill, type PreviewFile, useEligibility, WatermarkPreview, WatermarkSettingsPanel, SignedConfirm } from "./PacketWatermark";
 import { estimateSize, kindOf, resolveText, sizeLabel } from "../services/watermark";
 import { ReissueRequestSheet, freshnessPill, statePill, useStageFile, refInfo, companyInfo } from "./common";
 
@@ -60,6 +60,8 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   const [previewIndex, setPreviewIndex] = useState(0);
   const [estimate, setEstimate] = useState<number | null>(null);
   const [focusRecipient, setFocusRecipient] = useState(false);
+  const [nameEdit, setNameEdit] = useState<string | null>(null);
+  const [askClose, setAskClose] = useState(false);
   const lastDir = platform().prefGet(lastDirKey);
   const [dest, setDest] = useState<{ kind: "packets" } | { kind: "last"; dir: string } | { kind: "path"; path: string }>({ kind: "packets" });
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -79,7 +81,7 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   const canWM = (id: string) => { const e = elig[id]; return !!e && e.ok; };
   const skipOf = (id: string) => { const e = elig[id]; return wm.skip.includes(id) || !e || !e.ok || ("signed" in e && !signedOK.includes(id)); };
   const wmItems = wm.enabled ? included.filter((i) => !skipOf(packetItemID(i))) : [];
-  const effective: PacketWatermark = { ...wm, skip: items.map(packetItemID).filter(skipOf) };
+  const effective: PacketWatermark = { ...wm, settings: inked(wm.settings), skip: items.map(packetItemID).filter(skipOf) };
   const needsRecipient = wm.enabled && wm.settings.parts.some((p) => p.kind === "tag" && p.tag === "recipient") && !recipient.trim();
   const steps = wm.enabled ? ["选文件", "水印", "导出"] : ["选文件", "导出"];
   const stage = wm.enabled ? (["files", "watermark", "export"] as const)[step] : (["files", "export"] as const)[Math.min(step, 1)];
@@ -105,7 +107,8 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   const previewFiles: PreviewFile[] = wmItems.map((i) => ({ id: packetItemID(i), title: title(i), url: store.fileURL(i.document!), kind: kindOf(store.fileURL(i.document!)) === "image" ? "image" : "pdf",
     text: company && template ? resolveText(wm.settings, wmContext(i, template, company, store, recipient)) : "" }));
   const fileName = company && template ? packetBaseName(company, template, store, complete, wm.enabled ? recipient : undefined) + ".zip" : "";
-  const destLabel = dest.kind === "path" ? dest.path : dest.kind === "last" ? dest.dir : store.folder.packetsDir;
+  const destLabel = dest.kind === "path" ? dest.path.replace(/[\\/][^\\/]*$/, "") : dest.kind === "last" ? dest.dir : store.folder.packetsDir;
+  const shownName = dest.kind === "path" ? dest.path.split(/[\\/]/).pop()! : nameEdit ?? fileName;
   const build = async () => {
     if (!company || !template) return;
     if (dest.kind !== "path") { const d = dest.kind === "last" ? dest.dir : store.folder.packetsDir; if (!(await platform().stat(d)).exists) { setPhase({ kind: "failed", message: `找不到保存位置：${d}。请换一个位置。` }); return; } }
@@ -116,7 +119,7 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
     try {
       const path = await buildPacket(items, template, company, store, {
         watermark: wm.enabled ? { wm: effective, recipient } : undefined, signal: ac.signal,
-        outDir: dest.kind === "last" ? dest.dir : undefined, outPath: dest.kind === "path" ? dest.path : undefined,
+        outDir: dest.kind === "last" ? dest.dir : undefined, outPath: dest.kind === "path" ? dest.path : undefined, outName: nameEdit ?? undefined,
         onProgress: (done, total) => setProgress({ done, total }),
         onItem: (i, state, n) => setRowState((rs) => rs.map((r, k) => (k === i ? { state, note: state === "run" ? (n ? `处理中 · ${n}` : "处理中") : n } : r))),
       });
@@ -160,7 +163,8 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
       <div className="row gap12"><span className="t-row grow">用途</span>
         {packets.length <= 4 ? <Segmented options={packets.map((p) => [p.id, p.name] as [string, string])} value={templateID} onChange={setTemplateID} />
           : <SelectField options={packets.map((p) => [p.id, p.name] as [string, string])} value={templateID} onChange={setTemplateID} placeholder="选择用途" minWidth={240} />}
-        <ActionMenu icon="ellipsis" kind="quiet" size="small" showsChevron={false} ariaLabel="用途操作" entries={[{ kind: "item", title: "编辑这个用途", action: () => setEditing({ id: templateID }), disabled: !template }, { kind: "item", title: "新建用途", action: () => setEditing({}) }]} />
+        <Button kind="quiet" size="small" disabled={!template} title="修改这个用途需要的文件类别和签发时限" onClick={() => setEditing({ id: templateID })}>编辑</Button>
+        <Button kind="quiet" size="small" onClick={() => setEditing({})}>新建</Button>
       </div>
       <div className="row gap12">
         <span className="col grow" style={{ gap: 2 }}><span className="t-row">水印</span><span className="t-meta muted">{wm.enabled ? "下一步设置水印文字和样式，只处理导出的副本。" : "导出的副本不加水印。"}</span></span>
@@ -194,14 +198,14 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   const watermarkStep = <div className="row start" style={{ gap: 36 }}>
     <div style={{ width: 380, flex: "none" }}><WatermarkSettingsPanel wm={wm} onChange={setWm} recipient={recipient} onRecipient={setRecipient} focusRecipient={focusRecipient} onFocused={() => setFocusRecipient(false)} /></div>
     <div className="col grow gap12" style={{ minWidth: 0 }}>
-      <WatermarkPreview files={previewFiles} index={Math.min(previewIndex, Math.max(0, previewFiles.length - 1))} onIndex={setPreviewIndex} settings={wm.settings} />
+      <WatermarkPreview files={previewFiles} index={Math.min(previewIndex, Math.max(0, previewFiles.length - 1))} onIndex={setPreviewIndex} settings={inked(wm.settings)} />
       {included.some((i) => kindOf(store.fileURL(i.document!)) === "other") && <Note>Word、Excel 等文件无法加水印，会原样放入，并在目录里注明。</Note>}
     </div>
   </div>;
 
   // ---------- ③ 导出 ----------
   const blocked = needsRecipient ? "水印里用了【接收方】，请先在“水印”一步填写接收方" : !included.length ? "还没有放入任何文件" : undefined;
-  const pickPath = async () => { const p = await platform().saveDialog({ defaultName: fileName, extensions: ["zip"], title: "保存材料包" }); if (p) setDest({ kind: "path", path: p }); };
+  const pickPath = async () => { const p = await platform().saveDialog({ defaultName: shownName, extensions: ["zip"], title: "保存材料包" }); if (p) setDest({ kind: "path", path: p }); };
   const exportStep = <div className="row start gap24">
     <div className="col grow" style={{ gap: 20, minWidth: 0 }}>
       {building ? <>
@@ -213,23 +217,24 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
             <div className="row gap12" style={{ padding: "10px 16px" }}>
               {r.state === "run" ? <span className="run-ring" aria-hidden /> : r.state === "done" ? <span className="state-dot done tick-pop" aria-hidden><Icon name="checkmark" size={12} /></span> : <span className="state-dot wait" aria-hidden />}
               <span className={`grow ${r.state === "wait" ? "muted" : "t-row"}`}>{title(it)}</span>
-              <span className={`t-meta ${r.state === "run" ? "green-text" : "muted"}`}>{r.note}</span>
+              <span className={`t-meta ${r.state === "run" ? "run-note" : "muted"}`}>{r.note}</span>
             </div></div>; })}
         </div>
         <span className="t-meta muted">每份文件处理完会打勾；取消后不会留下半成品。</span>
       </> : <>
         {phase.kind === "failed" && <Note tone="warn"><b>没有生成材料包</b><span className="t-meta selectable">{phase.message}</span></Note>}
         <section className="col gap8"><span className="t-row">保存到</span>
-          <div className="row gap12">
-            <Segmented options={lastDir ? [["packets", "材料包文件夹"], ["last", "上次的位置"]] : [["packets", "材料包文件夹"]]} value={dest.kind === "path" ? "custom" as never : dest.kind}
-              onChange={(v) => setDest(v === "last" && lastDir ? { kind: "last", dir: lastDir } : { kind: "packets" })} />
-            <span className="grow" /><Button size="small" onClick={() => void pickPath()}>更改…</Button>
+          <div className="row gap10">
+            <SelectField options={[["packets", "材料包文件夹"] as [string, string], ...(lastDir ? [["last", "上次的位置"] as [string, string]] : []), ...(dest.kind === "path" ? [["path", "自选位置"] as [string, string]] : [])]}
+              value={dest.kind} onChange={(v) => setDest(v === "last" && lastDir ? { kind: "last", dir: lastDir } : v === "path" ? dest : { kind: "packets" })} minWidth={180} />
+            <div className="row gap8 grow t-meta muted" style={{ minWidth: 0, height: 40, padding: "0 12px", borderRadius: "var(--r-input)", background: "var(--surface-sunken)" }}><Icon name="folder" size={14} /><span className="ellipsis selectable" data-tip={destLabel}>{destLabel}</span></div>
+            <Button size="small" onClick={() => void pickPath()}>更改…</Button>
           </div>
-          <div className="row gap8 t-meta muted" style={{ padding: "9px 12px", borderRadius: "var(--r-input)", background: "var(--surface-sunken)" }}><Icon name="folder.fill" size={13} /><span className="ellipsis selectable" data-tip={destLabel}>{destLabel}</span></div>
+          <span className="t-meta muted">下拉里可选“上次的位置”；“更改…”打开系统存储窗口。</span>
         </section>
         <section className="col gap8"><span className="t-row">文件名</span>
-          <span className="selectable" style={{ padding: "9px 12px", borderRadius: "var(--r-input)", boxShadow: "inset 0 0 0 2px var(--line)" }}>{dest.kind === "path" ? dest.path.split(/[\\/]/).pop() : fileName}</span>
-          <span className="t-meta muted">{wm.enabled && recipient ? "接收方已写进文件名；" : ""}在“更改…”里也可以改名。</span></section>
+          <TextField value={shownName} onChange={(v) => { if (dest.kind === "path") setDest({ kind: "path", path: dest.path.replace(/[^\\/]*$/, v) }); else setNameEdit(v); }} />
+          <span className="t-meta muted">可以直接修改{wm.enabled && recipient ? "；接收方已写进文件名" : ""}。</span></section>
         <section className="col gap8"><span className="t-row">导出选项</span>
           <div className="row gap12 start">
             <OptionCard checked={wm.stripMeta} onChange={(stripMeta) => setWm({ ...wm, stripMeta })} icon="checkmark.shield" title="清除文件信息">去掉 PDF 的作者、标题、创建软件和照片的拍摄地点、时间。对方看不到这些文件是谁、用什么做的。</OptionCard>
@@ -254,26 +259,28 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
       <span className="t-meta muted">已记入公司页“材料包发送记录”。</span>
       <div className="row gap10" style={{ paddingTop: 6 }}>
         <Button onClick={() => void platform().reveal(phase.path)}>{platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示"}</Button>
-        <Button kind="accent" onClick={() => setNote(true)}>复制发送说明</Button>
+        <Button onClick={() => setNote(true)}>复制发送说明</Button>
       </div>
     </div>
   </div>;
 
   const lastStep = steps.length - 1;
-  const leading = phase.kind === "done" || building ? null : step > 0 ? <Button kind="quiet" onClick={() => go(step - 1)}>上一步</Button> : <Button kind="quiet" onClick={onClose}>关闭</Button>;
+  const leading = phase.kind === "done" || building || step === 0 ? null : <Button kind="quiet" onClick={() => go(step - 1)}>上一步</Button>;
+  const requestClose = () => (building ? setAskClose(true) : onClose());
   const trailing = phase.kind === "done" ? <Button kind="primary" onClick={onClose}>完成</Button>
     : building ? <><Button onClick={() => abort.current?.abort()}>取消</Button><Button kind="primary" disabled>正在生成…</Button></>
     : step < lastStep ? <Button kind="primary" disabled={!included.length} onClick={() => { if (stage === "watermark" && needsRecipient) { setFocusRecipient(true); return; } go(step + 1); }}>{`下一步：${steps[step + 1]}`}</Button>
     : <Button kind="primary" softDisabled={!!blocked} title={blocked} onClick={() => (complete ? void build() : setConfirmPartial(true))}>{phase.kind === "failed" ? "重试" : complete ? "生成材料包" : "生成部分材料包"}</Button>;
 
   return (
-    <Modal onClose={() => !building && onClose()} dismissOnEscape={!building}>
-      <SheetScaffold title="准备文件包" subtitle={company ? `${company.name} · ${template?.name ?? ""}` : "按用途挑选每类文件的最新版本"} width={1120} height={820} fixedHeight
+    <Modal onClose={requestClose}>
+      <SheetScaffold title="准备文件包" subtitle={company ? `${company.name} · ${template?.name ?? ""}` : "按用途挑选每类文件的最新版本"} width={1120} height={820} fixedHeight onCloseButton={requestClose}
         headerTrailing={<StepBar steps={steps} current={phase.kind === "done" ? steps.length : Math.min(step, lastStep)} />} leading={leading} trailing={trailing}>
         {phase.kind === "done" ? doneView : <div key={`${stage}`} className={dir === "r" ? "step-in-r" : "step-in-l"}>
           {stage === "files" ? filesStep : stage === "watermark" ? watermarkStep : exportStep}
         </div>}
       </SheetScaffold>
+      {askClose && <ConfirmSheet title="取消导出并关闭？" message="正在生成的材料包会被丢弃，不会留下半成品。" cancelTitle="继续生成" confirmTitle="取消并关闭" destructive onClose={() => setAskClose(false)} onConfirm={() => { setAskClose(false); abort.current?.abort(); onClose(); }} />}
       {confirmPartial && <ConfirmSheet title="生成部分材料包？" message={`目录和文件名会标明“部分材料包”，并列出缺少的 ${missing.length} 项。`} confirmTitle="生成部分材料包" onClose={() => setConfirmPartial(false)} onConfirm={() => { setConfirmPartial(false); void build(); }} />}
       {askSigned && <SignedConfirm title={askSigned.title} onClose={() => setAskSigned(null)} onConfirm={() => { setSignedOK([...signedOK, askSigned.id]); setWm({ ...wm, skip: wm.skip.filter((x) => x !== askSigned.id) }); }} />}
       {editing && <PurposeEditor purposeID={editing.id} onClose={() => setEditing(null)} onSaved={(id) => { if (id === templateID) reload(); else setTemplateID(id); }} onDeleted={() => setTemplateID(store.data.library.packets[0]?.id ?? "")} />}

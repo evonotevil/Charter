@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PacketTemplate, PacketWatermark } from "../domain/models";
 import { type PacketItem, type WMEligibility, packetIncluded, packetItemID, packetItemTitle, wmContext, wmEligibility } from "../services/packets";
-import { type WMPart, type WMStyle, type WatermarkSettings, WM_COLORS, WM_TAGS, defaultWatermark, drawWatermark, kindOf, resolveText, tagLabel } from "../services/watermark";
+import { type WMPart, type WMStyle, type WatermarkSettings, WM_TAGS, defaultWatermark, drawWatermark, kindOf, resolveText, tagLabel } from "../services/watermark";
 import type { Company } from "../domain/models";
 import type { Store } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { Button, ColorSwatch, ConfirmSheet, MenuList, Note, Popover, Segmented, SelectField, Slider, TextField } from "../ui/kit";
+import { Button, ConfirmSheet, MenuList, Note, Popover, Segmented, SelectField, SliderRow, TextField } from "../ui/kit";
 
+/** 5.5.3：水印固定墨色。 */
+export const WM_INK = "#25352C";
+export const inked = (s: WatermarkSettings): WatermarkSettings => ({ ...s, color: WM_INK });
 export const defaultPacketWatermark = (): PacketWatermark => ({ enabled: false, settings: defaultWatermark(), skip: [], stripMeta: false });
 
 /** 每个清单项能否加水印。签名 PDF 第一次出现时默认不加。 */
@@ -47,7 +50,9 @@ function TokenBuilder({ parts, onChange }: { parts: WMPart[]; onChange: (p: WMPa
   return <div className="col gap8">
     <div className="wm-tokens" aria-label="水印文字组成，可拖动调整顺序">
       {parts.map((p, i) => (
-        <span key={`${i}-${name(p)}`} className={`wm-token ${p.kind} ${drag === i ? "dragging" : ""} ${fresh === i ? "fresh" : ""}`} draggable
+        <span key={`${i}-${name(p)}`} className={`wm-token ${p.kind} ${drag === i ? "dragging" : ""} ${fresh === i ? "fresh" : ""}`} draggable tabIndex={0}
+          aria-label={`${name(p)}，第 ${i + 1} 个；用左右方向键移动，Delete 删除`}
+          onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "ArrowLeft") { e.preventDefault(); move(i, i - 1); } else if (e.key === "ArrowRight") { e.preventDefault(); move(i, i + 1); } else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); onChange(parts.filter((_, k) => k !== i)); } }}
           style={over === i && drag !== null && drag !== i ? { boxShadow: `${drag > i ? "-3px" : "3px"} 0 0 0 var(--green)` } : undefined}
           onDragStart={(e) => { setDrag(i); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => { setDrag(null); setOver(null); }}
           onDragOver={(e) => { e.preventDefault(); setOver(i); }} onDrop={(e) => { e.preventDefault(); if (drag !== null) move(drag, i); setDrag(null); setOver(null); }}>
@@ -77,31 +82,23 @@ export function WatermarkSettingsPanel({ wm, onChange, recipient, onRecipient, f
   useEffect(() => { if (!focusRecipient) return; const t = setTimeout(() => { recBox.current?.scrollIntoView({ block: "center", behavior: "smooth" }); recBox.current?.querySelector("input")?.focus(); onFocused?.(); }, 260); return () => clearTimeout(t); }, [focusRecipient]);
   const s = wm.settings;
   const set = (p: Partial<WatermarkSettings>) => onChange({ ...wm, settings: { ...s, ...p } });
-  const custom = !WM_COLORS.some(([c]) => c.toLowerCase() === s.color.toLowerCase());
   const usesRecipient = s.parts.some((p) => p.kind === "tag" && p.tag === "recipient");
   const head = (t: string, right?: React.ReactNode) => <div className="row gap8"><span className="t-row grow">{t}</span>{right}</div>;
-  return <div className="col" style={{ gap: 18 }}>
-    <section className="col gap8">{head("水印文字", <span className="t-meta muted">拖动或用 ‹ › 调整顺序</span>)}<TokenBuilder parts={s.parts} onChange={(parts) => set({ parts })} /></section>
+  return <div className="col" style={{ gap: 20 }}>
+    <section className="col gap8"><span className="t-row">水印文字</span><TokenBuilder parts={s.parts} onChange={(parts) => set({ parts })} />
+      <span className="t-meta muted">拖动标签调整顺序；鼠标移到标签上可左移、右移或删除。</span></section>
     <section className="col gap8">{head("语言", <Segmented options={[["zh", "中文"], ["en", "English"]]} value={s.lang} onChange={(lang) => set({ lang })} />)}
       {s.lang === "en" && <span className="t-meta muted">日期写作 10 Nov 2026，文件名称用英文类型名；公司名称、接收方和自定义文字照原样。</span>}</section>
-    <section className="col gap8" ref={recBox as never}>{head("接收方", <span className="t-meta muted">每次导出时确认</span>)}
+    <section className="col gap8" ref={recBox as never}><span className="t-row">接收方</span>
       <TextField value={recipient} onChange={onRecipient} placeholder="例如 汇丰银行" invalid={usesRecipient && !recipient.trim()} />
-      {usesRecipient && !recipient.trim() && <span className="t-meta amber-text">水印里用了【接收方】，请填写。</span>}</section>
+      {usesRecipient && !recipient.trim() ? <span className="t-meta amber-text">水印里用了【接收方】，请填写。</span> : <span className="t-meta muted">每次导出时确认，会写进水印和文件名。</span>}</section>
     <section className="col gap8">{head("样式", <Segmented<WMStyle> options={[["tile", "斜向平铺"], ["center", "居中大字"], ["footer", "页脚一行"]]} value={s.style} onChange={(style) => set({ style })} />)}</section>
     <section className="col gap12">
-      <div className="col gap4"><div className="row gap8"><span className="t-label muted grow">不透明度</span><span className="wm-sample" style={{ color: s.color, opacity: Math.max(.08, s.opacity / 100) }} aria-hidden>水印 Aa</span></div>
-        <Slider label="不透明度" min={1} max={100} value={s.opacity} onChange={(opacity) => set({ opacity })} format={(v) => `${v}%`} /></div>
-      <div className="col gap4"><span className="t-label muted">字号（页宽）</span><Slider label="字号" min={1} max={12} step={0.5} value={s.size} onChange={(size) => set({ size })} format={(v) => `${v}%`} /></div>
-      {s.style !== "footer" && <div className="col gap4"><span className="t-label muted">倾斜角度</span><Slider label="倾斜角度" min={-90} max={90} value={s.angle} onChange={(angle) => set({ angle })} format={(v) => `${v}°`} /></div>}
+      <SliderRow label="不透明度" min={1} max={100} value={s.opacity} onChange={(opacity) => set({ opacity })} format={(v) => `${v}%`} />
+      <SliderRow label="字号" min={1} max={12} step={0.5} value={s.size} onChange={(size) => set({ size })} format={(v) => `${v}%`} />
+      {s.style !== "footer" && <SliderRow label="倾斜角度" min={-90} max={90} value={s.angle} onChange={(angle) => set({ angle })} format={(v) => `${v}°`} />}
     </section>
-    <section className="col gap8">{head("颜色")}
-      <div className="row gap12 wrap">
-        {WM_COLORS.map(([c, l]) => { const on = c.toLowerCase() === s.color.toLowerCase(); return <ColorSwatch key={c} color={c} label={l} selected={on} onPick={() => set({ color: c })} />; })}
-        <label className={`swatch-custom ${custom ? "on" : ""}`} data-tip="自定义颜色">
-          <span className="wheel" style={custom ? { background: s.color } : undefined} />{custom ? s.color.toUpperCase() : "自定义…"}
-          <input type="color" aria-label="自定义颜色" value={/^#[0-9a-f]{6}$/i.test(s.color) ? s.color : "#25352C"} onChange={(e) => set({ color: e.target.value.toUpperCase() })} />
-        </label>
-      </div></section>
+    <span className="t-meta muted">水印统一使用墨色（{WM_INK}），打印效果为黑色。字号按页宽的百分比计算。</span>
   </div>;
 }
 
