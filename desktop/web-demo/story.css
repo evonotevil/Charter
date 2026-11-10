@@ -154,3 +154,14 @@ footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16
   .gallery-layout .gallery-controls { display: flex; justify-content: start; gap: 4px; }
   .gallery-layout button span { display: none; }
 }
+
+.packet-guide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--line); background: var(--surface-sunken); }
+.packet-guide li { display: grid; align-content: start; gap: 4px; padding: 12px 16px; }
+.packet-guide li + li { border-inline-start: 1px solid var(--line); }
+.packet-guide strong { font-size: 14px; color: var(--ink); }
+.packet-guide span { font-size: 13px; color: var(--muted); }
+.workspace-packet iframe { height: min(820px, 86svh); }
+@media (max-width: 600px) {
+  .packet-guide { grid-template-columns: minmax(0, 1fr); }
+  .packet-guide li + li { border-inline-start: 0; border-top: 1px solid var(--line); }
+}

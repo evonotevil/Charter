@@ -20,7 +20,7 @@ const views = [
   { label: "查到期", view: "deadlines", caption: "查看申报事项和证件的到期日，安排下一步。" },
   { label: "找档案", view: "company", caption: "按公司找回基本资料、登记信息和历史记录。" },
   { label: "管文件", view: "documents", caption: "按公司和文件类型归档，查看现行文件和需要更新的材料。" },
-  { label: "备材料", view: "packet", caption: "准备材料包并加水印：以银行开户为例，核对文件清单，打开「加水印」，再查看副本预览。原件不变。" },
+  { label: "备材料", view: "packet", caption: "以银行开户为例，体验 5.5.1 的材料包流程。水印只处理副本，原件不变。" },
   { label: "查任职", view: "people", caption: "从人员档案查看关联公司与任职情况。" },
 ] as const;
 const release = "https://github.com/evonotevil/Charter/releases";
@@ -42,6 +42,11 @@ function Gallery() {
         {views.map((item, i) => <button type="button" key={item.label} aria-pressed={i === index} onClick={() => setIndex(i)}>{item.label}<span aria-hidden="true">→</span></button>)}
       </div>
       <figure className="product-frame">
+        {view.view === "packet" && <ol className="packet-guide" aria-label="材料包演示步骤">
+          <li><strong>选文件</strong><span>开启「加水印」，按文件选择原样放入、加水印或不放入。</span></li>
+          <li><strong>水印</strong><span>进入下一步，切换预览文件，拖动不透明度看实时变化。</span></li>
+          <li><strong>导出</strong><span>核对文件清单、保存位置和导出选项。</span></li>
+        </ol>}
         <WorkspaceDemo key={view.view} view={view.view} />
         <figcaption aria-live="polite">{view.caption}</figcaption>
       </figure>

@@ -11,7 +11,7 @@ const titles: Record<DemoView, string> = {
 
 export function WorkspaceDemo({ view }: { view: DemoView }) {
   const src = `./workspace.html?view=${view}`;
-  return <div className="workspace-embed">
+  return <div className={view === "packet" ? "workspace-embed workspace-packet" : "workspace-embed"}>
     <iframe src={src} title={`Charter 演示：${titles[view]}`} loading="lazy" sandbox="allow-scripts allow-same-origin" />
     <a className="workspace-open" href={src} target="_blank" rel="noopener">在新标签页打开演示</a>
     <div className="workspace-mobile">
