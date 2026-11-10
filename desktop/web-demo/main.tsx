@@ -58,7 +58,30 @@ function Downloads() {
         {variants.map(([label, file]) => <a key={file} href={`${release}/download/v5.5.0/Charter-5.5.0-${file}`}><span>{label}</span><span>下载</span></a>)}
       </div>)}
     </div>
-    <p className="download-note">首次打开可能出现系统安全提示。<a href={`${release}/tag/v5.5.0`}>查看 5.5.0 发布说明</a> · <a href={`${release}/download/v5.5.0/SHA256SUMS.txt`}>校验值</a></p>
+    <div className="install-guide">
+      <h3>首次打开 Charter</h3>
+      <p>首次打开时，系统可能提示无法验证开发者。请先确认安装包来自 <a href={`${release}/tag/v5.5.0`}>官方 GitHub 发布页</a>，并核对 <a href={`${release}/download/v5.5.0/SHA256SUMS.txt`}>SHA-256 校验值</a>。</p>
+      <div className="install-platforms">
+        <section>
+          <h4>Mac</h4>
+          <ol>
+            <li>打开 DMG，把 Charter 拖到「应用程序」，然后从「应用程序」打开一次。</li>
+            <li>如果提示无法验证开发者，打开「系统设置 → 隐私与安全性」，找到 Charter 的提示，点「仍要打开」并确认。<a href="https://support.apple.com/zh-cn/102445">Apple 官方说明</a></li>
+            <li>如果已确认来源和校验值，也可以打开「终端」，粘贴下面的命令并按回车，再从「应用程序」打开 Charter：</li>
+          </ol>
+          <pre><code>xattr -cr /Applications/Charter.app</code></pre>
+          <p>这会递归清除这个应用包的扩展属性（包括下载隔离标记）。成功时通常没有输出。若提示找不到文件，请先确认 Charter 已放进「应用程序」且名称未改。</p>
+        </section>
+        <section>
+          <h4>Windows</h4>
+          <ol>
+            <li>安装版：打开下载的 <code>Setup.exe</code>。免安装版：先解压 ZIP，再打开解压目录里的 <code>Charter.exe</code>。</li>
+            <li>如果 Microsoft Defender SmartScreen 显示「Windows 已保护你的电脑」，确认来源和校验值后，点「更多信息 → 仍要运行」（如果该选项可用）。</li>
+            <li>如果提示检测到威胁，或设备策略不允许继续，请停止安装；公司设备可联系 IT。<a href="https://support.microsoft.com/en-us/windows/security/windows-security/app-browser-control-in-the-windows-security-app">Microsoft 官方说明</a></li>
+          </ol>
+        </section>
+      </div>
+    </div>
   </section>;
 }
 

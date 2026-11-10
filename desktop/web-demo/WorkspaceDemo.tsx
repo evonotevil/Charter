@@ -13,5 +13,9 @@ export function WorkspaceDemo({ view }: { view: DemoView }) {
   return <div className="workspace-embed">
     <iframe src={src} title={`Charter 演示：${titles[view]}`} loading="lazy" sandbox="allow-scripts allow-same-origin" />
     <a className="workspace-open" href={src} target="_blank" rel="noopener">在新标签页打开演示</a>
+    <div className="workspace-mobile">
+      <p>演示会在新标签页打开。横屏可以看到更多应用界面。</p>
+      <a className="secondary" href={src} target="_blank" rel="noopener">打开{titles[view]}演示</a>
+    </div>
   </div>;
 }
