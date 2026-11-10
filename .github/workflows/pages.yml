@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      - "desktop/web-demo/**"
+      - "desktop/src/**"
+      - "desktop/package.json"
+      - "desktop/package-lock.json"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -24,13 +28,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate website assets
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Build interactive website
+        working-directory: desktop
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         run: |
-          test -f site/index.html
-          test -f site/assets/charter-icon.png
-          test "$(find site/assets/screens -type f -name '*.png' | wc -l)" -eq 5
-          test "$(find site/assets/store -type f -name '*.png' | wc -l)" -eq 5
-          test "$(find site/assets/fonts -type f -name '*.woff2' | wc -l)" -eq 3
+          npm ci
+          npm exec -- vite build --config web-demo/vite.config.ts
+
+      - name: Preserve public assets and validate output
+        run: |
+          output=desktop/web-demo/dist
+          cp -R site/assets/. "$output/assets/"
+          test -f "$output/index.html"
+          test -f "$output/workspace.html"
+          test -f "$output/assets/charter-icon.png"
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -38,7 +57,7 @@ jobs:
       - name: Upload website
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: desktop/web-demo/dist
 
   deploy:
     environment:
