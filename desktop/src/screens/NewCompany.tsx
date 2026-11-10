@@ -75,7 +75,7 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
         <div className="sheet-body row" style={{ alignItems: "flex-start", gap: 28 }}>
           <div className="col" style={{ flex: 1.2, gap: 18, minWidth: 0 }}>
             <label className="v4-field">注册名
-              <input className="v4-input" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="例如 Mingan Vietnam Co., Ltd." aria-invalid={!!nameError} />
+              <input className="field" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="例如 Mingan Vietnam Co., Ltd." aria-invalid={!!nameError} />
               {nameError && <span className="danger-text t-meta">{nameError}</span>}
             </label>
             <div className="v4-field">法域 · 必选
@@ -108,7 +108,7 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
                 <div className="v4-line">
                   <span className="v4-code">{holder.kind === "existing" && holder.ref.kind === "company" ? store.company(holder.ref.id)?.jurisdiction : holder.kind === "newCompany" ? (holder.jurisdiction || "?") : [...holderName][0]}</span>
                   <span className="grow ellipsis" style={{ fontWeight: 600 }}>{holderName}{holder.kind !== "existing" ? "（新建）" : ""}</span>
-                  <input className="v4-input num" style={{ width: 70, height: 30, textAlign: "right" }} value={percent} onChange={(e) => setPercent(e.target.value.replace(/[^\d.]/g, ""))} aria-label="持股比例" />
+                  <input className="field num" style={{ width: 70, height: 30, textAlign: "right" }} value={percent} onChange={(e) => setPercent(e.target.value.replace(/[^\d.]/g, ""))} aria-label="持股比例" />
                   <span className="muted">%</span>
                   <button className="v4-x" aria-label="移除股东" onClick={() => { setHolder(null); setQ(""); setTimeout(() => qRef.current?.focus()); }}><Icon name="xmark" size={10} /></button>
                 </div>
@@ -150,7 +150,7 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
               </div>
             </div>
             <div className="row gap12">
-              <label className="v4-field grow">注册编号<input className="v4-input mono" value={reg} onChange={(e) => setReg(e.target.value)} placeholder="可稍后补" /></label>
+              <label className="v4-field grow">注册编号<input className="field mono" value={reg} onChange={(e) => setReg(e.target.value)} placeholder="可稍后补" /></label>
               <div className="v4-field">成立日期<DateField value={inc} onChange={setInc} placeholder="可稍后补" /></div>
             </div>
           </div>
@@ -214,7 +214,7 @@ function EntityCombo({ value, onChange, kinds, onPick, extra, placeholder, ariaL
     </button>); };
   return (
     <div style={{ position: "relative", flex: bare ? "1 1 160px" : undefined, minWidth: bare ? 160 : undefined }}>
-      <input ref={inputRef} className={bare ? undefined : "v4-input"} value={value} placeholder={placeholder} aria-label={ariaLabel} role="combobox" aria-expanded={open}
+      <input ref={inputRef} className={bare ? undefined : "field"} value={value} placeholder={placeholder} aria-label={ariaLabel} role="combobox" aria-expanded={open}
         style={bare ? { width: "100%" } : undefined}
         onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onChange={(e) => { onChange(e.target.value); setOpen(true); }}
         onKeyDown={(e) => {

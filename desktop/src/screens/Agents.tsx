@@ -81,7 +81,7 @@ function AgentDetail({ p }: { p: Party }) {
             <div key={c.id} ref={contactMotion.rowRef(c.id)} className={`v4-contact ${contactMotion.isNew(c.id) ? "cp-new" : ""}`}>
               <div className="row gap6">
                 <InlineText value={c.name} placeholder="姓名" label="姓名" style={{ fontWeight: 600 }} onCommit={(v) => setContacts(contacts.map((x, j) => (j === i ? { ...x, name: v } : x)))} />
-                {i === 0 ? <span className="v4-chip lime">主对接</span>
+                {i === 0 ? <span className="pill valid">主对接</span>
                   : <button className="link t-meta muted" style={{ whiteSpace: "nowrap" }} onClick={() => setContacts([c, ...contacts.filter((_, j) => j !== i)])}>设为主对接</button>}
                 <span className="spacer" />
                 <button className="v4-x" aria-label="删除对接人" onClick={() => setContacts(contacts.filter((_, j) => j !== i))}><Icon name="xmark" size={10} /></button>

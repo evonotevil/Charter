@@ -28,7 +28,7 @@ export type Sheet =
   | { kind: "groupMembers"; group: string } | { kind: "addRelation"; companyID: string; upward: boolean } | { kind: "companyItems"; companyID: string } | { kind: "scope"; ownerKind: "company" | "person"; owners?: string[] } | { kind: "trashDocs"; ids: string[] }
   | { kind: "quickSearch" } | { kind: "exportAll"; companyID: string } | { kind: "chainQuery"; from?: NodeRef; to?: string }
   | { kind: "editCompany"; companyID: string } | { kind: "importFiles"; paths: string[] } | { kind: "resumeImport" }
-  | { kind: "packet"; companyID?: string } | { kind: "packetFor"; companyID: string; purposeID: string } | { kind: "change"; companyID: string }
+  | { kind: "packet"; companyID?: string } | { kind: "packetFor"; companyID: string; purposeID: string; recipient?: string } | { kind: "change"; companyID: string }
   | { kind: "changeFrom"; companyID: string; changeKind: ChangeKind; appointmentID?: string; holdingID?: string }
   | { kind: "obligation"; key: string } | { kind: "document"; id: string } | { kind: "confirmRule"; ruleID: string; companyID?: string };
 

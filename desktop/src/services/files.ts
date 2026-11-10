@@ -4,6 +4,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import JSZip from "jszip";
 import { platform } from "../platform/platform";
+import { brandFontSubset } from "./brandfont";
 
 export interface PDFSection { heading: string; lines: string[]; alert: boolean }
 
@@ -15,15 +16,23 @@ async function cjk(): Promise<Uint8Array | null> {
   return fontCache;
 }
 
-const accent = rgb(0.659, 0.075, 0.169);
+// 5.5：目录 PDF 的强调色改用 Charter 设计系统的 green-text（#2F7A00）与 ink（#25352C），不再用旧版的红色
+const accent = rgb(0x2f / 255, 0x7a / 255, 0);
+const ink = rgb(0x25 / 255, 0x35 / 255, 0x2c / 255);
+const muted = rgb(0x5f / 255, 0x6d / 255, 0x66 / 255);
+const amber = rgb(0x93 / 255, 0x61 / 255, 0);
 
 export async function writePDF(title: string, subtitle: string, sections: PDFSection[], footer?: string): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
-  const bytes = await cjk();
+  // 5.5：优先用随包附带的思源黑体（取子集），两端效果一致；拿不到时退回系统中文字体
+  const allText = [title, subtitle, footer ?? "", ...sections.flatMap((x) => [x.heading, ...x.lines])].join("") + "0123456789/ （）·";
+  const brand = await brandFontSubset(allText);
+  const bytes = brand ? null : await cjk();
   let font: PDFFont, bold: PDFFont;
   let ascii = false;
-  if (bytes) {
+  if (brand) { font = await doc.embedFont(brand, { subset: false }); bold = font; }
+  else if (bytes) {
     font = await doc.embedFont(bytes, { subset: true });
     bold = font;
   } else {
@@ -51,7 +60,7 @@ export async function writePDF(title: string, subtitle: string, sections: PDFSec
     if (first) {
       page.drawCircle({ x: left + 11, y: 771, size: 11, color: accent });
       let ty = 740;
-      for (const l of wrap(title, bold, 24)) { page.drawText(l, { x: left, y: ty, size: 24, font: bold }); ty -= 30; }
+      for (const l of wrap(title, bold, 24)) { page.drawText(l, { x: left, y: ty, size: 24, font: bold, color: ink }); ty -= 30; }
       for (const l of wrap(subtitle, bold, 13)) { page.drawText(l, { x: left, y: ty - 4, size: 13, font: bold, color: accent }); ty -= 18; }
       y = ty - 24;
     } else y = 780;
@@ -63,19 +72,19 @@ export async function writePDF(title: string, subtitle: string, sections: PDFSec
     if (s.heading) {
       ensure(36);
       y -= 10;
-      page.drawText(clean(s.heading), { x: left, y, size: 12, font: bold, color: s.alert ? accent : rgb(0, 0, 0) });
+      page.drawText(clean(s.heading), { x: left, y, size: 12, font: bold, color: s.alert ? amber : ink });
       y -= 22;
     }
     for (const line of s.lines) for (const l of wrap(line, font, 11)) {
       ensure(20);
-      page.drawText(l, { x: left, y, size: 11, font, color: rgb(0.33, 0.33, 0.33) });
+      page.drawText(l, { x: left, y, size: 11, font, color: muted });
       y -= 18;
     }
   }
   if (footer) {
     ensure(40);
     y -= 16;
-    for (const l of wrap(footer, bold, 10.5)) { page.drawText(l, { x: left, y, size: 10.5, font: bold, color: accent }); y -= 15; }
+    for (const l of wrap(footer, bold, 10.5)) { page.drawText(l, { x: left, y, size: 10.5, font: bold, color: amber }); y -= 15; }
   }
   return await doc.save();
 }

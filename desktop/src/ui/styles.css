@@ -172,7 +172,7 @@ html.overlay-open .drag-region { -webkit-app-region: no-drag; app-region: no-dra
   transition: border-color var(--fast), box-shadow var(--fast); }
 .field:hover, .v4-input:hover { border-color: var(--line-strong); }
 .field:focus, .v4-input:focus { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
-.field.invalid, .v4-input[aria-invalid="true"] { border-color: var(--red-text); }
+.field.invalid, .field[aria-invalid="true"] { border-color: var(--red-text); }
 .date-field { display: inline-flex; height: var(--input-h); min-height: var(--input-h); padding: 0 10px 0 8px; border-radius: var(--r-input); background: var(--surface); border: 2px solid var(--line); transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease); }
 .date-field:hover { border-color: var(--line-strong); }
 .date-field.focus { border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
@@ -654,8 +654,12 @@ button.list-row:hover, .list-row.click:hover { background: var(--surface-hover);
 .st.extra { background: var(--blue-soft); color: var(--blue-text); }
 
 /* 5.3.1：软禁用——可聚焦、可读原因，但外观和光标明确不可用 */
-.btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; box-shadow: none; transform: none; }
-.btn[aria-disabled="true"]:hover { background: inherit; }
+/* 5.5：禁用态统一用 --disabled-* 令牌，不再整体降透明度（降透明度会让文字对比不足、深色模式发灰）。 */
+.btn[aria-disabled="true"] { background: var(--disabled-bg) !important; color: var(--disabled-fg) !important; cursor: not-allowed; box-shadow: none; transform: none; }
+.btn[aria-disabled="true"]:hover { background: var(--disabled-bg) !important; }
+button[role="checkbox"]:disabled, button[role="switch"]:disabled, button[role="radio"]:disabled { cursor: not-allowed; color: var(--disabled-fg); }
+button[role="checkbox"]:disabled .mark, button[role="radio"]:disabled .mark { background: var(--disabled-bg); border-color: var(--line); color: var(--disabled-fg); }
+button[role="switch"]:disabled .switch { background: var(--disabled-bg); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .pick-chip.outline { background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); }
 .files-table { table-layout: fixed; width: 100%; }
@@ -704,9 +708,44 @@ mark.hl { background: var(--green-soft); color: inherit; border-radius: 3px; pad
 html.overlay-open :is(.brand, .page-head, .toolbar) { -webkit-app-region: no-drag; app-region: no-drag; }
 /* 5.4.2 悬停提示 */
 .tooltip { position: fixed; z-index: 10000; max-width: 280px; padding: 6px 9px; border-radius: 8px; background: var(--ink); color: var(--surface); font-size: 12px; line-height: 1.45; font-weight: 500;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, .18); pointer-events: none; white-space: pre-line; overflow-wrap: anywhere; animation: tip-in var(--fast) var(--ease) both; }
+  box-shadow: var(--overlay); pointer-events: none; white-space: pre-line; overflow-wrap: anywhere; animation: tip-in var(--fast) var(--ease) both; }
 .tooltip[hidden] { display: none; }
 @keyframes tip-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
 .tooltip[data-side="bottom"] { animation-name: tip-in-b; }
 @keyframes tip-in-b { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .tooltip { animation: none; } }
+
+/* ---------- 5.5：设计系统补齐 ---------- */
+.v4-chip, .pick-chip { border-radius: 8px; height: 22px; }               /* 与 .pill 同尺寸：Pill 是唯一的标签样式 */
+.progress { height: 6px; border-radius: 3px; background: var(--hairline); overflow: hidden; flex: none; }
+.progress-fill { display: block; height: 100%; background: var(--ink); transition: width var(--standard) var(--ease); }
+.progress-fill.green { background: var(--green); }
+.progress-fill.amber { background: var(--amber); }
+.note { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-control); background: var(--surface-sunken); color: var(--ink); font-size: 12.5px; line-height: 1.5; }
+.note .note-icon { flex: none; display: inline-flex; padding-top: 2px; color: var(--muted); }
+.note .note-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.note.info { background: var(--blue-soft); } .note.info .note-icon { color: var(--blue-text); }
+.note.warn { background: var(--amber-soft); } .note.warn .note-icon, .note.warn b { color: var(--amber-text); }
+.note.bad { background: var(--red-soft); } .note.bad .note-icon, .note.bad b { color: var(--red-text); }
+.note.ok { background: var(--green-soft); } .note.ok .note-icon, .note.ok b { color: var(--green-text); }
+.slider-row { display: flex; align-items: center; gap: 12px; }
+.slider { -webkit-appearance: none; appearance: none; flex: 1; min-width: 80px; height: 22px; background: transparent; cursor: pointer; }
+.slider::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(to right, var(--green) var(--pct), var(--line) var(--pct)); }
+.slider::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; margin-top: -8px; border-radius: 50%; background: var(--knob); box-shadow: var(--knob-shadow), inset 0 0 0 2px var(--line); }
+.slider:focus-visible { outline: none; } .slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--green-soft), inset 0 0 0 2px var(--green); }
+.slider-value { height: 32px; min-height: 32px; text-align: right; padding: 0 10px; }
+.swatch { width: 28px; height: 28px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px var(--hairline); }
+.swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--green); }
+.wm-tokens { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; min-height: var(--input-h); border-radius: var(--r-input); background: var(--surface); border: 2px solid var(--line); align-items: center; }
+.wm-token { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 9px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: grab; }
+.wm-token.tag { background: var(--green-soft); color: var(--green-text); }
+.wm-token.text { background: var(--surface-sunken); color: var(--ink); }
+.wm-token.dragging { opacity: .4; }
+.wm-token button { display: inline-flex; color: inherit; opacity: .7; border-radius: 6px; padding: 2px; } .wm-token button:hover { opacity: 1; background: color-mix(in srgb, currentColor 12%, transparent); }
+.wm-page { background: var(--paper); border-radius: 4px; box-shadow: var(--paper-shadow); display: block; max-width: 100%; }
+.panel-soft { border-radius: var(--r-tile); background: color-mix(in srgb, var(--band) 55%, transparent); box-shadow: inset 0 0 0 1px var(--hairline); }
+.panel { border-radius: var(--r-card); background: var(--surface); box-shadow: inset 0 0 0 1px var(--hairline); }
+.select:disabled, .field:disabled, .v4-input:disabled { background: var(--disabled-bg); color: var(--disabled-fg); border-color: var(--line); cursor: not-allowed; }
+.wm-row-toggle { width: 26px; height: 26px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-sunken); color: var(--faint); box-shadow: inset 0 0 0 2px var(--line); }
+.wm-row-toggle[aria-checked="true"] { background: var(--green); color: var(--on-green); box-shadow: none; }
+.wm-row-toggle:disabled { background: var(--disabled-bg); color: var(--disabled-fg); box-shadow: none; cursor: not-allowed; }

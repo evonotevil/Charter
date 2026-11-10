@@ -163,7 +163,7 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
         <div className="t-title">{o.rule.name}</div>
         <div className="muted t-meta">{D.long(o.due)}截止 · {leftText(D.daysBetween(store.today, o.due))}{o.rule.localName ? " · " + o.rule.localName : ""}</div>
       </div>
-      <div className="row gap10 wrap" style={{ padding: "12px 14px", borderRadius: 14, background: "var(--surface-sunken)" }}>
+      <div className="row gap10 wrap" style={{ padding: "12px 14px", borderRadius: "var(--r-control)", background: "var(--surface-sunken)" }}>
         <span className="col grow" style={{ minWidth: 0, gap: 2 }}>
           <span className="row gap6" style={{ fontWeight: 600 }}><Icon name={o.record?.dateConfirmed ? "checkmark.circle" : "info.circle"} size={13} />{o.record?.dateConfirmed ? "日期已确认" : "日期按规则推算"}</span>
           <span className="t-meta muted">{o.record?.dateConfirmed ? "可随时改。" : `${store.scheduleText(o.rule.schedule)}。和中介核对后确认或修改。`}</span>
@@ -171,7 +171,7 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
         <DateField value={o.due} onChange={(d) => d && store.confirmDue(o, d)} allowsClear={false} minWidth={150} />
         {!o.record?.dateConfirmed && <Button size="small" onClick={() => store.confirmDue(o)}>确认</Button>}
       </div>
-      <div className="col gap10" style={{ padding: 14, borderRadius: 14, background: "var(--surface-sunken)" }}>
+      <div className="col gap10" style={{ padding: 14, borderRadius: "var(--r-control)", background: "var(--surface-sunken)" }}>
         <div className="row" style={{ justifyContent: "space-between" }}>
           <span className="v4-label">找谁办</span>
           {own ? <PickChip label="此事项单独指定" title="点按改回公司默认中介" width={220}>{(close) => <>
@@ -189,7 +189,7 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
         {party && !contacts.length && <button className="link t-meta" style={{ textAlign: "left" }} onClick={() => router.openAgent(party.id)}>这家中介还没有对接人，去添加…</button>}
         {party && (() => { const all = store.openForParty(party.id).filter((x) => x.key !== o.key); const late = all.filter((x) => x.due < store.today).length;
           return all.length > 0 && <button className="row gap8 agent-load" onClick={() => router.openAgent(party.id)} title="打开这家中介">
-            <b className="t-figure" style={{ fontSize: 22 }}>{all.length}</b><span className="t-meta">这家中介手上还有 {all.length} 件{late ? `，其中 ${late} 件已逾期` : ""}，可以一封邮件一起问</span></button>; })()}
+            <b className="t-figure" style={{ fontSize: 23 }}>{all.length}</b><span className="t-meta">这家中介手上还有 {all.length} 件{late ? `，其中 ${late} 件已逾期` : ""}，可以一封邮件一起问</span></button>; })()}
       </div>
       <div className="col gap6">
         <span className="v4-label">邮件草稿（可改）</span>

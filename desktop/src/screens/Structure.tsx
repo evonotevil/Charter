@@ -18,6 +18,7 @@ import { reducedMotion } from "../ui/motion";
 import { Icon } from "../ui/Icon";
 import { ActionMenu, Avatar, shortcutLabel, Button, Card, EmptyStateView, JurisdictionBadge, PageHeader, Pill, item, divider } from "../ui/kit";
 import { companyTint } from "../ui/uistyle";
+import { tok } from "../ui/lighttokens";
 import { CompanyChips } from "./PropChips";
 import { GroupFilter } from "./Companies";
 import { leftText } from "./InfoCard";
@@ -337,7 +338,7 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
           const l = lvl(n.key);
           return (
             <div key={n.key} className={`node ${chain.nodes.has(n.key) && focusing ? "chain" : ""} ${matches.has(n.key) ? "match" : ""} ${l !== undefined ? "grow" : ""}`} aria-selected={sel}
-              role="button" tabIndex={-1} aria-label={store.nameOf(n.ref)} title={store.nameOf(n.ref)}
+              role="group" aria-label={store.nameOf(n.ref)} title={store.nameOf(n.ref)}
               style={{ left: n.x - NODE_W / 2, top: n.y - NODE_H / 2, width: NODE_W, height: NODE_H, ...(l !== undefined ? { animationDelay: `${l * LEVEL_MS}ms` } : null) }}
               onClick={(e) => { e.stopPropagation(); select(n.key); wrap.current?.focus({ preventScroll: true }); }} onDoubleClick={() => open(n.key)}>
               <NodeBody n={n.ref} isToday={isToday} />
@@ -377,7 +378,7 @@ function NodeBody({ n, isToday }: { n: NodeRef; isToday: boolean }) {
   const left = next ? D.daysBetween(store.today, next.due) : 999;
   const sub = left < 0 ? `逾期：${next!.rule.name}` : left <= 30 ? `${left} 天后：${next!.rule.name}` : store.jurisdictionName(c?.jurisdiction ?? "");
   return <>
-    <span className="jbadge" title={g ? g.name : "各集团共用"} style={{ width: 36, height: 36, borderRadius: 10, fontSize: 12, ...(color ? { background: `color-mix(in srgb, ${color} 22%, var(--surface))`, color: `color-mix(in srgb, ${color} 55%, var(--ink))` } : null) }}>{c?.jurisdiction}</span>
+    <span data-tip={g ? g.name : "各集团共用"} style={{ display: "inline-flex" }}><JurisdictionBadge code={c?.jurisdiction ?? ""} size={36} tint={companyTint(store, n.id)} /></span>
     <span className="col" style={{ minWidth: 0 }}>
       <span className="nm name-2" title={c?.name}>{c?.name}</span>
       <span className="sub ellipsis" style={left <= 30 ? { color: left < 0 ? "var(--red-text)" : "var(--amber-text)", fontWeight: 700 } : undefined}>{sub}</span>
@@ -477,7 +478,7 @@ function Summary({ k, asOf, isToday, centered, onCenter, onClose, open }: { k: s
         {close}
       </div>
       {actions}
-      {next && <button className="row gap10" style={{ padding: "10px 12px", borderRadius: 12, background: left < 0 ? "var(--red-soft)" : left <= 30 ? "var(--amber-soft)" : "var(--surface-sunken)", textAlign: "left" }} onClick={() => router.openDue(next.key)}>
+      {next && <button className="row gap10" style={{ padding: "10px 12px", borderRadius: "var(--r-control)", background: left < 0 ? "var(--red-soft)" : left <= 30 ? "var(--amber-soft)" : "var(--surface-sunken)", textAlign: "left" }} onClick={() => router.openDue(next.key)}>
         <Icon name="clock" size={14} /><span className="grow ellipsis" style={{ fontWeight: 700 }}>{next.rule.name}</span><span className="t-meta" style={{ fontWeight: 700 }}>{leftText(left)}</span></button>}
       <div className="col gap6"><span className="t-label">直接股东</span>
         {holders.length ? holders.map((h) => (
@@ -564,38 +565,38 @@ async function exportChart(store: Store, layout: TreeLayout, title: string, pdf:
   const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale;
   const g = cv.getContext("2d")!; g.scale(scale, scale);
   const sans = 'Inter, "PingFang SC", "Microsoft YaHei UI", sans-serif', display = 'Nunito, "PingFang SC", "Microsoft YaHei UI", sans-serif';
-  g.fillStyle = "#FFFFFF"; g.fillRect(0, 0, W, H);
-  g.fillStyle = "#E0E7DD"; for (let x = 10; x < W; x += 20) for (let y = head + 10; y < H; y += 20) { g.beginPath(); g.arc(x, y, 1.2, 0, Math.PI * 2); g.fill(); }
-  g.fillStyle = "#25352C"; g.font = `900 22px ${display}`; g.fillText(name.replace(/\.(png|pdf)$/, ""), 48, 40);
+  g.fillStyle = tok("surface"); g.fillRect(0, 0, W, H);
+  g.fillStyle = tok("line"); for (let x = 10; x < W; x += 20) for (let y = head + 10; y < H; y += 20) { g.beginPath(); g.arc(x, y, 1.2, 0, Math.PI * 2); g.fill(); }
+  g.fillStyle = tok("ink"); g.font = `900 22px ${display}`; g.fillText(name.replace(/\.(png|pdf)$/, ""), 48, 40);
   g.translate(0, head);
   for (const e of layout.edges) {
-    g.strokeStyle = e.holding.isNominee ? "#F4D36B" : "#87947F"; g.lineWidth = 2; g.lineCap = "round"; g.setLineDash(e.holding.verified ? [] : [6, 5]);
+    g.strokeStyle = e.holding.isNominee ? tok("amber") : tok("line-strong"); g.lineWidth = 2; g.lineCap = "round"; g.setLineDash(e.holding.verified ? [] : [6, 5]);
     g.stroke(new Path2D(e.path));
   }
   g.setLineDash([]);
   for (const e of layout.edges) {
     const text = e.holding.isNominee ? `代持 ${percentLabel(e.holding.percent)}` : percentLabel(e.holding.percent);
     g.font = `800 11px ${sans}`; const w = g.measureText(text).width + 16;
-    g.beginPath(); g.roundRect(e.label.x - w / 2, e.label.y - 10, w, 20, 10); g.fillStyle = e.holding.isNominee ? "#FFF3CF" : "#EDFAE2"; g.fill();
-    g.fillStyle = e.holding.isNominee ? "#8A5B00" : "#2F7A00"; g.textAlign = "center"; g.fillText(text, e.label.x, e.label.y + 4); g.textAlign = "left";
+    g.beginPath(); g.roundRect(e.label.x - w / 2, e.label.y - 10, w, 20, 10); g.fillStyle = e.holding.isNominee ? tok("amber-soft") : tok("green-soft"); g.fill();
+    g.fillStyle = e.holding.isNominee ? tok("amber-text") : tok("green-text"); g.textAlign = "center"; g.fillText(text, e.label.x, e.label.y + 4); g.textAlign = "left";
   }
   const clip = (t: string, w: number) => { if (g.measureText(t).width <= w) return t; let x = t; while (x && g.measureText(x + "…").width > w) x = x.slice(0, -1); return x + "…"; };
   for (const n of layout.nodes.values()) {
     const x = n.x - NODE_W / 2, y = n.y - NODE_H / 2;
-    g.beginPath(); g.roundRect(x, y + 4, NODE_W, NODE_H, 12); g.fillStyle = "#E0E7DD"; g.fill();
-    g.beginPath(); g.roundRect(x, y, NODE_W, NODE_H, 12); g.fillStyle = "#FFFFFF"; g.fill(); g.strokeStyle = "#E0E7DD"; g.lineWidth = 2; g.stroke();
+    g.beginPath(); g.roundRect(x, y + 4, NODE_W, NODE_H, 12); g.fillStyle = tok("line"); g.fill();
+    g.beginPath(); g.roundRect(x, y, NODE_W, NODE_H, 12); g.fillStyle = tok("surface"); g.fill(); g.strokeStyle = tok("line"); g.lineWidth = 2; g.stroke();
     if (n.ref.kind === "company") {
       const co = store.company(n.ref.id)!;
       const b = store.brandOf(n.ref.id);
-      g.beginPath(); g.roundRect(x + 12, y + 12, 36, 36, 10); g.fillStyle = b ? store.brandColor(b) + "38" : "#F2F5EF"; g.fill();
-      g.fillStyle = "#25352C"; g.font = `800 11px ${sans}`; g.textAlign = "center"; g.fillText(co.jurisdiction, x + 30, y + 34); g.textAlign = "left";
+      g.beginPath(); g.roundRect(x + 12, y + 12, 36, 36, 10); g.fillStyle = b ? store.brandColor(b) + "38" : tok("surface-sunken"); g.fill();
+      g.fillStyle = tok("ink"); g.font = `800 11px ${sans}`; g.textAlign = "center"; g.fillText(co.jurisdiction, x + 30, y + 34); g.textAlign = "left";
       g.font = `700 12.5px ${sans}`; g.fillText(clip(co.name, NODE_W - 72), x + 58, y + 27);
-      g.fillStyle = "#5F6D66"; g.font = `11px ${sans}`; g.fillText(clip(store.jurisdictionName(co.jurisdiction), NODE_W - 72), x + 58, y + 44);
+      g.fillStyle = tok("muted"); g.font = `11px ${sans}`; g.fillText(clip(store.jurisdictionName(co.jurisdiction), NODE_W - 72), x + 58, y + 44);
     } else {
-      g.fillStyle = "#F0EBFC"; g.beginPath(); g.arc(x + 30, y + 30, 18, 0, Math.PI * 2); g.fill();
-      g.fillStyle = "#6F4F9E"; g.font = `800 15px ${sans}`; g.textAlign = "center"; g.fillText([...store.nameOf(n.ref)][0] ?? "", x + 30, y + 35); g.textAlign = "left";
-      g.fillStyle = "#25352C"; g.font = `700 12.5px ${sans}`; g.fillText(clip(store.nameOf(n.ref), NODE_W - 72), x + 58, y + 27);
-      g.fillStyle = "#5F6D66"; g.font = `11px ${sans}`; g.fillText("个人股东", x + 58, y + 44);
+      g.fillStyle = tok("purple-soft"); g.beginPath(); g.arc(x + 30, y + 30, 18, 0, Math.PI * 2); g.fill();
+      g.fillStyle = tok("purple-text"); g.font = `800 15px ${sans}`; g.textAlign = "center"; g.fillText([...store.nameOf(n.ref)][0] ?? "", x + 30, y + 35); g.textAlign = "left";
+      g.fillStyle = tok("ink"); g.font = `700 12.5px ${sans}`; g.fillText(clip(store.nameOf(n.ref), NODE_W - 72), x + 58, y + 27);
+      g.fillStyle = tok("muted"); g.font = `11px ${sans}`; g.fillText("个人股东", x + 58, y + 44);
     }
   }
   if (pdf) {

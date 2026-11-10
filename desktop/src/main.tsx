@@ -60,6 +60,7 @@ async function boot() {
   // 5.4：回到窗口时重新检查源文件（可能刚同步下来，或在外部被移动、删除）
   window.addEventListener("focus", () => void store.checkFiles(true));
   installTooltips();
+  if (new URLSearchParams(location.search).has("film")) (window as unknown as { __charter: unknown }).__charter = { store, router, platform: platform() };
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <Ctx.Provider value={{ store, router, sync }}>

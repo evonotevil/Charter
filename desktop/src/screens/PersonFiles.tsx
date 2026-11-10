@@ -4,7 +4,7 @@ import { useState } from "react";
 import { type ArchiveItem, type Document, type Person, archiveItemName, hasFile, inView, ref } from "../domain/models";
 import { useApp } from "../state/hooks";
 import { Icon } from "../ui/Icon";
-import { Button, Card } from "../ui/kit";
+import { Button, Card, Note } from "../ui/kit";
 import { DropTarget } from "../ui/drop";
 import { useStageFile } from "./common";
 import { StatusTag, statusOfFreshness } from "./Status";
@@ -70,9 +70,9 @@ export function PersonFiles({ person }: { person: Person }) {
       <Card title={<span className="col gap6"><h2 className="t-card">个人文件</h2>
         <ScopeSummary counts={cnt} onConfigure={() => router.open({ kind: "scope", ownerKind: "person", owners: [person.id] })} /></span>}
         action={<span className="row gap8">{busy && <span className="busy-chip" role="status"><span className="ring" />正在识别…</span>}<FileViewToggle /><Button size="small" kind="primary" icon="square.and.arrow.down" onClick={() => upload()}>上传</Button></span>}>
-        {alerts.length > 0 && <div className="row gap8" style={{ padding: "10px 12px", borderRadius: 12, background: alerts.some((a) => a.state.kind === "expired") ? "var(--red-soft)" : "var(--amber-soft)", color: alerts.some((a) => a.state.kind === "expired") ? "var(--red-text)" : "var(--amber-text)", fontWeight: 700 }}>
-          <Icon name="clock" size={14} />{alerts.map((a) => `${archiveItemName(a)}${a.state.kind === "expired" ? "已过期" : "快到期"}`).join("，")}。到期前会和公司文件一样提醒。
-        </div>}
+        {alerts.length > 0 && <Note tone={alerts.some((a) => a.state.kind === "expired") ? "bad" : "warn"} icon="clock">
+          <b>{alerts.map((a) => `${archiveItemName(a)}${a.state.kind === "expired" ? "已过期" : "快到期"}`).join("，")}。</b><span>到期前会和公司文件一样提醒。</span>
+        </Note>}
         <ScopedItems items={items} view={view} row={row}
           empty={<span className="muted" style={{ padding: "8px 0" }}>{view === "held" ? "还没有归档的个人文件。把文件拖到这里即可归档。" : "没有需要审阅的条目。"}</span>} />
         {view === "review" && hidden > 0 && <button className="link t-meta" style={{ alignSelf: "flex-start" }} onClick={() => router.open({ kind: "scope", ownerKind: "person", owners: [person.id] })}>不在范围或不适用的 {hidden} 项已隐藏</button>}

@@ -453,6 +453,37 @@ export interface PacketTemplate {
   categories: string[];
   includeDirectorsPassports: boolean;
   maxAgeMonths?: number;
+  /** 5.5：这个用途上次用的水印设置（接收方不记，每次导出时确认）。 */
+  watermark?: PacketWatermark;
+}
+
+/** 5.5：材料包水印设置。settings 的结构见 services/watermark.ts。 */
+export interface PacketWatermark {
+  enabled: boolean;
+  settings: import("../services/watermark").WatermarkSettings;
+  /** 不加水印的清单项（packetItemID）。 */
+  skip: string[];
+  stripMeta: boolean;
+}
+
+/** 5.5：材料包发送记录。每次生成材料包记一条。 */
+export interface SendRecord {
+  id: string;
+  companyID: string;
+  at: string;
+  day: Day;
+  packetID: string;
+  packetName: string;
+  recipient: string;
+  /** 解析后的水印文字（【文件名称】用“文件名称”占位）；没加水印为空。 */
+  watermarkText: string;
+  files: number;
+  watermarked: number;
+  flattened: boolean;
+  missing: number;
+  path: string;
+  /** 再导出时还原设置用。 */
+  watermark?: PacketWatermark;
 }
 
 export interface TemplateLibrary {

@@ -1,12 +1,14 @@
 // 文件包、全部材料导出、交办邮件与提醒。移植自 Packager / ArchiveExporter / Mailer / Notifier / CalendarSync。
 
 import * as D from "../domain/day";
-import { type ArchiveItem, type Company, type Document, type PacketTemplate, type Party, archiveStateLabel, isNotApplicable, ref, stateNeedsAttention, latinPad, latinPadEnd, latinPadStart } from "../domain/models";
+import { type ArchiveItem, type Company, type Document, type PacketTemplate, type PacketWatermark, type Party, archiveStateLabel, isNotApplicable, ref, stateNeedsAttention, latinPad, latinPadEnd, latinPadStart } from "../domain/models";
 import { type Obligation, expiryLabel, expiryOf, obligationStatus, reminderDays } from "../domain/engine";
 import { safeName } from "../domain/folder";
 import { extname, platform } from "../platform/platform";
 import type { Store } from "../state/store";
 import { writePDF, writeUnique, writeXLSX, writeZip, type PDFSection } from "./files";
+import { type WMContext, flattenPDF, inspectPDF, kindOf, resolveText, watermarkImage, watermarkPDF } from "./watermark";
+import { englishDocName } from "../domain/docnames";
 
 // MARK: 文件包
 
@@ -72,34 +74,120 @@ export function packetItems(t: PacketTemplate, c: Company, s: Store): PacketItem
 const stampOf = (s: Store) => s.today.replace(/-/g, "");
 const two = (n: number) => String(n).padStart(2, "0");
 
-export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Company, s: Store, onProgress?: (a: number, b: number) => void): Promise<string> {
+/** 5.5：材料包导出选项。 */
+export interface PacketWatermarkRun {
+  wm: PacketWatermark;
+  recipient: string;
+}
+export interface BuildOptions {
+  watermark?: PacketWatermarkRun;
+  signal?: AbortSignal;
+  /** done/total 按份计；label 为当前处理的文件（和页码）。 */
+  onProgress?: (done: number, total: number, label?: string) => void;
+}
+
+/** 每份文件能否加水印，以及原因。 */
+export type WMEligibility = { ok: true } | { ok: false; reason: "other" | "encrypted" | "missing"; label: string } | { ok: true; signed: true };
+export async function wmEligibility(item: PacketItem, s: Store): Promise<WMEligibility> {
+  if (!item.document) return { ok: false, reason: "missing", label: "还没有这份文件" };
+  const src = s.fileURL(item.document);
+  const k = kindOf(src);
+  if (k === "other") return { ok: false, reason: "other", label: "无法加水印" };
+  if (k === "image") return { ok: true };
+  try {
+    const info = inspectPDF(await platform().readBytes(src));
+    if (info.encrypted) return { ok: false, reason: "encrypted", label: "已加密" };
+    if (info.signed) return { ok: true, signed: true };
+  } catch { return { ok: false, reason: "missing", label: "读不到文件" }; }
+  return { ok: true };
+}
+
+export const packetBaseName = (c: Company, t: PacketTemplate, s: Store, complete: boolean, recipient?: string) =>
+  safeName(`${c.name}_${t.name}${recipient?.trim() ? `_${recipient.trim()}` : ""}${complete ? "" : "_部分"}_${stampOf(s)}`);
+
+/** 每份文件的水印上下文。 */
+export function wmContext(item: PacketItem, t: PacketTemplate, c: Company, s: Store, recipient: string): WMContext {
+  const zh = packetItemTitle(item, item.document ? s.docType(item.document.typeID)?.name : undefined);
+  const typeName = item.document ? s.docType(item.document.typeID)?.name ?? item.category : item.category;
+  const en = englishDocName(typeName) + (item.isPersonal ? ` (${item.ownerName})` : "");
+  return { day: s.today, fileName: zh, fileNameEn: en, company: c.name, packet: t.name, recipient };
+}
+
+export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Company, s: Store, opts: BuildOptions = {}): Promise<string> {
   const p = platform();
+  const { watermark: run, signal, onProgress } = opts;
+  const abort = () => { if (signal?.aborted) throw new DOMException("已取消", "AbortError"); };
   // 记录在、但文件不在数据文件夹里（比如另一台电脑还没同步过来）：不让整包失败，算作缺件并注明原因。
   const lost = new Set<string>();
   for (const i of packetIncluded(items)) if (!(await p.stat(s.fileURL(i.document!))).exists) lost.add(packetItemID(i));
   items = items.map((i) => (lost.has(packetItemID(i)) ? { ...i, included: false, problem: "文件不在数据文件夹里，可能还没同步过来" } : i));
   const included = packetIncluded(items), missing = packetMissing(items);
   const complete = missing.length === 0;
-  const base = safeName(`${c.name}_${t.name}${complete ? "" : "_部分"}_${stampOf(s)}`);
+  const wm = run?.wm.enabled ? run.wm : undefined;
+  const recipient = run?.recipient.trim() ?? "";
+  const base = packetBaseName(c, t, s, complete, wm ? recipient : undefined);
   const entries: { path: string; data: Uint8Array }[] = [];
-  const incLines: string[] = [];
+  const incLines: string[] = [], wmLines: string[] = [];
+  let watermarked = 0;
   for (const [i, item] of included.entries()) {
+    abort();
     const doc = item.document!;
     const title = packetItemTitle(item, s.docType(doc.typeID)?.name);
     const src = s.fileURL(doc);
-    const name = safeName(`${two(i + 1)} ${title}`) + "." + (extname(src) || "pdf");
-    entries.push({ path: `${base}/${name}`, data: await p.readBytes(src) });
+    let ext = extname(src) || "pdf";
+    let data = await p.readBytes(src);
+    const label = `${two(i + 1)} ${title}`;
+    onProgress?.(i, included.length + 1, title);
+    const kind = kindOf(src);
+    const want = !!wm && !wm.skip.includes(packetItemID(item));
+    if (kind === "pdf") {
+      const info = inspectPDF(data);
+      if (info.encrypted) { if (want) wmLines.push(`${label}：已加密，无法加水印，原样放入`); }
+      else if (want || (wm?.stripMeta && !info.signed)) {
+        const text = want ? resolveText(wm!.settings, wmContext(item, t, c, s, recipient)) : "";
+        const onPage = (n: number, total: number) => onProgress?.(i, included.length + 1, `${title}（第 ${n} / ${total} 页）`);
+        let ok = true;
+        try {
+          data = want && wm!.settings.flatten ? await flattenPDF(data, text, wm!.settings, { stripMeta: true, signal, onPage })
+            : await watermarkPDF(data, text, want ? wm!.settings : null, { stripMeta: !!wm?.stripMeta, signal, onPage });
+        } catch (e) { if (signal?.aborted) throw e; ok = false; if (want) wmLines.push(`${label}：PDF 无法读取，未加水印，原样放入`); }
+        if (want && ok) { watermarked++; wmLines.push(`${label}：已加水印${wm!.settings.flatten ? "（已压平）" : ""}${info.signed ? "；原件带电子签名，本副本签名已失效" : ""}`); }
+      } else if (wm) wmLines.push(`${label}：${info.signed ? "带电子签名，未加水印，保留原签名" : "未加水印"}`);
+    } else if (kind === "image") {
+      if (want || wm?.stripMeta) {
+        const text = want ? resolveText(wm!.settings, wmContext(item, t, c, s, recipient)) : "";
+        let ok = true;
+        try { const r = await watermarkImage(data, ext.toLowerCase(), text, wm!.settings); data = r.bytes; ext = r.ext; }
+        catch { ok = false; if (want) wmLines.push(`${label}：图片无法读取，未加水印，原样放入`); }
+        if (want && ok) { watermarked++; wmLines.push(`${label}：已加水印`); }
+      } else if (wm) wmLines.push(`${label}：未加水印`);
+    } else if (wm) wmLines.push(`${label}：${ext.toUpperCase()} 文件无法加水印，原样放入`);
+    const name = safeName(label) + "." + ext;
+    entries.push({ path: `${base}/${name}`, data });
     incLines.push(`${two(i + 1)}  ${title}：${recencyText(item)}`);
   }
+  abort();
+  onProgress?.(included.length, included.length + 1, "目录");
   const misLines = missing.map((m) => `—  ${packetItemTitle(m)}：${packetReason(m)}`);
   const sections: PDFSection[] = [{ heading: `已包含（${incLines.length} 份）`, lines: incLines, alert: false }];
   if (misLines.length) sections.push({ heading: `尚缺（${misLines.length} 项）`, lines: misLines, alert: true });
+  const sample = wm ? resolveText(wm.settings, { day: s.today, fileName: "【文件名称】", fileNameEn: "[File name]", company: c.name, packet: t.name, recipient }) : "";
+  if (wm) sections.push({ heading: `水印（${watermarked} / ${included.length} 份）`, lines: [`水印文字：${sample}`, ...(recipient ? [`接收方：${recipient}`] : []), ...wmLines], alert: false });
   const toc = await writePDF(c.name,
     complete ? `${latinPadEnd(t.name)}文件包　${D.long(s.today)}` : `${latinPadEnd(t.name)}文件包（部分材料，缺 ${misLines.length} 项）　${D.long(s.today)}`,
     sections, complete ? undefined : "这是部分材料包。缺少的文件补齐后会另行发送。");
   entries.unshift({ path: `${base}/00 目录.pdf`, data: toc });
-  const zip = await writeZip(entries, onProgress);
-  return await writeUnique(s.folder.packetsDir, base, "zip", zip);
+  abort();
+  const zip = await writeZip(entries, (a, b) => onProgress?.(included.length, included.length + 1, `压缩 ${a} / ${b}`));
+  const out = await writeUnique(s.folder.packetsDir, base, "zip", zip);
+  // 发送记录
+  s.commit((d) => {
+    d.sends.unshift({ id: crypto.randomUUID(), companyID: c.id, at: new Date().toISOString(), day: s.today, packetID: t.id, packetName: t.name, recipient,
+      watermarkText: sample, files: included.length, watermarked, flattened: !!wm?.settings.flatten, missing: missing.length, path: out,
+      watermark: wm ? structuredClone(wm) : undefined });
+    if (d.sends.length > 500) d.sends.length = 500;
+  });
+  return out;
 }
 
 // MARK: 全部材料

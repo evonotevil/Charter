@@ -14,7 +14,7 @@ import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Button, Checkbox, DateField, FormGroup, Modal, Pill, SelectField, SheetScaffold, Spinner, TextField } from "../ui/kit";
 import { PurposeReadinessAction, ReissueRequestSheet, computeReadiness, versionNotice } from "./common";
-import { ProgressTrack } from "../ui/kit";
+import { ProgressBar, ProgressTrack } from "../ui/kit";
 
 const exts = new Set(["pdf", "png", "jpg", "jpeg", "heic", "tif", "tiff"]);
 const extOf = (p: string) => (p.split(".").pop() ?? "").toLowerCase();
@@ -289,7 +289,7 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
   const shown = working ? items.filter((i) => i.recognized) : items;
   const hasRecognized = items.some((i) => i.recognized);
   const companies = new Set(items.filter((i) => i.include).map((i) => (i.owner?.kind === "company" ? i.owner.id : i.newCompanyKey ? "new:" + i.newCompanyKey : null)).filter(Boolean)).size;
-  const fig = (n: number, l: string) => <span className="row baseline gap4"><span className="num" style={{ fontSize: 16, fontWeight: 600 }}>{n}</span><span className="muted">{l}</span></span>;
+  const fig = (n: number, l: string) => <span className="row baseline gap4"><span className="num" style={{ fontSize: 15, fontWeight: 600 }}>{n}</span><span className="muted">{l}</span></span>;
   const flag = (on: boolean) => (on ? { borderRadius: "var(--r-field)", boxShadow: "0 0 0 1.5px var(--amber-text)" } : undefined);
   const C = { check: 22, type: 200, owner: 210, date: 150, state: 150 };
   return (
@@ -305,9 +305,7 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
         </>}>
         <div className="col" style={{ gap: 18 }}>
           {commitError && <div className="row gap6 amber-text selectable"><Icon name="exclamationmark.triangle.fill" />{commitError}</div>}
-          {working && <div style={{ height: 6, borderRadius: 3, background: "var(--hairline)", overflow: "hidden" }} role="progressbar" aria-label="识别进度" aria-valuenow={Math.round(progress / Math.max(items.length, 1) * 100)}>
-            <div style={{ height: "100%", width: `${(progress / Math.max(items.length, 1)) * 100}%`, background: "var(--ink)", transition: "width var(--standard) var(--ease)" }} />
-          </div>}
+          {working && <ProgressBar value={progress / Math.max(items.length, 1)} label="识别进度" />}
           {drafts.length > 0 && <FormGroup title="新公司（归档时新建档案）">
             {drafts.map((d, k) => {
               const set = (patch: Partial<CompanyDraft>) => setDrafts((ds) => ds.map((x, j) => (j === k ? { ...x, ...patch } : x)));
@@ -396,10 +394,10 @@ export function ImportDoneView({ result, focusCompanyID, onClose }: { result: Re
             : <Button kind="primary" onClick={() => { const first = rows[0] && store.data.companies.find((c) => rows.some((r) => r.companyID === c.id)); if (first) router.openCompany(first.id); else router.go("companies"); onClose(); }}>打开公司页</Button>}
         </>}>
         <div className="col gap32">
-          <div className="row" style={{ gap: 28, padding: 32, borderRadius: 26, background: "var(--lime)", color: "var(--on-lime)" }}>
+          <div className="row" style={{ gap: 28, padding: 32, borderRadius: "var(--r-emblem)", background: "var(--lime)", color: "var(--on-lime)" }}>
             <ArchiveSeal size={120} />
             <div className="col gap8 grow">
-              <span style={{ fontSize: 56, fontWeight: 800, lineHeight: 1.05 }}><span className="num" style={{ letterSpacing: -2.2, marginRight: 10 }}>{result.count}</span>份已归档</span>
+              <span className="t-display" style={{ fontWeight: 800 }}><span className="num" style={{ letterSpacing: -2.2, marginRight: 10 }}>{result.count}</span>份已归档</span>
               <span style={{ fontSize: 15, opacity: .8 }}>{s}</span>
             </div>
           </div>

@@ -5,7 +5,7 @@ import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { type ArchiveItem, type Custody, type NodeRef, archiveItemName, completeness, custodies, custodyHint, custodyLabel, hasFile, inView, ref, refKey, uuid } from "../domain/models";
 import { useApp } from "../state/hooks";
 import { Icon } from "../ui/Icon";
-import { Button, Checkbox, Modal, Pill, PopoverRow, ProgressTrack, SelectField, SheetScaffold, TextField } from "../ui/kit";
+import { Button, Checkbox, Modal, Pill, PopoverRow, ProgressTrack, SelectField, SheetScaffold, TextField, Note } from "../ui/kit";
 import { PickChip } from "./PropChips";
 import { StatusTag, statusOfArchive, type StatusView } from "./Status";
 
@@ -165,7 +165,7 @@ export function ScopeSheet({ kind: initialKind, owners: initialOwners, onClose }
               </div>
               <div className="col scroll card flush" style={{ maxHeight: 460, padding: 6 }}>
                 {list.map((x) => (
-                  <label key={x.id} className="row gap8" style={{ padding: "6px 8px", borderRadius: 10, cursor: "pointer" }}>
+                  <label key={x.id} className="row gap8" style={{ padding: "6px 8px", borderRadius: "var(--r-input)", cursor: "pointer" }}>
                     <Checkbox checked={owners.has(x.id)} onChange={(on) => setOwners((s) => { const n = new Set(s); if (on) n.add(x.id); else n.delete(x.id); return n; })} />
                     <span className="col grow" style={{ minWidth: 0 }}><span className="ellipsis" style={{ fontWeight: 600 }}>{x.name}</span><span className="t-meta muted ellipsis">{x.sub}</span></span>
                     {!x.configured && <Pill text="未配置" kind="neutral" />}
@@ -183,7 +183,7 @@ export function ScopeSheet({ kind: initialKind, owners: initialOwners, onClose }
                 <TextField value={presetName} onChange={setPresetName} placeholder="方案名称，例如：远澜集团默认" width={220} />
                 <Button size="small" disabled={!presetName.trim() || !Object.keys(plan).length} onClick={savePreset}>保存为方案</Button>
               </div>
-              <div className="row gap10 wrap" style={{ padding: "8px 12px", borderRadius: 12, background: "var(--surface-sunken)" }}>
+              <div className="row gap10 wrap" style={{ padding: "8px 12px", borderRadius: "var(--r-control)", background: "var(--surface-sunken)" }}>
                 <span className="t-meta" style={{ fontWeight: 700 }}>{picked.size ? `已勾选 ${picked.size} 个条目` : "勾选条目后可以一次设定"}</span>
                 <SelectField<string> minWidth={170} disabled={!picked.size} placeholder="批量设为…" value="__none"
                   options={[...custodies.map((c) => [c, custodyLabel[c]] as [string, string]), ["keep", "本次不改"]]}
@@ -228,7 +228,7 @@ function ChangePreview({ changes }: { changes: { owner: NodeRef; typeID: string;
   for (const c of changes) byOwner.set(refKey(c.owner), [...(byOwner.get(refKey(c.owner)) ?? []), c]);
   return (
     <div className="col gap12">
-      <div className="info-note"><Icon name="info.circle" size={18} /><p>下面是将要写入的修改。应用后可以在提示条里一键撤销，也可以在设置 → 备份与恢复回到之前的快照。文件本身不会被移动或删除。</p></div>
+      <Note tone="info">下面是将要写入的修改。应用后可以在提示条里一键撤销，也可以在设置 → 备份与恢复回到之前的快照。文件本身不会被移动或删除。</Note>
       {[...byOwner.entries()].map(([k, list]) => (
         <div key={k} className="card" style={{ padding: 16, gap: 6 }}>
           <span className="t-row">{store.nameOf(list[0].owner)}</span>

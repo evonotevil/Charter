@@ -229,7 +229,7 @@ export function SelectField<V>({ options, value, onChange, placeholder = "请选
     <>
       <button ref={ref} className={`select ${open ? "open" : ""}`} disabled={disabled} aria-label={ariaLabel ? `${ariaLabel}：${current ?? placeholder}` : undefined} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}
         onKeyDown={(e) => { if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setOpen(true); } }}
-        style={{ minWidth, maxWidth, width: maxWidth ? "100%" : undefined, opacity: disabled ? .5 : 1 }}>
+        style={{ minWidth, maxWidth, width: maxWidth ? "100%" : undefined }}>
         {curInfo?.lead && <span className="sel-lead">{curInfo.lead}</span>}
         <span className={`ellipsis grow ${current ? "" : "muted"}`}>{current ?? placeholder}</span>
         <Icon name="chevron.up.chevron.down" size={11} className="muted" />
@@ -315,7 +315,7 @@ export function CalendarPanel({ value, onPick, relativeTo, relativeLabel = "签�
   const count = Math.ceil((lead + D.daysIn(D.year(shown), D.month(shown))) / 7) * 7;
   const cells = Array.from({ length: count }, (_, i) => D.addDays(start, i));
   const pick = (label: string, on: boolean, current: boolean, action: () => void, key: string | number) => (
-    <button key={key} onClick={action} className="num" style={{ height: 40, borderRadius: 10, fontSize: 13, fontWeight: on ? 600 : 500,
+    <button key={key} onClick={action} className="num" style={{ height: 40, borderRadius: "var(--r-input)", fontSize: 13, fontWeight: on ? 600 : 500,
       background: on ? "var(--selection)" : "var(--band)", color: on ? "var(--on-selection)" : "var(--ink)", boxShadow: current && !on ? "inset 0 0 0 2px var(--lime)" : undefined }}>{label}</button>
   );
   return (
@@ -378,7 +378,7 @@ export const ChoiceMark = ({ on, square }: { on: boolean; square?: boolean }) =>
 
 export function Checkbox({ checked, onChange, children, disabled, title, ariaLabel }: { checked: boolean; onChange: (v: boolean) => void; children?: ReactNode; disabled?: boolean; title?: string; ariaLabel?: string }) {
   return (
-    <button className="row gap8" onClick={(e) => { e.stopPropagation(); onChange(!checked); }} disabled={disabled} role="checkbox" aria-checked={checked} aria-label={ariaLabel} title={title} style={{ opacity: disabled ? .5 : 1, textAlign: "left" }}>
+    <button className="row gap8" onClick={(e) => { e.stopPropagation(); onChange(!checked); }} disabled={disabled} role="checkbox" aria-checked={checked} aria-label={ariaLabel} title={title} style={{ textAlign: "left" }}>
       <ChoiceMark on={checked} square />{children && <span>{children}</span>}
     </button>
   );
@@ -386,7 +386,7 @@ export function Checkbox({ checked, onChange, children, disabled, title, ariaLab
 
 export function Switch({ checked, onChange, children, disabled }: { checked: boolean; onChange: (v: boolean) => void; children?: ReactNode; disabled?: boolean }) {
   return (
-    <button className="row gap10" onClick={() => onChange(!checked)} disabled={disabled} role="switch" aria-checked={checked} style={{ opacity: disabled ? .5 : 1 }}>
+    <button className="row gap10" onClick={() => onChange(!checked)} disabled={disabled} role="switch" aria-checked={checked}>
       {children && <span className="grow" style={{ textAlign: "left" }}>{children}</span>}
       <span className={`switch ${checked ? "on" : ""}`} />
     </button>
@@ -570,16 +570,16 @@ export function SheetScaffold({ title, subtitle, width = 560, height, children, 
   );
 }
 
-export function ConfirmSheet({ title, message, details = [], confirmTitle, destructive, onConfirm, onClose }: {
-  title: string; message: string; details?: string[]; confirmTitle: string; destructive?: boolean; onConfirm: () => void; onClose: () => void;
+export function ConfirmSheet({ title, message, details = [], confirmTitle, cancelTitle = "取消", destructive, warn, onConfirm, onClose }: {
+  title: string; message: string; details?: string[]; confirmTitle: string; cancelTitle?: string; destructive?: boolean; warn?: boolean; onConfirm: () => void; onClose: () => void;
 }) {
   return (
     <Modal onClose={onClose}>
       <div className="sheet" style={{ width: 460, padding: 28, gap: 16 }}>
         <div className="row start gap12">
           <span className="row" style={{ width: 38, height: 38, borderRadius: "50%", justifyContent: "center", flex: "none",
-            background: destructive ? "color-mix(in srgb, var(--danger) 12%, transparent)" : "var(--band)", color: destructive ? "var(--danger)" : "var(--ink)" }}>
-            <Icon name={destructive ? "exclamationmark.triangle.fill" : "questionmark.circle"} size={17} />
+            background: destructive ? "var(--red-soft)" : warn ? "var(--amber-soft)" : "var(--band)", color: destructive ? "var(--red-text)" : warn ? "var(--amber-text)" : "var(--ink)" }}>
+            <Icon name={destructive || warn ? "exclamationmark.triangle.fill" : "questionmark.circle"} size={17} />
           </span>
           <div className="col gap6">
             <div className="t-sheet">{title}</div>
@@ -587,13 +587,13 @@ export function ConfirmSheet({ title, message, details = [], confirmTitle, destr
           </div>
         </div>
         {details.length > 0 && (
-          <div className="col gap6" style={{ padding: 16, background: "var(--band)", borderRadius: "var(--r-field)" }}>
+          <div className="col gap6" style={{ padding: 16, background: "var(--band)", borderRadius: "var(--r-control)" }}>
             {details.map((d, i) => <div key={i} className="row baseline gap8"><span style={{ width: 4, height: 4, borderRadius: 2, background: "var(--muted)", flex: "none", transform: "translateY(-2px)" }} /><span>{d}</span></div>)}
           </div>
         )}
         <div className="row gap10">
           <span className="spacer" />
-          <Button onClick={onClose}>取消</Button>
+          <Button onClick={onClose}>{cancelTitle}</Button>
           <Button kind={destructive ? "danger" : "primary"} autoFocus onClick={() => { onClose(); onConfirm(); }}>{confirmTitle}</Button>
         </div>
       </div>
@@ -729,8 +729,55 @@ export function Card({ title, action, children, tone, flush, style, className }:
   );
 }
 
+/** 完成度条：与 ProgressBar 同一套样式，满了为绿，未满为琥珀。 */
 export function ProgressTrack({ value, width = 48 }: { value: number; width?: number }) {
-  return <span aria-hidden style={{ display: "block", width, height: 8, borderRadius: 4, background: "var(--line)", overflow: "hidden", flex: "none" }}>
-    <span style={{ display: "block", height: "100%", width: `${Math.max(0, Math.min(1, value)) * 100}%`, background: value >= 1 ? "var(--green)" : "var(--amber)", borderRadius: 4 }} />
-  </span>;
+  const v = Math.max(0, Math.min(1, value));
+  return <span aria-hidden className="progress" style={{ display: "block", width }}><span className={`progress-fill ${v >= 1 ? "green" : "amber"}`} style={{ width: `${v * 100}%` }} /></span>;
+}
+
+// ---------- 5.5：设计系统补齐的组件 ----------
+
+/** 进度条：6px 轨道、圆角 3，填充 ink（或品牌绿）。全应用统一用它。 */
+export function ProgressBar({ value, tone = "ink", label }: { value: number; tone?: "ink" | "green" | "amber"; label?: string }) {
+  const v = Math.max(0, Math.min(1, value || 0));
+  return <div className="progress" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(v * 100)}>
+    <span className={`progress-fill ${tone}`} style={{ width: `${v * 100}%` }} />
+  </div>;
+}
+
+/** 提示条：一行图标 + 说明，可带一个操作。tone 对应设计系统的软底色。 */
+export function Note({ tone = "neutral", icon, children, action }: { tone?: "neutral" | "info" | "warn" | "bad" | "ok"; icon?: string; children: ReactNode; action?: ReactNode }) {
+  const def = tone === "warn" ? "exclamationmark.triangle.fill" : tone === "bad" ? "exclamationmark.circle.fill" : tone === "ok" ? "checkmark.circle.fill" : "info.circle";
+  return <div className={`note ${tone}`} role="note"><span className="note-icon"><Icon name={icon ?? def} size={14} /></span><div className="note-body">{children}</div>{action}</div>;
+}
+
+/** 滑块：原生 range，外观按设计系统（6px 轨道、品牌绿已选段、22px 圆钮）。右侧配数值框，可直接输入。 */
+export function Slider({ value, min, max, step = 1, onChange, label, format, parse, unitWidth = 84 }: {
+  value: number; min: number; max: number; step?: number; onChange: (v: number) => void; label: string; format?: (v: number) => string; parse?: (s: string) => number; unitWidth?: number;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  const pct = ((value - min) / (max - min)) * 100;
+  const commit = () => { if (text === null) return; const n = parse ? parse(text) : parseFloat(text.replace(/[^\d.-]/g, "")); if (Number.isFinite(n)) onChange(Math.max(min, Math.min(max, Math.round(n / step) * step))); setText(null); };
+  return <div className="slider-row">
+    <input type="range" className="slider" min={min} max={max} step={step} value={value} aria-label={label} style={{ "--pct": `${pct}%` } as CSSProperties}
+      onChange={(e) => onChange(Number(e.target.value))} />
+    <input className="field num slider-value" style={{ width: unitWidth }} aria-label={`${label}（数值）`} value={text ?? (format ? format(value) : String(value))}
+      onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setText(null); }} />
+  </div>;
+}
+
+/** 颜色色块：28px 圆，选中时白色内圈 + 品牌绿外圈。 */
+export function ColorSwatch({ color, selected, onPick, label }: { color: string; selected: boolean; onPick: () => void; label: string }) {
+  return <button className={`swatch ${selected ? "on" : ""}`} style={{ background: color }} aria-label={label} aria-pressed={selected} data-tip={label} onClick={onPick} />;
+}
+
+/** 容器宽度低于 px 时为 true（容器查询的 JS 版，给需要换结构的布局用）。 */
+export function useNarrow(ref: React.RefObject<HTMLElement>, px: number) {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const ro = new ResizeObserver(([e]) => setNarrow(e.contentRect.width < px));
+    ro.observe(el); return () => ro.disconnect();
+  }, [ref, px]);
+  return narrow;
 }

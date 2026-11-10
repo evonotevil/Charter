@@ -133,7 +133,7 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
         <div className="row gap10" style={{ height: 60, padding: "0 12px 0 18px", flex: "none" }}>
           <Icon name="magnifyingglass" size={16} className="muted" />
           <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="公司、人名，或“远澜 开户”这样的一句话" className="grow"
-            style={{ border: 0, outline: "none", background: "transparent", fontSize: 18, color: "inherit", minWidth: 0 }}
+            style={{ border: 0, outline: "none", background: "transparent", fontSize: 19, color: "inherit", minWidth: 0 }}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
               else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
@@ -158,22 +158,22 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
                   const sub = on ? "color-mix(in srgb, var(--on-selection) 70%, transparent)" : "var(--muted)";
                   return (
                     <button key={h.id} data-hit={h.id} role="option" aria-selected={on} className="row gap10" onMouseEnter={() => setSelectedID(h.id)} onClick={() => run(h)}
-                      style={{ height: 46, padding: "0 10px", borderRadius: 10, textAlign: "left", background: on ? "var(--selection)" : undefined, color: fg, flex: "none" }}>
+                      style={{ height: 46, padding: "0 10px", borderRadius: "var(--r-input)", textAlign: "left", background: on ? "var(--selection)" : undefined, color: fg, flex: "none" }}>
                       {h.kind === "company" ? <>
                         <JurisdictionBadge code={h.c.jurisdiction} size={30} highlighted={on} />
                         <span className="col grow" style={{ gap: 1, minWidth: 0 }}>
-                          <span className="ellipsis" style={{ fontSize: 14, fontWeight: 500 }}>{h.c.name}</span>
+                          <span className="ellipsis" style={{ fontSize: 15, fontWeight: 500 }}>{h.c.name}</span>
                           <span className="t-meta ellipsis" style={{ color: sub }}>{[store.jurisdictionName(h.c.jurisdiction), h.c.registrationNumber, store.groupsContaining(h.c.id).map((g) => g.name).join("、")].filter(Boolean).join("，")}</span>
                         </span>{hint("↩ 打开", on)}
                       </> : h.kind === "person" ? <>
                         <Avatar name={h.p.name} size={30} highlighted={on} />
                         <span className="col grow" style={{ gap: 1, minWidth: 0 }}>
-                          <span className="ellipsis" style={{ fontSize: 14, fontWeight: 500 }}>{h.p.name}</span>
+                          <span className="ellipsis" style={{ fontSize: 15, fontWeight: 500 }}>{h.p.name}</span>
                           <span className="t-meta" style={{ color: sub }}>{(() => { const n = store.data.appointments.filter((a) => a.personID === h.p.id && isActiveOn(a, store.today)).length; return n ? `任 ${n} 家公司董事或高管` : "人员"; })()}</span>
                         </span>{hint("↩ 打开", on)}
                       </> : <>
                         <span style={{ width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center", flex: "none", background: on ? "color-mix(in srgb, var(--on-selection) 12%, transparent)" : "var(--band)", color: on ? fg : "var(--muted)" }}><Icon name={h.a.symbol} size={13} /></span>
-                        <span className="ellipsis grow" style={{ fontSize: 14, fontWeight: 500 }}>{h.a.title}</span>{hint("↩ 执行", on)}
+                        <span className="ellipsis grow" style={{ fontSize: 15, fontWeight: 500 }}>{h.a.title}</span>{hint("↩ 执行", on)}
                       </>}
                     </button>
                   );
@@ -216,7 +216,7 @@ export function ChainQuery({ from: initialFrom, to: initialTo, onClose }: { from
               </> : <>
                 <span className="row gap6" style={{ fontSize: 15, fontWeight: 600 }}><Icon name="checkmark.circle.fill" />找到 {chains.length} 条持股路径，路径比例合计 {percentLabel(total)}</span>
                 {chains.map((c) => (
-                  <div key={c.id} className="col gap4" style={{ padding: 12, borderRadius: 12, background: "var(--band)" }}>
+                  <div key={c.id} className="col gap4" style={{ padding: 12, borderRadius: "var(--r-control)", background: "var(--band)" }}>
                     <span className="selectable">{store.chainText(c)}</span>
                     {chainHasNominee(c) && <span className="t-meta amber-text">包含已记录的代持关系</span>}
                   </div>

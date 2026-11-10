@@ -64,10 +64,7 @@ export function TrustBadge({ trust, showConfirmed }: { trust: RuleTrust; showCon
   const icon = trust.kind === "draft" ? "questionmark.circle" : trust.kind === "needsReview" ? "clock.arrow.circlepath" : "checkmark.seal";
   const help = trust.kind === "draft" ? "这条规则尚未向中介或官方来源核对，截止日仅供参考"
     : trust.kind === "needsReview" ? `上次确认于 ${trust.on ? D.long(trust.on) : "未知日期"}，已超过 12 个月` : `${trust.scope}，${trust.on ? D.long(trust.on) : ""}确认`;
-  const style = trust.kind === "confirmed" ? { background: "var(--lime-soft)", color: "var(--lime-text)" }
-    : trust.kind === "needsReview" ? { background: "var(--amber-soft)", color: "var(--amber-text)" }
-      : { color: "var(--muted)", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--muted) 50%, transparent)" };
-  return <span className="row gap4" title={help} style={{ height: 22, padding: "0 8px", borderRadius: 999, fontSize: 12, fontWeight: 600, flex: "none", ...style }}><Icon name={icon} size={11} />{text}</span>;
+  return <span className={`pill ${trust.kind === "confirmed" ? "valid" : trust.kind === "needsReview" ? "warn" : "outline"}`} data-tip={help}><Icon name={icon} size={11} />{text}</span>;
 }
 
 // MARK: - 数字输入
@@ -206,7 +203,7 @@ export function ArchiveConfirmSheet({ file, onClose }: { file: StagedFile; onClo
     finally { setWorking(false); }
   };
   const card = (title: string, date: Day | undefined, name: string) => (
-    <div className="col gap4 grow" style={{ padding: 12, background: "var(--surface)", borderRadius: 12 }}>
+    <div className="col gap4 grow" style={{ padding: 12, background: "var(--surface)", borderRadius: "var(--r-control)" }}>
       <span className="t-meta muted">{title}</span><span className="t-row ellipsis">{name}</span>
       <span className="t-meta muted">{date ? `${D.long(date)}签发` : "签发日期未知"}</span>
     </div>
@@ -343,7 +340,7 @@ export function ObligationRow({ o, detail, emphasize, onTap }: { o: Obligation; 
         <span className="t-meta ellipsis" style={{ color: emphasize ? "var(--amber-text)" : "var(--muted)" }}>{detail}</span>
       </span>
       <span className="col" style={{ alignItems: "flex-end", gap: 2 }}>
-        <span className="num" style={{ fontSize: 16, fontWeight: 600, color: left < 0 ? "var(--danger)" : left <= 7 ? "var(--amber-text)" : "var(--ink)" }}>{left < 0 ? `逾期 ${-left} 天` : `${left} 天`}</span>
+        <span className="num" style={{ fontSize: 15, fontWeight: 600, color: left < 0 ? "var(--danger)" : left <= 7 ? "var(--amber-text)" : "var(--ink)" }}>{left < 0 ? `逾期 ${-left} 天` : `${left} 天`}</span>
         <span className="t-meta muted">{D.display(o.due, store.today)}</span>
       </span>
       <Icon name="chevron.right" size={11} className="muted" />
@@ -438,7 +435,7 @@ export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect
       <div className="row gap12 grow" style={{ minWidth: 0 }}>
         <FileThumb doc={d} alert={freshnessPill(f) === "bad"} />
         <div className="col grow" style={{ gap: 2 }}>
-          <span className="ellipsis" style={{ fontSize: 14, fontWeight: 600 }}>{t?.name ?? "文件"}</span>
+          <span className="ellipsis" style={{ fontSize: 15, fontWeight: 600 }}>{t?.name ?? "文件"}</span>
           <span className="row gap6 muted" style={{ fontSize: 12 }}>
             {showOwner ? <>
               {owner && <span style={{ fontSize: 12, fontWeight: 700, padding: "0 5px", height: 16, lineHeight: "16px", borderRadius: 5, background: "var(--band)", color: "var(--ink)" }}>{owner.jurisdiction}</span>}
@@ -456,7 +453,7 @@ export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect
           : f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补充日期</Button>
           : freshnessNeedsAttention(f) ? <>
             <Button size="small" onClick={upload} title="类型和归属沿用这份，旧版保留">归档新版</Button>
-          </> : <Button size="small" kind="quiet" onClick={() => void store.openDocument(d)}>打开</Button>}
+          </> : <Button size="small" onClick={() => void store.openDocument(d)}>打开</Button>}
       </span>
       {stageNode}
       {ctx.node}

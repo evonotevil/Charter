@@ -1,6 +1,7 @@
 // Charter 4 公司页：一页两栏。左：基本信息、股东、董事和高管、变更历史；右：到期事项、档案清单、默认中介。
 // 字段直接改，改动自动记入变更历史；涉及申报义务的变更会自动出现在到期里。拖入文件直接归档。
 
+import { SendRecords } from "./SendRecords";
 import { TicketStub } from "../ui/TicketStub";
 import { useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
@@ -73,7 +74,7 @@ export function CompanyPage({ company: c }: { company: Company }) {
             <div className="col gap24"><NextUp c={c} /><Agent c={c} /></div>
           </div>}
           {tab === 1 && <div className="col gap24"><Shareholders c={c} /><Officers c={c} /><EvidenceList target="company" id={c.id} title="其他文件里的证据" /></div>}
-          {tab === 2 && <Archive c={c} onUpload={(typeID) => upload(typeID)} />}
+          {tab === 2 && <div className="col gap24"><Archive c={c} onUpload={(typeID) => upload(typeID)} /><SendRecords c={c} /></div>}
           {tab === 3 && <div className="two"><Dues c={c} /><Agent c={c} /></div>}
           {tab === 4 && <History c={c} />}
         </div>
@@ -352,7 +353,7 @@ function History({ c }: { c: Company }) {
       {list.slice(0, 30).map((x) => (
         <div key={x.id} ref={rowRef(x.id)} className={`cp-line ${isNew(x.id) ? "cp-new" : ""}`} style={{ alignItems: "flex-start", paddingTop: 8, paddingBottom: 8 }}>
           <span className="col grow" style={{ minWidth: 0, gap: 2 }}>
-            <span style={{ fontSize: 13.5, lineHeight: 1.5 }}>{x.summary}</span>
+            <span style={{ fontSize: 13, lineHeight: 1.5 }}>{x.summary}</span>
             <span className="t-meta muted">{x.effectiveUnknown ? `生效日期未知${x.asOf ? ` · 最晚自 ${x.asOf}` : ""}` : `生效 ${x.effectiveOn}`} · 录入 {x.recordedOn}{x.backfill ? " · 补录" : ""}</span>
           </span>
           {x.effectiveUnknown ? <DateField value={undefined} placeholder="补生效日期" onChange={(d) => d && store.setChangeDate(x.id, d)} minWidth={140} />
@@ -383,7 +384,7 @@ function Dues({ c }: { c: Company }) {
             </span>
             <span className={`pill ${left < 0 ? "bad" : left <= 30 ? "warn" : "neutral"}`}>{leftText(left)}</span>
             </button>
-            {!o.record?.dateConfirmed && <button className="v4-chip btnlike" style={{ height: 24, fontSize: 12, flexShrink: 0 }} title="按推算日期确认" onClick={() => store.confirmDue(o)}>确认日期</button>}
+            {!o.record?.dateConfirmed && <button className="v4-chip btnlike" style={{ flexShrink: 0 }} title="按推算日期确认" onClick={() => store.confirmDue(o)}>确认日期</button>}
           </div>
         );
       })}
@@ -409,7 +410,7 @@ function Archive({ c, onUpload }: { c: Company; onUpload: (typeID: string) => vo
           aria-label={d ? `${archiveItemName(i)}：查看文件` : `${archiveItemName(i)}：上传`}
           onClick={() => { if (d) router.open({ kind: "document", id: d.id }); else if (i.custody === "mine") onUpload(i.typeID); }}>
         <span className="col grow" style={{ minWidth: 0, gap: 1 }}>
-          <span className="name-1" style={{ fontSize: 13.5, fontWeight: 600, color: d ? undefined : "var(--muted)" }}>{archiveItemName(i)}{i.suggested && !i.explicit && !d ? <span className="t-meta muted" style={{ fontWeight: 400 }}>　法域常见</span> : null}</span>
+          <span className="name-1" style={{ fontSize: 13, fontWeight: 600, color: d ? undefined : "var(--muted)" }}>{archiveItemName(i)}{i.suggested && !i.explicit && !d ? <span className="t-meta muted" style={{ fontWeight: 400 }}>　法域常见</span> : null}</span>
           {(i.copies > 0 || i.olderVersions > 0 || i.note) && <span className="t-meta muted name-1">
             {[i.copies > 0 ? `另有 ${i.copies} 份同类现行` : "", i.olderVersions > 0 ? `${i.olderVersions} 个旧版` : "", i.note].filter(Boolean).join(" · ")}</span>}
         </span>

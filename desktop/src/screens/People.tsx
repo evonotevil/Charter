@@ -147,7 +147,7 @@ function PersonDetail({ person }: { person: Person }) {
       <button className="row gap10 hover-band grow" style={{ padding: "8px", margin: "0 -8px", borderRadius: "var(--r-row)", textAlign: "left", minWidth: 0 }} onClick={() => { router.companyTab = 0; router.openCompany(id); }}>
         <JurisdictionBadge code={store.company(id)?.jurisdiction ?? "?"} size={30} tint={companyTint(store, id)} />
         <span className="col grow" style={{ gap: 1, minWidth: 0 }}>
-          <span className="ellipsis" style={{ fontSize: 13.5, fontWeight: 500 }}>{store.company(id)?.name ?? "未知公司"}</span>
+          <span className="ellipsis" style={{ fontSize: 13, fontWeight: 500 }}>{store.company(id)?.name ?? "未知公司"}</span>
           {detail && <span className="num" style={{ fontSize: 12, color: warn ? "var(--amber-text)" : "var(--muted)" }}>{detail}</span>}
         </span>
         {/* 5.3.6：比例列固定 64 右对齐；职务列固定宽度左对齐，过长省略 */}
@@ -244,7 +244,7 @@ function MergePersonSheet({ person, onClose }: { person: Person; onClose: () => 
           </FormGroup>
           <div className="col gap8">
             <span className="t-meta muted" style={{ fontWeight: 600, paddingLeft: 4 }}>合并后</span>
-            <div className="col gap6" style={{ padding: 12, borderRadius: 12, background: "var(--band)" }}>
+            <div className="col gap6" style={{ padding: 12, borderRadius: "var(--r-control)", background: "var(--band)" }}>
               {details.map((x) => <span key={x} className="row baseline gap8"><span style={{ width: 4, height: 4, borderRadius: 2, background: "var(--muted)", flex: "none", transform: "translateY(-2px)" }} />{x}</span>)}
             </div>
           </div>

@@ -141,7 +141,7 @@ export function SRow({ title, detail, children, danger }: { title: ReactNode; de
   return (
     <div className="s4-row">
       <span className="col" style={{ gap: 3, flex: "1 1 160px", minWidth: 96 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: danger ? "var(--danger)" : undefined }}>{title}</span>
+        <span style={{ fontSize: 15, fontWeight: 600, color: danger ? "var(--danger)" : undefined }}>{title}</span>
         {detail && <span className="t-meta muted">{detail}</span>}
       </span>
       {children && <span className="row gap8" style={{ flex: "0 1 auto", minWidth: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>{children}</span>}
@@ -172,7 +172,7 @@ function ListItem({ mid, on, onClick, lead, title, sub, trailing }: { mid?: stri
     <button data-mid={mid} className={`s4-item ${on ? "on" : ""}`} onClick={onClick} aria-current={on || undefined}>
       {lead}
       <span className="col grow" style={{ minWidth: 0, gap: 1 }}>
-        <span className="ellipsis" style={{ fontSize: 13.5, fontWeight: 600 }}>{title}</span>
+        <span className="ellipsis" style={{ fontSize: 13, fontWeight: 600 }}>{title}</span>
         {sub && <span className="ellipsis" style={{ fontSize: 12, opacity: on ? 0.7 : 1, color: on ? undefined : "var(--muted)" }}>{sub}</span>}
       </span>
       {trailing}
@@ -227,7 +227,7 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
             {[...settings.reminderDays].sort((a, b) => b - a).map((d) => (
               <span key={d} className="v4-chip num">{d} 天{settings.reminderDays.length > 1 && <button aria-label={`移除 ${d} 天`} onClick={() => store.saveSettings((x) => { x.reminderDays = x.reminderDays.filter((y) => y !== d); })}><Icon name="xmark" size={8} /></button>}</span>
             ))}
-            {adding ? <input className="v4-input num" autoFocus value={newDay} onChange={(e) => setNewDay(e.target.value.replace(/\D/g, ""))} onBlur={addDay} onKeyDown={(e) => { if (e.key === "Enter") addDay(); if (e.key === "Escape") { e.stopPropagation(); setAdding(false); setNewDay(""); } }} placeholder="天数" aria-label="添加提醒天数" style={{ width: 64, height: 28 }} />
+            {adding ? <input className="field num" autoFocus value={newDay} onChange={(e) => setNewDay(e.target.value.replace(/\D/g, ""))} onBlur={addDay} onKeyDown={(e) => { if (e.key === "Enter") addDay(); if (e.key === "Escape") { e.stopPropagation(); setAdding(false); setNewDay(""); } }} placeholder="天数" aria-label="添加提醒天数" style={{ width: 64, height: 28 }} />
               : <button className="v4-toggle" onClick={() => setAdding(true)}>+ 添加</button>}
           </SRow>
           <SRow title="提醒时间" detail="系统通知和日历提醒都在这个时间。">
@@ -430,7 +430,7 @@ function GroupDetail({ g }: { g: CorporateGroup }) {
       </div>
       {pick && (
         <div className="s4-card" style={{ padding: 8 }}>
-          <input className="v4-input" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={pick === "top" ? "选公司或人做顶层…" : "选要加入的公司…"} aria-label="搜索" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setPick(null); } }} />
+          <input className="field" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={pick === "top" ? "选公司或人做顶层…" : "选要加入的公司…"} aria-label="搜索" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setPick(null); } }} />
           <div className="col" style={{ marginTop: 6 }}>
             {options.map((o) => <button key={refKey(o.r)} className="v4-opt" onClick={() => choose(o.r)}><span className="v4-code" style={o.r.kind === "person" ? { borderRadius: "50%" } : undefined}>{o.code}</span><span className="grow ellipsis">{o.name}</span></button>)}
             {!options.length && <span className="t-meta muted" style={{ padding: 10 }}>没有可选的。</span>}
@@ -446,7 +446,7 @@ function GroupDetail({ g }: { g: CorporateGroup }) {
           return (
             <div key={c.id} data-mid={c.id} className="s4-row" style={{ minHeight: 50 }}>
               <span className="v4-code" style={companyTint(store, c.id)}>{c.jurisdiction}</span>
-              <span className="grow ellipsis" style={{ fontSize: 13.5, fontWeight: 600 }}>{c.name}</span>
+              <span className="grow ellipsis" style={{ fontSize: 13, fontWeight: 600 }}>{c.name}</span>
               <span className="t-meta muted">{sourceLabel(m)}</span>
               {m.kind !== "top" && <button className="link t-meta" onClick={() => { let msg = ""; const u = store.undoable("移出集团", () => { msg = store.moveOut(c.id, g.id); }); store.showToast(msg || `已把 ${c.name} 移出 ${g.name}。`, u ? () => store.undoID(u) : undefined); }}>移出</button>}
             </div>
@@ -745,7 +745,7 @@ function RulesSettings() {
       header={<PaneHeader title="合规规则" detail="各法域的截止日怎么算。算出来的日期在每件到期事项上确认或修改。"><Button kind="primary" icon="plus" onClick={add}>新建规则</Button></PaneHeader>}
       scope={q}
       list={<>
-        <input className="v4-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索规则" aria-label="搜索规则" style={{ height: 34, marginBottom: 4 }} />
+        <input className="field" value={q} onChange={(e) => setQ(e.target.value)} placeholder="搜索规则" aria-label="搜索规则" style={{ height: 34, marginBottom: 4 }} />
         {byJ.map(({ j, list }) => (
           <div key={j.code} className="col" style={{ gap: 1 }}>
             <span className="v4-label" style={{ padding: "10px 10px 4px" }}>{j.name}</span>
@@ -775,7 +775,7 @@ function RuleForm({ rule, onDelete }: { rule: RuleTemplate; onDelete: () => void
   return (
     <div className="col" style={{ gap: 14 }}>
       <div className="s4-card">
-        <SRow title={<InlineText value={r.name} label="规则名称" onCommit={(name) => set({ name })} style={{ fontSize: 17, fontWeight: 700 }} />} detail={`${store.scheduleText(r.schedule)} · 适用 ${n} 家公司`}>
+        <SRow title={<InlineText value={r.name} label="规则名称" onCommit={(name) => set({ name })} style={{ fontSize: 19, fontWeight: 700 }} />} detail={`${store.scheduleText(r.schedule)} · 适用 ${n} 家公司`}>
           <Switch checked={r.enabled} onChange={(enabled) => set({ enabled })}>启用</Switch>
         </SRow>
       </div>

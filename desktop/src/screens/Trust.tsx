@@ -72,8 +72,8 @@ function EvidenceForm({ store, companyID, initial, extra, onDone }: { store: Sto
     <div className="col gap8" style={{ width: 320, padding: 10 }}>
       <b>依据</b>
       <SelectField options={opts} value={docID} onChange={setDocID} minWidth={300} />
-      <div className="row gap8"><input className="v4-input" value={page} onChange={(e) => setPage(e.target.value)} placeholder="页码" aria-label="页码" style={{ width: 80 }} />
-        <input className="v4-input grow" value={note} onChange={(e) => setNote(e.target.value)} placeholder="备注（可选）" aria-label="备注" /></div>
+      <div className="row gap8"><input className="field" value={page} onChange={(e) => setPage(e.target.value)} placeholder="页码" aria-label="页码" style={{ width: 80 }} />
+        <input className="field grow" value={note} onChange={(e) => setNote(e.target.value)} placeholder="备注（可选）" aria-label="备注" /></div>
       <div className="row gap8" style={{ justifyContent: "flex-end" }}><Button size="small" kind="quiet" onClick={() => onDone()}>取消</Button>
         <Button size="small" kind="primary" disabled={!docID} onClick={() => onDone({ documentID: docID, ...(page.trim() ? { page: page.trim() } : {}), ...(note.trim() ? { note: note.trim() } : {}) })}>关联并核实</Button></div>
     </div>
@@ -180,7 +180,7 @@ export function EntrySheet({ company: c, mode, onClose }: { company: Company; mo
                 <button className="v4-x" aria-label="重新选择" onClick={() => { setHolder(null); setJur(""); setForm(""); setGroupID(""); }}><Icon name="xmark" size={10} /></button>
               </div>
             ) : <>
-              <input className="v4-input" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={holding ? "输入公司或人名…" : "输入姓名，已有的人会自动关联…"} aria-label={holding ? "股东" : "姓名"} />
+              <input className="field" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={holding ? "输入公司或人名…" : "输入姓名，已有的人会自动关联…"} aria-label={holding ? "股东" : "姓名"} />
               {ql && <div className="v4-menu">
                 {matches.map((o) => <button key={o.r.kind + o.r.id} className="v4-opt" onClick={() => setHolder({ kind: "existing", ref: o.r })}>
                   <span className="v4-code" style={o.r.kind === "person" ? { borderRadius: "50%" } : companyTint(store, o.r.id)}>{o.code}</span><span className="grow ellipsis">{o.name}</span></button>)}
@@ -218,25 +218,25 @@ export function EntrySheet({ company: c, mode, onClose }: { company: Company; mo
             )}
           </>)}
           {holding ? row("比例", <div className="row gap12">
-            <span className="row gap6"><input className="v4-input num" value={pct} onChange={(e) => setPct(e.target.value.replace(/[^\d.]/g, ""))} aria-label="持股比例" style={{ width: 90, textAlign: "right" }} /><span className="muted">%</span></span>
+            <span className="row gap6"><input className="field num" value={pct} onChange={(e) => setPct(e.target.value.replace(/[^\d.]/g, ""))} aria-label="持股比例" style={{ width: 90, textAlign: "right" }} /><span className="muted">%</span></span>
             <Checkbox checked={nominee} onChange={setNominee}>代持</Checkbox>
             {ownerRoles.length > 0 && <SelectField options={[["", "股东"] as [string, string], ...ownerRoles.map((r) => [r.id, roleLabel(r)] as [string, string])]} value={roleID} onChange={setRoleID} minWidth={150} />}
           </div>, ownerRoles.length ? "合同会社、LLC 等用本地的所有者名称（社員、Member）。" : undefined)
             : row("职务", <div className="row gap8">
               <SelectField options={officerRoles.map((r) => [r.id, `${roleLabel(r)} · ${roleCategoryLabel[r.category]}`] as [string, string])} value={roleID} onChange={setRoleID} minWidth={240} />
-              <input className="v4-input grow" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="自定义职务名（可选）" aria-label="自定义职务" />
+              <input className="field grow" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="自定义职务名（可选）" aria-label="自定义职务" />
             </div>, "按法域的角色表选；结构图和检索按“所有者 / 管理者 / 秘书与代表”理解。")}
           {row("这是", <Segmented options={[[false, "新发生的变更"], [true, "补录已有事实"]] as [boolean, string][]} value={backfill} onChange={(v) => { setNatureTouched(true); setBackfill(v); }} />,
             backfill ? "补录不会生成任何提醒。生效日期早于 30 天或未知时默认选这个。" : "会记入变更历史，并按规则生成需要申报的事项。")}
           {row("生效日期", <div className="row gap12">
-            {unknown ? <span className="v4-input muted" style={{ width: 170, display: "inline-flex", alignItems: "center" }}>未知</span> : <DateField value={effective} onChange={setEffective} />}
+            {unknown ? <span className="field muted" style={{ width: 170, display: "inline-flex", alignItems: "center" }}>未知</span> : <DateField value={effective} onChange={setEffective} />}
             <Checkbox checked={unknown} onChange={(v) => { setUnknown(v); if (!v && !effective) setEffective(store.today); }}>不知道生效日期</Checkbox>
           </div>, "法律上自哪天起。周年申报只能证明“当时是”，不能证明“从那天起”。")}
           {row("资料截至", <DateField value={asOf} onChange={setAsOf} placeholder="可留空" />, "依据文件反映的是哪一天的状态。")}
           {row("依据", <>
             {evOpts.length ? <SelectField options={[["", "暂时没有依据"] as [string, string], ...evOpts]} value={docID} onChange={(v) => { setDocID(v); setVerified(!!v); }} minWidth={420} />
               : <span className="t-meta muted">这家公司还没有归档文件。先保存为待核实，之后在“待核实”里关联。</span>}
-            {docID && <input className="v4-input" value={page} onChange={(e) => setPage(e.target.value)} placeholder="页码（可选）" aria-label="页码" style={{ width: 140 }} />}
+            {docID && <input className="field" value={page} onChange={(e) => setPage(e.target.value)} placeholder="页码（可选）" aria-label="页码" style={{ width: 140 }} />}
           </>)}
           {row("核实", <Segmented options={[[true, "已核实"], [false, "待核实"]] as [boolean, string][]} value={isVerified} onChange={(v) => evidence && setVerified(v)} />, evidence ? undefined : "有依据时才能选“已核实”。")}
           <div className="entry-summary"><Icon name="info.circle" size={14} />
@@ -318,7 +318,7 @@ function VerifyRow({ x, company }: { x: { kind: "holding" | "appointment"; item:
       <span className="col" style={{ width: 240, flex: "none", minWidth: 0 }}><b className="ellipsis">{who}</b><span className="t-meta muted ellipsis">{what} · {provenanceText(x.item)}</span></span>
       {opts.length ? <SelectField options={[["", "选择依据文件"] as [string, string], ...opts]} value={docID} onChange={setDocID} minWidth={260} maxWidth={320} />
         : <span className="t-meta muted">没有可用文件，先归档</span>}
-      {docID && <input className="v4-input" value={page} onChange={(e) => setPage(e.target.value)} placeholder="页码" aria-label="页码" style={{ width: 70 }} />}
+      {docID && <input className="field" value={page} onChange={(e) => setPage(e.target.value)} placeholder="页码" aria-label="页码" style={{ width: 70 }} />}
       <span className="spacer" />
       <Button size="small" kind={docID ? "primary" : "secondary"} disabled={!docID} icon="checkmark"
         onClick={() => store.setProvenance(x.kind, x.item.id, { evidence: { documentID: docID, ...(page.trim() ? { page: page.trim() } : {}) }, verified: true }, "标为已核实")}>标为已核实</Button>

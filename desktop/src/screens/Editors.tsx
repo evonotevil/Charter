@@ -178,7 +178,7 @@ export function CompanyEditor({ companyID, groupID: initialGroup, onClose }: { c
           {!original && <FormGroup title="从文件开始（可选）">
             <div className="col gap8">
               <div ref={seedDrop.ref} data-drop role="button" tabIndex={0} title="拖入注册证书，或点按选择文件" onClick={() => void pickSeed()} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) void pickSeed(); }}
-                className="row gap12" style={{ padding: "14px 18px", borderRadius: 16, color: "var(--on-lime)", background: seedDrop.targeted ? "var(--lime)" : "color-mix(in srgb, var(--lime) 85%, transparent)", cursor: "pointer",
+                className="row gap12" style={{ padding: "14px 18px", borderRadius: "var(--r-tile)", color: "var(--on-lime)", background: seedDrop.targeted ? "var(--lime)" : "color-mix(in srgb, var(--lime) 85%, transparent)", cursor: "pointer",
                   outline: seedDrop.targeted ? "1.5px dashed color-mix(in srgb, var(--on-lime) 50%, transparent)" : undefined, outlineOffset: -6 }}>
                 <Icon name={seedPath ? "doc.text" : "arrow.down.doc"} size={18} />
                 <div className="col grow" style={{ gap: 2, minWidth: 0 }}>
@@ -284,7 +284,7 @@ function RecordChangePrompt({ changes, onClose, onRecord, onCorrect }: { changes
         subtitle="如果这是一次真实的董事或股东变更，记为变更会写入变更记录、把相关文件标为需要更新，并生成需要申报的事项。如果只是补录或更正错误，选“只更正资料”。"
         leading={<Button onClick={onCorrect}>只更正资料</Button>}
         trailing={<><Button onClick={onClose}>取消</Button><Button kind="primary" title="写入变更记录并生成申报事项" onClick={onRecord}>记为变更</Button></>}>
-        <div className="col gap6" style={{ padding: 12, borderRadius: 12, background: "var(--band)" }}>
+        <div className="col gap6" style={{ padding: 12, borderRadius: "var(--r-control)", background: "var(--band)" }}>
           {changes.slice(0, 6).map((l, i) => <span key={i} className="row baseline gap8"><span style={{ width: 4, height: 4, borderRadius: 2, background: "var(--muted)", flex: "none", transform: "translateY(-2px)" }} />{l}</span>)}
           {changes.length > 6 && <span className="t-meta muted">另有 {changes.length - 6} 处改动</span>}
         </div>

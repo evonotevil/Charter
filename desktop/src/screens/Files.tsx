@@ -257,7 +257,7 @@ function DocumentsView() {
         </div>
       </div>
       {selectedDocs.length > 0 && (
-        <div className="row gap8 floating appear" style={{ position: "absolute", left: "50%", bottom: 24, transform: "translateX(-50%)", height: 48, padding: "0 10px", borderRadius: 999, zIndex: 4 }}>
+        <div className="row gap8 floating appear" style={{ position: "absolute", left: "50%", bottom: 24, transform: "translateX(-50%)", height: 48, padding: "0 10px", borderRadius: "var(--r-pill)", zIndex: 4 }}>
           <span className="num" style={{ fontSize: 13, fontWeight: 600, padding: "0 4px 0 8px" }}>已选 {selectedDocs.length} 份</span>
           {selectedDocs.some((d) => !store.fileMissing(d)) && <>
             <Button kind="quiet" size="small" onClick={() => batchOpen(store, selectedDocs)}>打开</Button>
@@ -335,14 +335,14 @@ function FileTableRow({ d, showOwner, selected, extraMenu, onSelect, onToggle }:
       <td onClick={(e) => { e.stopPropagation(); onToggle(); }}><span className={`mark sq ${selected ? "on" : ""}`} role="checkbox" aria-checked={selected} aria-label={`选择 ${fileName}`}>{selected && <Icon name="checkmark" size={10} strokeWidth={3.5} />}</span></td>
       <td><div className="col" style={{ minWidth: 0, gap: 1 }}><span className="fname name-1" title={d.originalFileName}>{fileName}</span><span className="t-meta muted name-1" title={subTitle}>{sub}</span></div></td>
       {showOwner && <td className="owner"><span className="row gap6" style={{ minWidth: 0 }}>{c && <span className="v4-code" style={{ width: 24, height: 20, fontSize: 9.5, borderRadius: 6, ...companyTint(store, c.id) }}>{c.jurisdiction}</span>}<span className="name-1" title={store.nameOf(d.owner)}>{store.nameOf(d.owner)}</span></span></td>}
-      <td className="date mono">{d.issueDate ?? <span className="missing-val">未填日期</span>}</td>
-      <td className="date mono" style={{ color: f.kind === "expired" ? "var(--risk-bad)" : undefined }}>{expiry ?? (d.noExpiry || t?.validity === "permanent" || t?.validity === "untilChanged" ? <span className="muted">长期</span> : <span className="missing-val">未填日期</span>)}</td>
+      <td className="date num">{d.issueDate ?? <span className="missing-val">未填日期</span>}</td>
+      <td className="date num" style={{ color: f.kind === "expired" ? "var(--risk-bad)" : undefined }}>{expiry ?? (d.noExpiry || t?.validity === "permanent" || t?.validity === "untilChanged" ? <span className="muted">长期</span> : <span className="missing-val">未填日期</span>)}</td>
       <td><span className="row gap4" style={{ flexWrap: "nowrap" }}><StatusTag s={st} /><ExtraTags d={d} t={t} /></span></td>
       <td onClick={(e) => e.stopPropagation()} style={{ textAlign: "right" }}>
         {f.kind === "fileMissing" ? <Button size="small" onClick={() => void store.relocateDocument(d)} title="源文件不在数据文件夹里：选回它现在的位置，Charter 复制一份进来">重新定位…</Button>
-          : f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补日期</Button>
+          : f.kind === "unknown" ? <Button size="small" onClick={() => router.open({ kind: "document", id: d.id })}>补充日期</Button>
           : freshnessNeedsAttention(f) ? <Button size="small" onClick={upload} title="类型和归属沿用这份，旧版保留">归档新版</Button>
-            : <Button size="small" kind="quiet" onClick={() => void store.openDocument(d)}>打开</Button>}
+            : <Button size="small" onClick={() => void store.openDocument(d)}>打开</Button>}
         {ctx.node}{stageNode}
       </td>
     </tr>

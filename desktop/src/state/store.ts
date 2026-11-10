@@ -6,7 +6,7 @@ import * as D from "../domain/day";
 import type { Day } from "../domain/day";
 import {
   type Appointment, type ArchiveItem, type ArchiveState, type ChangeKind, type ChangeRecord, type Company, type CorporateGroup,
-  type Document, type DocumentRequest, type InboxItem, type TrashEntry, type DocumentType, type GroupRow, type HandoffAction, type Holding, type ItemMark,
+  type Document, type DocumentRequest, type InboxItem, type TrashEntry, type SendRecord, type DocumentType, type GroupRow, type HandoffAction, type Holding, type ItemMark,
   type Jurisdiction, type NodeRef, type ObligationRecord, type Party, type Person, type RuleTemplate, type RuleTrust,
   type RuleVerification, type Schedule, type Evidence, type Provenance, type SharedSettings, type TemplateLibrary,
   archiveCounts, type Custody, type EvidenceLink, custodyFromMark, custodyLabel, changeKindLabel, companyStatusLabel, emptyArchive, hasFile, isActiveOn, isHandedOff, isNotApplicable, itemMarkLabel,
@@ -44,19 +44,21 @@ export interface Data {
   requests: DocumentRequest[];
   inbox: InboxItem[];
   trash: TrashEntry[];
+  /** 5.5：材料包发送记录 */
+  sends: SendRecord[];
 }
 export type Part = keyof Data;
-const parts: Part[] = ["companies", "people", "holdings", "appointments", "parties", "documents", "records", "changes", "groups", "settings", "library", "requests", "inbox", "trash"];
+const parts: Part[] = ["companies", "people", "holdings", "appointments", "parties", "documents", "records", "changes", "groups", "settings", "library", "requests", "inbox", "trash", "sends"];
 const fileOf: Record<Exclude<Part, "library">, string> = {
   companies: "companies", people: "people", holdings: "holdings", appointments: "appointments", parties: "parties",
   documents: "documents", records: "obligations", changes: "changes", groups: "groups", settings: "settings", requests: "requests",
-  inbox: "inbox", trash: "trash",
+  inbox: "inbox", trash: "trash", sends: "sends",
 };
 
 const emptyData = (): Data => ({
   companies: [], people: [], holdings: [], appointments: [], parties: [], documents: [], records: [], changes: [], groups: [],
   settings: { reminderDays: [30, 7, 1], calendarEnabled: true, calendarName: "Charter", notificationHour: 9 },
-  library: { version: 1, jurisdictions: [], documentTypes: [], rules: [], packets: [] }, requests: [], inbox: [], trash: [],
+  library: { version: 1, jurisdictions: [], documentTypes: [], rules: [], packets: [] }, requests: [], inbox: [], trash: [], sends: [],
 });
 
 export interface Toast { id: string; text: string; action?: () => void; kind: "success" | "failure"; actionTitle: string; leaving?: boolean }
@@ -205,6 +207,7 @@ export class Store {
         requests: await load("requests", normRequest),
         inbox: await load("inbox", (r: any) => r as InboxItem),
         trash: await load("trash", (r: any) => r as TrashEntry),
+        sends: await load("sends", (r: any) => r as SendRecord),
         settings: normSettings(await f.load<any>("settings")),
         groups: rawGroups ? rawGroups.map(normGroup) : legacyGroups(companies, holdings, this.today, uuid),
       };

@@ -46,9 +46,9 @@ export function DropTarget({ message, onDrop, children, style }: { message: stri
 
 function Paper({ rotate, x }: { rotate: number; x: number }) {
   return (
-    <div className="col" style={{ position: "absolute", left: x, top: 3, width: 84, height: 104, background: "#fff", borderRadius: 10, padding: "16px 12px 0", gap: 4, transform: `rotate(${rotate}deg)`, boxShadow: "0 6px 16px rgba(0,0,0,.12)" }}>
+    <div className="col" style={{ position: "absolute", left: x, top: 3, width: 84, height: 104, background: "var(--paper)", borderRadius: "var(--r-input)", padding: "16px 12px 0", gap: 4, transform: `rotate(${rotate}deg)`, boxShadow: "var(--paper-shadow)" }}>
       <span style={{ height: 6, borderRadius: 3, background: "color-mix(in srgb, var(--emphasis) 80%, transparent)" }} />
-      {[0, 1, 2].map((i) => <span key={i} style={{ height: 6, borderRadius: 3, background: "#ddd", marginTop: i === 0 ? 2 : 0 }} />)}
+      {[0, 1, 2].map((i) => <span key={i} style={{ height: 6, borderRadius: 3, background: "var(--line)", marginTop: i === 0 ? 2 : 0 }} />)}
     </div>
   );
 }
@@ -59,16 +59,16 @@ export function DropZone({ title, subtitle, action, onDrop }: { title: string; s
     <div ref={ref} data-drop role="button" tabIndex={0} className="dropzone" onClick={action}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); action(); } }}
       title="拖入文件或文件夹，或点按选择文件" aria-label={`${title}。拖入文件或文件夹，或按回车选择文件`}
-      style={{ position: "relative", display: "flex", alignItems: "center", gap: 24, padding: 40, borderRadius: 24, background: "var(--lime)", color: "var(--on-lime)", cursor: "pointer" }}
+      style={{ position: "relative", display: "flex", alignItems: "center", gap: 24, padding: 40, borderRadius: "var(--r-emblem)", background: "var(--lime)", color: "var(--on-lime)", cursor: "pointer" }}
       data-targeted={targeted || undefined}>
       <div className="col grow" style={{ gap: 6 }}>
-        <span style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.5 }}>{title}</span>
+        <span style={{ fontSize: 23, fontWeight: 800, letterSpacing: -0.5 }}>{title}</span>
         <span className="t-body" style={{ opacity: .75 }}>{subtitle}</span>
       </div>
       <div style={{ position: "relative", width: 150, height: 110, flex: "none" }} aria-hidden>
         <Paper rotate={-8} x={0} /><Paper rotate={2} x={32} /><Paper rotate={10} x={64} />
       </div>
-      {targeted && <div aria-hidden style={{ position: "absolute", inset: 10, borderRadius: 18, border: "2px dashed color-mix(in srgb, var(--on-lime) 50%, transparent)", pointerEvents: "none" }} />}
+      {targeted && <div aria-hidden style={{ position: "absolute", inset: 10, borderRadius: "var(--r-tile)", border: "2px dashed color-mix(in srgb, var(--on-lime) 50%, transparent)", pointerEvents: "none" }} />}
     </div>
   );
 }
