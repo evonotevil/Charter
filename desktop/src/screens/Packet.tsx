@@ -59,6 +59,7 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   const [dir, setDir] = useState<"r" | "l">("r");
   const [previewIndex, setPreviewIndex] = useState(0);
   const [estimate, setEstimate] = useState<number | null>(null);
+  const [focusRecipient, setFocusRecipient] = useState(false);
   const lastDir = platform().prefGet(lastDirKey);
   const [dest, setDest] = useState<{ kind: "packets" } | { kind: "last"; dir: string } | { kind: "path"; path: string }>({ kind: "packets" });
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -190,8 +191,8 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   </div>;
 
   // ---------- ② 水印 ----------
-  const watermarkStep = <div className="row start gap28">
-    <div style={{ width: 400, flex: "none" }}><WatermarkSettingsPanel wm={wm} onChange={setWm} recipient={recipient} onRecipient={setRecipient} /></div>
+  const watermarkStep = <div className="row start" style={{ gap: 36 }}>
+    <div style={{ width: 380, flex: "none" }}><WatermarkSettingsPanel wm={wm} onChange={setWm} recipient={recipient} onRecipient={setRecipient} focusRecipient={focusRecipient} onFocused={() => setFocusRecipient(false)} /></div>
     <div className="col grow gap12" style={{ minWidth: 0 }}>
       <WatermarkPreview files={previewFiles} index={Math.min(previewIndex, Math.max(0, previewFiles.length - 1))} onIndex={setPreviewIndex} settings={wm.settings} />
       {included.some((i) => kindOf(store.fileURL(i.document!)) === "other") && <Note>Word、Excel 等文件无法加水印，会原样放入，并在目录里注明。</Note>}
@@ -199,6 +200,7 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   </div>;
 
   // ---------- ③ 导出 ----------
+  const blocked = needsRecipient ? "水印里用了【接收方】，请先在“水印”一步填写接收方" : !included.length ? "还没有放入任何文件" : undefined;
   const pickPath = async () => { const p = await platform().saveDialog({ defaultName: fileName, extensions: ["zip"], title: "保存材料包" }); if (p) setDest({ kind: "path", path: p }); };
   const exportStep = <div className="row start gap24">
     <div className="col grow" style={{ gap: 20, minWidth: 0 }}>
@@ -233,6 +235,8 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
             <OptionCard checked={wm.stripMeta} onChange={(stripMeta) => setWm({ ...wm, stripMeta })} icon="checkmark.shield" title="清除文件信息">去掉 PDF 的作者、标题、创建软件和照片的拍摄地点、时间。对方看不到这些文件是谁、用什么做的。</OptionCard>
             {wm.enabled && <OptionCard checked={wm.settings.flatten} onChange={(flatten) => setWm({ ...wm, settings: { ...wm.settings, flatten } })} icon="doc.richtext" title="压平">每页转成图片再合成水印，水印无法被编辑器删除。文字不能再选中，文件会变大。</OptionCard>}
           </div></section>
+        {blocked && <Note tone="warn" action={needsRecipient && wm.enabled ? <Button size="small" onClick={() => { go(1); setFocusRecipient(true); }}>去填写</Button> : undefined}>
+          <b>还不能生成</b><span>{needsRecipient ? "水印文字里用了【接收方】，但还没有填写接收方。" : "还没有放入任何文件，请回到第一步选择。"}</span></Note>}
         <div className="row gap16" style={{ padding: "12px 16px", borderRadius: "var(--r-control)", background: "var(--surface-sunken)" }}>
           <span className="t-row">{estimate === null ? "正在估算大小…" : `预计 ${sizeLabel(estimate)}`}</span>
           <span className="t-meta muted">{included.length} 份文件{wm.enabled ? ` · ${wmItems.length} 份加水印` : ""}</span></div>
@@ -256,12 +260,11 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   </div>;
 
   const lastStep = steps.length - 1;
-  const blocked = needsRecipient ? "水印里用了【接收方】，请先在“水印”一步填写接收方" : !included.length ? "还没有放入任何文件" : undefined;
   const leading = phase.kind === "done" || building ? null : step > 0 ? <Button kind="quiet" onClick={() => go(step - 1)}>上一步</Button> : <Button kind="quiet" onClick={onClose}>关闭</Button>;
   const trailing = phase.kind === "done" ? <Button kind="primary" onClick={onClose}>完成</Button>
     : building ? <><Button onClick={() => abort.current?.abort()}>取消</Button><Button kind="primary" disabled>正在生成…</Button></>
-    : step < lastStep ? <Button kind="primary" disabled={!included.length} onClick={() => go(step + 1)}>{`下一步：${steps[step + 1]}`}</Button>
-    : <Button kind="primary" disabled={!!blocked} title={blocked} onClick={() => (complete ? void build() : setConfirmPartial(true))}>{phase.kind === "failed" ? "重试" : complete ? "生成材料包" : "生成部分材料包"}</Button>;
+    : step < lastStep ? <Button kind="primary" disabled={!included.length} onClick={() => { if (stage === "watermark" && needsRecipient) { setFocusRecipient(true); return; } go(step + 1); }}>{`下一步：${steps[step + 1]}`}</Button>
+    : <Button kind="primary" softDisabled={!!blocked} title={blocked} onClick={() => (complete ? void build() : setConfirmPartial(true))}>{phase.kind === "failed" ? "重试" : complete ? "生成材料包" : "生成部分材料包"}</Button>;
 
   return (
     <Modal onClose={() => !building && onClose()} dismissOnEscape={!building}>

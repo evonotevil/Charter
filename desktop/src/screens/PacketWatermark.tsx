@@ -72,7 +72,9 @@ function TokenBuilder({ parts, onChange }: { parts: WMPart[]; onChange: (p: WMPa
 
 // ---------- 设置栏 ----------
 
-export function WatermarkSettingsPanel({ wm, onChange, recipient, onRecipient }: { wm: PacketWatermark; onChange: (w: PacketWatermark) => void; recipient: string; onRecipient: (s: string) => void }) {
+export function WatermarkSettingsPanel({ wm, onChange, recipient, onRecipient, focusRecipient, onFocused }: { wm: PacketWatermark; onChange: (w: PacketWatermark) => void; recipient: string; onRecipient: (s: string) => void; focusRecipient?: boolean; onFocused?: () => void }) {
+  const recBox = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (!focusRecipient) return; const t = setTimeout(() => { recBox.current?.scrollIntoView({ block: "center", behavior: "smooth" }); recBox.current?.querySelector("input")?.focus(); onFocused?.(); }, 260); return () => clearTimeout(t); }, [focusRecipient]);
   const s = wm.settings;
   const set = (p: Partial<WatermarkSettings>) => onChange({ ...wm, settings: { ...s, ...p } });
   const custom = !WM_COLORS.some(([c]) => c.toLowerCase() === s.color.toLowerCase());
@@ -82,7 +84,7 @@ export function WatermarkSettingsPanel({ wm, onChange, recipient, onRecipient }:
     <section className="col gap8">{head("水印文字", <span className="t-meta muted">拖动或用 ‹ › 调整顺序</span>)}<TokenBuilder parts={s.parts} onChange={(parts) => set({ parts })} /></section>
     <section className="col gap8">{head("语言", <Segmented options={[["zh", "中文"], ["en", "English"]]} value={s.lang} onChange={(lang) => set({ lang })} />)}
       {s.lang === "en" && <span className="t-meta muted">日期写作 10 Nov 2026，文件名称用英文类型名；公司名称、接收方和自定义文字照原样。</span>}</section>
-    <section className="col gap8">{head("接收方", <span className="t-meta muted">每次导出时确认</span>)}
+    <section className="col gap8" ref={recBox as never}>{head("接收方", <span className="t-meta muted">每次导出时确认</span>)}
       <TextField value={recipient} onChange={onRecipient} placeholder="例如 汇丰银行" invalid={usesRecipient && !recipient.trim()} />
       {usesRecipient && !recipient.trim() && <span className="t-meta amber-text">水印里用了【接收方】，请填写。</span>}</section>
     <section className="col gap8">{head("样式", <Segmented<WMStyle> options={[["tile", "斜向平铺"], ["center", "居中大字"], ["footer", "页脚一行"]]} value={s.style} onChange={(style) => set({ style })} />)}</section>
