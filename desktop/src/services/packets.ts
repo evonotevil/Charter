@@ -7,7 +7,7 @@ import { safeName } from "../domain/folder";
 import { extname, platform } from "../platform/platform";
 import type { Store } from "../state/store";
 import { writePDF, writeUnique, writeXLSX, writeZip, type PDFSection } from "./files";
-import { type WMContext, flattenPDF, inspectPDF, kindOf, resolveText, watermarkImage, watermarkPDF } from "./watermark";
+import { type WMContext, flattenPDF, inspectPDF, kindOf, resolveText, watermarkImage, reencodeImage, watermarkPDF } from "./watermark";
 import { englishDocName } from "../domain/docnames";
 
 // MARK: 文件包
@@ -88,6 +88,8 @@ export interface BuildOptions {
   onItem?: (index: number, state: "run" | "done", note: string) => void;
   /** 保存到这个文件夹（自动避开重名）；不给时为公司文件夹。 */
   outDir?: string;
+  /** 清除文件信息（PDF 作者、标题等，图片拍摄信息）；不加水印时也生效。 */
+  stripMeta?: boolean;
   /** 改过的文件名（不含 .zip）；为空时用默认名。 */
   outName?: string;
   /** 直接保存为这个完整路径（来自系统“存储为”窗口，已由系统确认覆盖）。 */
@@ -134,7 +136,8 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
   const wm = run?.wm.enabled ? run.wm : undefined;
   const recipient = run?.recipient.trim() ?? "";
   const base = packetBaseName(c, t, s, complete, wm ? recipient : undefined);
-  type Done = { entry: { path: string; data: Uint8Array }; inc: string; wm: string[]; marked: boolean };
+  type Done = { entry: { path: string; data: Uint8Array }; inc: string; wm: string[]; marked: boolean; cleaned: boolean | null; metaLine: string | null };
+  const strip = opts.stripMeta ?? !!wm?.stripMeta;
   const one = async (i: number, item: PacketItem): Promise<Done> => {
     abort();
     const doc = item.document!;
@@ -144,33 +147,41 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
     let data = await p.readBytes(src);
     const label = `${two(i + 1)} ${title}`;
     const wmLines: string[] = []; let marked = false;
+    // 清除文件信息与水印无关：不加水印时也要生效。null = 没要求清除。
+    let cleaned: boolean | null = strip ? false : null; let keepReason = "";
     onItem?.(i, "run", "");
     const kind = kindOf(src);
     const want = !!wm && !wm.skip.includes(packetItemID(item));
     if (kind === "pdf") {
       const info = inspectPDF(data);
-      if (info.encrypted) { if (want) wmLines.push(`${label}：已加密，无法加水印，原样放入`); }
-      else if (want || (wm?.stripMeta && !info.signed)) {
+      if (info.encrypted) { if (want) wmLines.push(`${label}：已加密，无法加水印，原样放入`); keepReason = "已加密"; }
+      else if (want || (strip && !info.signed)) {
         const text = want ? resolveText(wm!.settings, wmContext(item, t, c, s, recipient)) : "";
         const onPage = (n: number, total: number) => onItem?.(i, "run", `第 ${n} / ${total} 页`);
         let ok = true;
         try {
           data = want && wm!.settings.flatten ? await flattenPDF(data, text, wm!.settings, { stripMeta: true, signal, onPage })
-            : await watermarkPDF(data, text, want ? wm!.settings : null, { stripMeta: !!wm?.stripMeta, signal, onPage });
-        } catch (e) { if (signal?.aborted) throw e; ok = false; if (want) wmLines.push(`${label}：PDF 无法读取，未加水印，原样放入`); }
+            : await watermarkPDF(data, text, want ? wm!.settings : null, { stripMeta: strip, signal, onPage });
+        } catch (e) { if (signal?.aborted) throw e; ok = false; keepReason = "PDF 无法读取"; if (want) wmLines.push(`${label}：PDF 无法读取，未加水印，原样放入`); }
+        if (ok && cleaned !== null) cleaned = true;
         if (want && ok) { marked = true; wmLines.push(`${label}：已加水印${wm!.settings.flatten ? "（已压平）" : ""}${info.signed ? "；原件带电子签名，本副本签名已失效" : ""}`); }
-      } else if (wm) wmLines.push(`${label}：${info.signed ? "带电子签名，未加水印，保留原签名" : "未加水印"}`);
+      } else {
+        if (info.signed) keepReason = "带电子签名，保留原签名";
+        if (wm) wmLines.push(`${label}：${info.signed ? "带电子签名，未加水印，保留原签名" : "未加水印"}`);
+      }
     } else if (kind === "image") {
-      if (want || wm?.stripMeta) {
+      if (want || strip) {
         const text = want ? resolveText(wm!.settings, wmContext(item, t, c, s, recipient)) : "";
         let ok = true;
-        try { const r = await watermarkImage(data, ext.toLowerCase(), text, wm!.settings); data = r.bytes; ext = r.ext; }
-        catch { ok = false; if (want) wmLines.push(`${label}：图片无法读取，未加水印，原样放入`); }
+        try { const r = want ? await watermarkImage(data, ext.toLowerCase(), text, wm!.settings) : await reencodeImage(data, ext.toLowerCase()); data = r.bytes; ext = r.ext; }
+        catch { ok = false; keepReason = "图片无法读取"; if (want) wmLines.push(`${label}：图片无法读取，未加水印，原样放入`); }
+        if (ok && cleaned !== null) cleaned = true;
         if (want && ok) { marked = true; wmLines.push(`${label}：已加水印`); }
       } else if (wm) wmLines.push(`${label}：未加水印`);
-    } else if (wm) wmLines.push(`${label}：${ext.toUpperCase()} 文件无法加水印，原样放入`);
+    } else { keepReason = `${ext.toUpperCase()} 文件无法处理`; if (wm) wmLines.push(`${label}：${ext.toUpperCase()} 文件无法加水印，原样放入`); }
+    const metaLine = cleaned === null ? null : cleaned ? null : `${label}：未清除（${keepReason || "原样放入"}）`;
     onItem?.(i, "done", marked ? "已加水印" : "原样放入");
-    return { entry: { path: `${base}/${safeName(label)}.${ext}`, data }, inc: `${two(i + 1)}  ${title}：${recencyText(item)}`, wm: wmLines, marked };
+    return { entry: { path: `${base}/${safeName(label)}.${ext}`, data }, inc: `${two(i + 1)}  ${title}：${recencyText(item)}`, wm: wmLines, marked, cleaned, metaLine };
   };
   // 两份并行：读写和 PDF 处理交错，整体更快；结果按清单顺序装入。
   const results: Done[] = new Array(included.length);
@@ -187,6 +198,10 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
   if (misLines.length) sections.push({ heading: `尚缺（${misLines.length} 项）`, lines: misLines, alert: true });
   const sample = wm ? resolveText(wm.settings, { day: s.today, fileName: "【文件名称】", fileNameEn: "[File name]", company: c.name, packet: t.name, recipient }) : "";
   if (wm) sections.push({ heading: `水印（${watermarked} / ${included.length} 份）`, lines: [`水印文字：${sample}`, ...(recipient ? [`接收方：${recipient}`] : []), ...wmLines], alert: false });
+  if (strip) {
+    const n = results.filter((r) => r.cleaned).length, keep = results.flatMap((r) => (r.metaLine ? [r.metaLine] : []));
+    sections.push({ heading: `文件信息（已清除 ${n} / ${included.length} 份）`, lines: ["已去掉作者、标题、创建软件和照片拍摄信息。", ...keep], alert: false });
+  }
   const toc = await writePDF(c.name,
     complete ? `${latinPadEnd(t.name)}文件包　${D.long(s.today)}` : `${latinPadEnd(t.name)}文件包（部分材料，缺 ${misLines.length} 项）　${D.long(s.today)}`,
     sections, complete ? undefined : "这是部分材料包。缺少的文件补齐后会另行发送。");

@@ -119,7 +119,7 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
     try {
       const path = await buildPacket(items, template, company, store, {
         watermark: wm.enabled ? { wm: effective, recipient } : undefined, signal: ac.signal,
-        outDir: dest.kind === "last" ? dest.dir : undefined, outPath: dest.kind === "path" ? dest.path : undefined, outName: nameEdit ?? undefined,
+        outDir: dest.kind === "last" ? dest.dir : undefined, outPath: dest.kind === "path" ? dest.path : undefined, outName: nameEdit ?? undefined, stripMeta: wm.stripMeta,
         onProgress: (done, total) => setProgress({ done, total }),
         onItem: (i, state, n) => setRowState((rs) => rs.map((r, k) => (k === i ? { state, note: state === "run" ? (n ? `处理中 · ${n}` : "处理中") : n } : r))),
       });
@@ -203,6 +203,9 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
     </div>
   </div>;
 
+  // 能清除文件信息的份数：可读的 PDF / 图片；带签名且不加水印的 PDF 保留原样。
+  const cleanable = included.filter((i) => { const id = packetItemID(i), e = elig[id]; return !!e && e.ok && !("signed" in e && fateOf(i) !== "wm"); });
+  const notCleanable = included.length - cleanable.length;
   // ---------- ③ 导出 ----------
   const blocked = needsRecipient ? "水印里用了【接收方】，请先在“水印”一步填写接收方" : !included.length ? "还没有放入任何文件" : undefined;
   const pickPath = async () => { const p = await platform().saveDialog({ defaultName: shownName, extensions: ["zip"], title: "保存材料包" }); if (p) setDest({ kind: "path", path: p }); };
@@ -237,7 +240,7 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
           <span className="t-meta muted">可以直接修改{wm.enabled && recipient ? "；接收方已写进文件名" : ""}。</span></section>
         <section className="col gap8"><span className="t-row">导出选项</span>
           <div className="row gap12 start">
-            <OptionCard checked={wm.stripMeta} onChange={(stripMeta) => setWm({ ...wm, stripMeta })} icon="checkmark.shield" title="清除文件信息">去掉 PDF 的作者、标题、创建软件和照片的拍摄地点、时间。对方看不到这些文件是谁、用什么做的。</OptionCard>
+            <OptionCard checked={wm.stripMeta} onChange={(stripMeta) => setWm({ ...wm, stripMeta })} icon="checkmark.shield" title="清除文件信息">去掉 PDF 的作者、标题、创建软件和照片的拍摄地点、时间。{wm.stripMeta ? ` 将清除 ${cleanable.length} / ${included.length} 份。` : ""}{notCleanable > 0 ? `带电子签名（不加水印时）、加密的 PDF 和 Word、Excel 等文件不会清除${wm.stripMeta ? `（${notCleanable} 份）` : ""}，目录里会逐份注明。` : ""}</OptionCard>
             {wm.enabled && <OptionCard checked={wm.settings.flatten} onChange={(flatten) => setWm({ ...wm, settings: { ...wm.settings, flatten } })} icon="doc.richtext" title="压平">每页转成图片再合成水印，水印无法被编辑器删除。文字不能再选中，文件会变大。</OptionCard>}
           </div></section>
         {blocked && <Note tone="warn" action={needsRecipient && wm.enabled ? <Button size="small" onClick={() => { go(1); setFocusRecipient(true); }}>去填写</Button> : undefined}>

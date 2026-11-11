@@ -211,6 +211,18 @@ export async function drawWatermark(ctx: CanvasRenderingContext2D, W: number, H:
 const blobOf = (c: HTMLCanvasElement, type: string, q?: number) => new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("图片编码失败"))), type, q));
 
 /** 图片加水印。JPG 输出 JPG，其余输出 PNG。重新编码同时去掉 EXIF 等元数据。返回新字节和扩展名。 */
+/** 只重新编码图片（去掉 EXIF 等拍摄信息），不加水印。 */
+export async function reencodeImage(bytes: Uint8Array, ext: string): Promise<{ bytes: Uint8Array; ext: string }> {
+  const type = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`;
+  const bmp = await createImageBitmap(new Blob([bytes as BlobPart], { type }));
+  const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
+  c.getContext("2d")!.drawImage(bmp, 0, 0);
+  const jpg = type === "image/jpeg";
+  const blob = await blobOf(c, jpg ? "image/jpeg" : "image/png", .92);
+  c.width = c.height = 0;
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), ext: jpg ? "jpg" : "png" };
+}
+
 export async function watermarkImage(bytes: Uint8Array, ext: string, text: string, s: WatermarkSettings): Promise<{ bytes: Uint8Array; ext: string }> {
   const type = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : `image/${ext}`;
   const bmp = await createImageBitmap(new Blob([bytes as BlobPart], { type }));

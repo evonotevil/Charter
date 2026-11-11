@@ -7,7 +7,7 @@ import { MemoryPlatform } from "../platform/memory";
 import { setPlatform } from "../platform/platform";
 import { Store } from "../state/store";
 import { installSampleData } from "../state/sample";
-import { buildPacket, packetBaseName, packetItems } from "../services/packets";
+import { buildPacket, packetBaseName, packetItemID, packetItems } from "../services/packets";
 import { defaultWatermark, englishDate, fitSize, inspectPDF, kindOf, layout, resolveText, watermarkPDF } from "../services/watermark";
 import { englishDocName } from "../domain/docnames";
 
@@ -91,4 +91,29 @@ describe("5.5 材料包导出", () => {
     const zip = await buildPacket(packetItems(t, c, s), t, c, s, { watermark: { wm: { enabled: false, settings: defaultWatermark(), skip: [], stripMeta: false }, recipient: "汇丰银行" } });
     expect(zip).not.toContain("汇丰银行");
   });
+});
+
+describe("5.5.4 清除文件信息与水印无关", () => {
+  async function run(opts: { stripMeta?: boolean; watermark?: boolean; signed?: boolean }) {
+    const { p, s } = await fresh();
+    const c = s.data.companies.find((x) => x.name === "远澜控股（香港）有限公司")!;
+    const t = s.data.library.packets.find((x) => x.name === "银行开户")!;
+    const items = packetItems(t, c, s);
+    const first = items.find((i) => i.included && i.document)!;
+    let pdf = await realPDF();
+    if (opts.signed) pdf = new Uint8Array([...pdf, ...new TextEncoder().encode("\n% /ByteRange[0 1 2 3] /Type /Sig\n")]);
+    await p.writeBytes(s.fileURL(first.document!), pdf);
+    const zip = await buildPacket(items, t, c, s, {
+      stripMeta: opts.stripMeta,
+      watermark: opts.watermark ? { wm: { enabled: true, settings: { ...defaultWatermark(), parts: [{ kind: "text", text: "HSBC" }] }, skip: opts.signed ? [packetItemID(first)] : [], stripMeta: !!opts.stripMeta }, recipient: "" } : undefined,
+    });
+    const z = await JSZip.loadAsync(await p.readBytes(zip));
+    const name = Object.keys(z.files).find((n) => n.includes(" 01 ") || /\/01 /.test(n))!;
+    const d = await PDFDocument.load(await z.files[name].async("uint8array"), { ignoreEncryption: true });
+    return { author: d.getAuthor() ?? "", title: d.getTitle() ?? "" };
+  }
+  it("不加水印 + 清除：作者、标题被清空", async () => { expect(await run({ stripMeta: true })).toEqual({ author: "", title: "" }); });
+  it("不加水印、不清除：原样保留", async () => { expect((await run({})).author).toBe("张三"); });
+  it("加水印 + 清除：同样清空", async () => { expect((await run({ stripMeta: true, watermark: true })).author).toBe(""); });
+  it("带电子签名且不加水印：保留原样（不破坏签名）", async () => { expect((await run({ stripMeta: true, watermark: true, signed: true })).author).toBe("张三"); });
 });
