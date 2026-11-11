@@ -20,7 +20,7 @@ const views = [
   { label: "查到期", view: "deadlines", caption: "查看申报事项和证件的到期日，安排下一步。" },
   { label: "找档案", view: "company", caption: "按公司找回基本资料、登记信息和历史记录。" },
   { label: "管文件", view: "documents", caption: "按公司和文件类型归档，查看现行文件和需要更新的材料。" },
-  { label: "备材料", view: "packet", caption: "以银行开户为例，体验 5.5.4 的材料包流程。水印只处理副本，原件不变。" },
+  { label: "备材料", view: "packet", caption: "以银行开户为例，体验 5.5.5 的材料包流程。水印只处理副本，原件不变。" },
   { label: "查任职", view: "people", caption: "从人员档案查看关联公司与任职情况。" },
 ] as const;
 const release = "https://github.com/evonotevil/Charter/releases";
@@ -72,7 +72,7 @@ function Downloads() {
   return <section className="downloads" id="download">
     <div className="download-station">
       <header className="download-heading">
-        <span className="download-version">Charter 5.5.4</span>
+        <span className="download-version">Charter 5.5.5</span>
         <h2>下载 Charter</h2>
         <p>无需账户。选一个文件夹，就能开始整理公司资料。</p>
       </header>
@@ -85,7 +85,7 @@ function Downloads() {
           <legend className="picker-label">02 / 选择{platform === 0 ? "芯片" : "安装方式"}</legend>
           {variants.map(([name, filename], i) => <label key={filename}><input type="radio" name="package" checked={variant === i} onChange={() => setVariant(i)} /><span>{name}</span><small>{filename.split(".").at(-1)?.toUpperCase()}</small></label>)}
         </fieldset>
-        <a className="download-primary" href={`${release}/download/v5.5.4/Charter-5.5.4-${file}`}>下载 {platformName} {label}</a>
+        <a className="download-primary" href={`${release}/download/v5.5.5/Charter-5.5.5-${file}`}>下载 {platformName} {label}</a>
       </div>
     </div>
     <div className="install-guide">
@@ -116,7 +116,7 @@ function Downloads() {
         </section>
         }
       </details>
-      <p className="download-links"><a href={`${release}/tag/v5.5.4`}>官方发布页</a><a href={`${release}/download/v5.5.4/SHA256SUMS.txt`}>SHA-256 校验值</a></p>
+      <p className="download-links"><a href={`${release}/tag/v5.5.5`}>官方发布页</a><a href={`${release}/download/v5.5.5/SHA256SUMS.txt`}>SHA-256 校验值</a></p>
     </div>
   </section>;
 }
@@ -247,7 +247,7 @@ function App() {
       </section>
       <Downloads />
     </main>
-    <footer><span>Charter 5.5.4</span><a href="#top">返回顶部</a><a href="https://github.com/evonotevil/Charter">GitHub 源码</a></footer>
+    <footer><span>Charter 5.5.5</span><a href="#top">返回顶部</a><a href="https://github.com/evonotevil/Charter">GitHub 源码</a></footer>
   </div>;
 }
 

@@ -2,7 +2,7 @@
 
 管理海外子公司的跨平台桌面应用：股权结构、到期事项、中介、公司档案、文件与人员。
 
-当前版本：**5.5.4**（源码与已发布安装包已核验一致）。Charter 5 使用 Electron + React + TypeScript，Mac 与 Windows 共用一套产品代码。
+当前版本：**5.5.5**（源码与已发布安装包已核验一致）。Charter 5 使用 Electron + React + TypeScript，Mac 与 Windows 共用一套产品代码。
 
 产品网站：[https://evonotevil.github.io/Charter/](https://evonotevil.github.io/Charter/)
 
@@ -10,15 +10,21 @@
 
 从 [GitHub Releases](https://github.com/evonotevil/Charter/releases/latest) 下载：
 
-- **Mac Apple 芯片（M1 及以后）**：`Charter-5.5.4-Mac-arm64.dmg`
-- **Mac Intel**：`Charter-5.5.4-Mac-x64.dmg`
-- **Windows 10/11 x64**：推荐 `Charter-5.5.4-Windows-Setup.exe`
-- **Windows 免安装**：`Charter-5.5.4-Windows-x64.zip`
+- **Mac Apple 芯片（M1 及以后）**：`Charter-5.5.5-Mac-arm64.dmg`
+- **Mac Intel**：`Charter-5.5.5-Mac-x64.dmg`
+- **Windows 10/11 x64**：推荐 `Charter-5.5.5-Windows-Setup.exe`
+- **Windows 免安装**：`Charter-5.5.5-Windows-x64.zip`
 - **SHA-256 校验值**：`SHA256SUMS.txt`
 
-5.5.4 源码构建的全部前端文件和 Electron 模块与用户提供的 Windows 免安装包逐字节一致。全部平台由 GitHub Actions 从 v5.5.4 源码统一构建。应用没有使用 Apple Developer ID 或 Windows 商业代码签名证书：Mac 首次打开时可能需要在访达中右键 Charter →「打开」；Windows 可能显示 SmartScreen 提示，选择「更多信息」→「仍要运行」。
+5.5.5 原始源码与用户提供的 Windows 包核验一致，随后配置真实更新地址并重新构建。全部平台由 GitHub Actions 从 v5.5.5 源码统一构建。应用没有使用 Apple Developer ID 或 Windows 商业代码签名证书：Mac 首次打开时可能需要在访达中右键 Charter →「打开」；Windows 可能显示 SmartScreen 提示，选择「更多信息」→「仍要运行」。
 
-## 5.5.4 更新
+## 5.5.5 更新
+
+- 新增“关于与更新”，接入真实 GitHub Release 与官网备用更新源。
+- 修正备份恢复、持股变更、日期校验和文件包流程的数据安全问题。
+- 发布包已重新构建，包含正式更新地址。
+
+## 历史更新：5.5.4
 
 - 修复不加水印时清除 PDF 与图片信息不生效的问题。
 - 导出目录列出信息清除结果及未处理原因。
