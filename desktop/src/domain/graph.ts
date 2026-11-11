@@ -54,10 +54,18 @@ export function layers(nodes: NodeRef[], holdings: Holding[]): Map<string, numbe
 export function buildSnapshot(args: {
   companies: Company[]; holdings: Holding[]; scope: Set<string> | null; asOf: Day;
   names: Map<string, string>; savedPositions: Map<string, GraphPoint>;
+  /** 5.5.5：已注销公司的注销生效日。回看注销前的日期时，公司仍在结构里。 */
+  dissolvedOn?: Map<string, Day>; today?: Day;
 }): StructureSnapshot {
   const { asOf, names, savedPositions } = args;
+  const gone = (c: Company) => {
+    if (c.status !== "dissolved") return false;
+    const on = args.dissolvedOn?.get(c.id);
+    if (on) return asOf >= on;
+    return !args.today || asOf >= args.today;   // 不知道注销日期：只在“今天”的视图里隐藏
+  };
   const companies = args.companies.filter((c) =>
-    (!args.scope || args.scope.has(c.id)) && (!c.incorporationDate || c.incorporationDate <= asOf) && c.status !== "dissolved");
+    (!args.scope || args.scope.has(c.id)) && (!c.incorporationDate || c.incorporationDate <= asOf) && !gone(c));
   const ids = new Set(companies.map((c) => c.id));
   const active = args.holdings.filter((h) => isActiveOn(h, asOf) && ids.has(h.companyID));
 

@@ -35,7 +35,7 @@ export function SheetHost() {
     case "importFiles": return <ImportView key={key} paths={s.paths} resume={false} context={router.importContext} onClose={close} />;
     case "resumeImport": return <ImportView key={key} paths={[]} resume context={store.pendingImport?.context ?? null} onClose={close} />;
     case "packet": return <PacketView key={key} companyID={s.companyID} onClose={close} />;
-    case "packetFor": return <PacketView key={key} companyID={s.companyID} purposeID={s.purposeID} recipient={s.recipient} onClose={close} />;
+    case "packetFor": return <PacketView key={key} companyID={s.companyID} purposeID={s.purposeID} recipient={s.recipient} preset={s.preset} onClose={close} />;
     case "change": { const id = s.companyID; queueMicrotask(() => { router.sheet = null; router.openCompany(id); }); return null; }
     case "changeFrom": { const id = s.companyID; queueMicrotask(() => { router.sheet = null; router.openCompany(id); }); return null; }
     case "obligation": { const k = s.key; queueMicrotask(() => { router.sheet = null; router.openDue(k); }); return null; }

@@ -14,6 +14,8 @@ import { Icon } from "../ui/Icon";
 import { ActionMenu, Avatar, Button, Card as KitCard, DateField, JurisdictionBadge, PageHeader, Pill, Popover, PopoverRow, ProgressTrack, SelectField, Tabs, divider, item } from "../ui/kit";
 import { DropTarget } from "../ui/drop";
 import { InlineText } from "./Agents";
+import { GroupAdjustSheet, ShareChangeSheet } from "./HoldingEdit";
+import { Note } from "../ui/kit";
 import { leftText } from "./InfoCard";
 import { useStageFile } from "./common";
 import { useListMotion } from "../ui/motion";
@@ -160,10 +162,12 @@ function HolderGapNote({ c }: { c: Company }) {
   const { store, router } = useApp();
   const st = store.shareholderCheckApplies(c) ? store.shareholderStatus(c.id) : null;
   if (st?.kind !== "pending") return null;
-  return <div className="row gap8 holder-gap" role="note">
-    <Icon name="exclamationmark.triangle.fill" size={13} /><span className="grow">股东信息待补：{st.reasons.join("；")}。</span>
-    <button className="link t-meta" onClick={() => router.open({ kind: "editCompany", companyID: c.id })}>去补填</button>
-  </div>;
+  // 合计超 100% 已由上方的警告条说明，这里不再重复。
+  const reasons = st.reasons.filter((r) => !/超过 100%/.test(r));
+  if (!reasons.length) return null;
+  return <Note tone="warn" action={<button className="link t-row note-action" onClick={() => router.open({ kind: "editCompany", companyID: c.id })}>去补填</button>}>
+    <span>股东信息待补：{reasons.join("；")}。</span>
+  </Note>;
 }
 
 /** 公司背后的人：股东和董事一览，点进人员与持股页签编辑。 */
@@ -243,7 +247,7 @@ function Basics({ c }: { c: Company }) {
       <KV k="注册编号"><InlineText value={c.registrationNumber} label="注册编号" placeholder="未填写" className="mono" style={{ textAlign: "right" }} onCommit={(v) => store.editCompanyField(c, "registrationNumber", v.trim(), "注册编号")} /></KV>
       <KV k="成立日期"><DateField value={c.incorporationDate} onChange={(d) => store.editCompanyField(c, "incorporationDate", d, "成立日期")} placeholder="未填写" minWidth={150} /></KV>
       <KV k="注册地址"><InlineText value={c.registeredAddress} label="注册地址" placeholder="未填写" style={{ textAlign: "right" }} onCommit={(v) => store.editCompanyField(c, "registeredAddress", v.trim(), "注册地址")} /></KV>
-      <KV k="财年结束"><InlineText value={c.fiscalYearEnd} label="财年结束（月-日）" className="mono" style={{ textAlign: "right", width: 90 }} onCommit={(v) => /^\d{2}-\d{2}$/.test(v.trim()) && store.editCompanyField(c, "fiscalYearEnd", v.trim(), "财年结束日")} /></KV>
+      <KV k="财年结束"><InlineText value={c.fiscalYearEnd} label="财年结束（月-日）" className="mono" style={{ textAlign: "right", width: 90 }} onCommit={(v) => { const t = v.trim(); const m = /^(\d{2})-(\d{2})$/.exec(t); if (m && D.isRealDay(2000, +m[1], +m[2])) store.editCompanyField(c, "fiscalYearEnd", t, "财年结束日"); else if (t) store.setError(m ? `没有这一天：${+m[1]} 月没有 ${+m[2]} 日。` : "财年结束日的格式应为 月-日，例如 03-31。"); }} /></KV>
     </Card>
   );
 }
@@ -254,8 +258,12 @@ function Shareholders({ c }: { c: Company }) {
   const { isNew, rowRef } = useListMotion(hs.map((h) => h.id));
   const total = hs.reduce((a, h) => a + h.percent, 0);
   const [adding, setAdding] = useState(false);
+  const [editPct, setEditPct] = useState<{ h: (typeof hs)[number]; percent: number } | null>(null);
+  const [grouping, setGrouping] = useState(false);
   return (
-    <Card title="股东" aside={<span className="t-meta muted">合计 <b className="num" style={{ color: total > 0 && Math.abs(total - 100) > 0.01 ? "var(--amber-text)" : "var(--ink)" }}>{percentLabel(total)}</b></span>}>
+    <Card title="股东" aside={<span className="row gap10"><span className="t-meta muted">合计 <b className="num" style={{ color: total > 100.005 ? "var(--red-text)" : total > 0 && Math.abs(total - 100) > 0.01 ? "var(--amber-text)" : "var(--ink)" }}>{percentLabel(total)}</b></span>
+      {hs.length > 1 && total <= 100.005 && <Button size="small" kind="quiet" onClick={() => setGrouping(true)}>成组调整</Button>}</span>}>
+      {total > 100.005 && <Note tone="warn" action={<Button size="small" onClick={() => setGrouping(true)}>成组调整</Button>}>股东比例合计 {percentLabel(total)}，超过 100%。穿透比例和导出结果可能不准确。</Note>}
       <HolderGapNote c={c} />
       {hs.map((h) => {
         const role = roleByID(h.roleID);
@@ -265,7 +273,7 @@ function Shareholders({ c }: { c: Company }) {
               {h.holder.kind === "person" ? <Avatar name={store.nameOf(h.holder)} size={30} /> : <span className="v4-code" style={companyTint(store, h.holder.id)}>{store.company(h.holder.id)?.jurisdiction}</span>}
               <button className="v4-link ellipsis grow" style={{ textAlign: "left" }} onClick={() => h.holder.kind === "company" ? router.openCompany(h.holder.id) : router.openPerson(h.holder.id)}>{store.nameOf(h.holder)}{h.isNominee ? <span className="muted" style={{ fontWeight: 400 }}>（名义）</span> : null}</button>
               <span className="t-meta muted ellipsis cp-role" title={role?.name}>{role?.name ?? ""}</span>
-              <InlineText value={String(h.percent)} label="持股比例" className="num" style={{ width: 56, textAlign: "right", fontWeight: 600 }} onCommit={(v) => store.setHoldingPercent(h, parseFloat(v))} />
+              <InlineText value={String(h.percent)} label="持股比例" className="num" style={{ width: 56, textAlign: "right", fontWeight: 600 }} onCommit={(v) => { const n = parseFloat(v); if (Number.isFinite(n) && n !== h.percent) { if (n > 0 && n <= 100) setEditPct({ h, percent: n }); else store.setError("持股比例应在 0 到 100 之间。"); } }} />
               <span className="muted">%</span>
               {!h.from && <button className="pill warn" style={{ height: 20 }} onClick={() => router.open({ kind: "editCompany", companyID: c.id })} data-tip="这条持股没有生效日期。点一下去补填。">缺生效日期</button>}
               <span className="cp-verify"><VerifyChip kind="holding" item={h} companyID={c.id} /></span>
@@ -277,6 +285,8 @@ function Shareholders({ c }: { c: Company }) {
       })}
       {!hs.length && <span className="row gap8" style={{ padding: "6px 0" }}><span className="v4-chip chip-pending">股东待补</span><span className="muted t-meta">还不知道股东，可以先空着。</span></span>}
       <button className="cp-add" onClick={() => setAdding(true)}>+ 添加股东</button>
+      {editPct && <ShareChangeSheet company={c} changes={[editPct]} onClose={() => setEditPct(null)} />}
+      {grouping && <GroupAdjustSheet company={c} onClose={() => setGrouping(false)} />}
       {adding && <EntrySheet company={c} mode="holding" onClose={() => setAdding(false)} />}
     </Card>
   );

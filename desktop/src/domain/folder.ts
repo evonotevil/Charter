@@ -94,6 +94,8 @@ export class FolderStore {
   async modificationDates(): Promise<Record<string, number | null>> {
     const out: Record<string, number | null> = {};
     for (const c of collections) out[c] = await this.modificationDate(c);
+    // 5.5.5：用途、文件类型、规则在 templates.json 里，其他设备改了也要重新载入
+    out.templates = (await this.p.stat(this.templatesFile)).exists ? ((await this.p.stat(this.templatesFile)).mtime ?? null) : null;
     return out;
   }
 
@@ -255,6 +257,19 @@ export async function restoreSnapshot(s: DataSnapshot, f: FolderStore) {
       }
     }
   };
+  // 5.5.5：恢复备份时被覆盖的文件，按原样放回（覆盖）
+  const over = p.join(s.folder, "overwritten");
+  let hasOver = false; try { hasOver = (await p.listDir(over)).length > 0; } catch { /* 没有 */ }
+  if (hasOver) {
+    const put = async (dir: string, rel: string[]) => {
+      for (const e of await p.listDir(dir)) {
+        const full = p.join(dir, e.name);
+        if (e.isDir) await put(full, [...rel, e.name]);
+        else { await p.mkdirs(p.join(f.root, ...rel)); await p.writeBytes(p.join(f.root, ...rel, e.name), await p.readBytes(full)); }   // 覆盖
+      }
+    };
+    await put(over, []);
+  }
   const kept = p.join(s.folder, "files");
   if ((await p.stat(kept)).exists) await walk(kept, ["files"]);
 }

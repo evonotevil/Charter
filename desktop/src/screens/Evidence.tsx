@@ -1,12 +1,13 @@
 // 5.3 证据链：一份文件可以同时证明多家公司、多个人、多个具体任职和持股。
 // 每条关联写证据类型、可选页码和备注；来源路径只作记录。
 
+import * as D from "../domain/day";
 import { companyTint } from "../ui/uistyle";
 import { useState } from "react";
 import { type Document, type EvidenceKind, type EvidenceLink, type EvidenceTarget, evidenceKindLabel, evidenceKinds } from "../domain/models";
 import { useApp } from "../state/hooks";
 import { Icon } from "../ui/Icon";
-import { Button, Modal, SelectField, SheetScaffold } from "../ui/kit";
+import { Button, Modal, Pill, SelectField, SheetScaffold } from "../ui/kit";
 
 const targetLabel: Record<EvidenceTarget, string> = { company: "公司", person: "人员", appointment: "任职", holding: "持股" };
 const defaultKind = (t: EvidenceTarget, typeID: string): EvidenceKind =>
@@ -105,9 +106,12 @@ export function EvidenceList({ target, id, title = "相关证据" }: { target: "
           <div key={doc.id} className="doc-row">
             <span className="doc-ic"><Icon name="doc.text" size={15} /></span>
             <span className="col grow" style={{ minWidth: 0 }}>
-              <span className="ellipsis" style={{ fontWeight: 700 }}>{store.docType(doc.typeID)?.name ?? "文件"}<span className="t-meta muted" style={{ fontWeight: 400 }}>　{store.nameOf(doc.owner)} 名下</span></span>
-              <span className="t-meta muted ellipsis">{links.map((l) => `${evidenceKindLabel[l.kind]}：${store.evidenceTargetName(l)}${l.page ? `（第 ${l.page} 页）` : ""}`).join("；")}</span>
+              <span className="row gap8" style={{ minWidth: 0 }}><span className="ellipsis" style={{ fontWeight: 700 }}>{store.docType(doc.typeID)?.name ?? "文件"}<span className="t-meta muted" style={{ fontWeight: 400 }}>　{store.nameOf(doc.owner)} 名下</span></span>{doc.supersededBy && <Pill text="旧版" kind="warn" />}</span>
+              {doc.supersededBy
+                ? <span className="t-meta amber-text">已有新版（{(() => { const n = store.latestVersion(doc); return n.issueDate ? `${D.long(n.issueDate)}签发` : "日期未填"; })()}）。{links.map((l) => store.evidenceTargetName(l)).join("；")}仍以这份旧版为依据。</span>
+                : <span className="t-meta muted ellipsis">{links.map((l) => `${evidenceKindLabel[l.kind]}：${store.evidenceTargetName(l)}${l.page ? `（第 ${l.page} 页）` : ""}`).join("；")}</span>}
             </span>
+            {doc.supersededBy && <Button size="small" onClick={() => store.useLatestAsEvidence(doc)} title="把依据换成新版，保持“已核实”；如需重新核对，可在任职或持股详情里取消核实">改用新版作为依据</Button>}
             <Button size="small" kind="quiet" onClick={() => setEditing(doc)}>关联</Button>
             <Button size="small" kind="quiet" onClick={() => router.open({ kind: "document", id: doc.id })}>查看</Button>
           </div>

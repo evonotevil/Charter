@@ -727,6 +727,10 @@ html.overlay-open :is(.brand, .page-head, .toolbar) { -webkit-app-region: no-dra
 .note.info { background: var(--blue-soft); } .note.info .note-icon { color: var(--blue-text); }
 .note.warn { background: var(--amber-soft); } .note.warn .note-icon, .note.warn b { color: var(--amber-text); }
 .note.bad { background: var(--red-soft); } .note.bad .note-icon, .note.bad b { color: var(--red-text); }
+.note:has(> .note-action, > button) { align-items: center; }
+.note:has(> .note-action, > button) .note-icon { padding-top: 0; }
+.note > .note-action, .note > button { flex: none; }
+.note.warn > .note-action { color: var(--amber-text); }
 .note.ok { background: var(--green-soft); } .note.ok .note-icon, .note.ok b { color: var(--green-text); }
 .slider-row { display: flex; align-items: center; gap: 12px; }
 .slider { -webkit-appearance: none; appearance: none; flex: 1; min-width: 80px; height: 22px; background: transparent; cursor: pointer; }
@@ -814,3 +818,10 @@ html.overlay-open :is(.brand, .page-head, .toolbar) { -webkit-app-region: no-dra
 .wm-token button:disabled { color: var(--disabled-fg); }
 .wm-token:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
 .run-note { color: var(--ink); }
+
+/* 5.5.5 组件化补齐 */
+.seg.seg-scroll { align-self: flex-start; max-width: 100%; overflow-x: auto; }
+.panel.panel-accent { box-shadow: inset 0 0 0 2px var(--green); }
+.release-notes { padding: 12px 14px; white-space: pre-wrap; }
+.result-badge { width: 64px; height: 64px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--green-soft); color: var(--green-text); }
+.result-badge.warn { background: var(--amber-soft); color: var(--amber-text); }

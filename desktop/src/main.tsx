@@ -1,3 +1,4 @@
+import { autoCheckOnLaunch } from "./services/update";
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { installTooltips } from "./ui/tooltip";
@@ -15,7 +16,7 @@ import { SyncMonitor } from "./state/sync";
 import { Ctx, useApp } from "./state/hooks";
 import { sectionShortcuts } from "./state/router";
 import { Shell } from "./screens/Shell";
-import { startReminderLoop, writeCalendarFile } from "./services/packets";
+import { startReminderLoop, syncCalendarFile } from "./services/packets";
 import { scheduleCalendarSync } from "./services/calendarSync";
 import { installSampleData } from "./state/sample";
 import { dragEnd, dragOver } from "./ui/drop";
@@ -43,12 +44,8 @@ async function boot() {
   const sync = new SyncMonitor();
   store.onSaved = () => sync.refreshSoon();
   store.onDataCleared = () => router.resetSelection();
-  let lastCalendar = "";
   store.sideEffects = (s) => {
-    if (s.data.settings.calendarEnabled && s.complianceOn) {
-      const key = s.openObligations.map((o) => o.key + o.due + (o.record?.status ?? "")).join("|");
-      if (key !== lastCalendar) { lastCalendar = key; void writeCalendarFile(s).catch(() => {}); }
-    }
+    if (!s.isLoading && !s.loadFailed) void syncCalendarFile(s).catch(() => {});
     scheduleCalendarSync(s);
   };
   await store.load();
@@ -57,6 +54,7 @@ async function boot() {
     if (new URLSearchParams(location.search).has("stress")) await (await import("./state/stress")).installStressData(store);
   }
   sync.start(store.folder.root);
+  autoCheckOnLaunch();
   // 5.4：回到窗口时重新检查源文件（可能刚同步下来，或在外部被移动、删除）
   window.addEventListener("focus", () => void store.checkFiles(true));
   installTooltips();

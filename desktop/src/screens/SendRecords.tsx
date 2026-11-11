@@ -35,10 +35,11 @@ export function SendRecords({ c }: { c: Company }) {
             <span className="t-meta muted num">{r.files} 份文件{r.watermarkText ? `，${r.watermarked} 份加水印` : ""}</span>
           </div>
           <Button size="small" disabled={gone} title={gone ? "在文件夹中找不到，可能已移动或删除" : undefined} onClick={() => void platform().reveal(r.path)}>打开</Button>
-          <Button size="small" disabled={!canRedo} title={canRedo ? "用同样的用途、水印设置和接收方重新导出" : "这个用途已删除"}
+          <Button size="small" disabled={!canRedo} title={canRedo ? "用同样的用途、水印、清除文件信息和接收方重新导出；不改用途的默认设置" : "这个用途已删除"}
             onClick={() => {
-              if (r.watermark) store.saveLibrary((l) => { const t = l.packets.find((p) => p.id === r.packetID); if (t) t.watermark = structuredClone(r.watermark) as never; });
-              router.open({ kind: "packetFor", companyID: c.id, purposeID: r.packetID, recipient: r.recipient });
+              // 只用于这一次导出，不改用途的默认设置
+              router.open({ kind: "packetFor", companyID: c.id, purposeID: r.packetID, recipient: r.recipient,
+                preset: { wm: r.watermark ? { ...structuredClone(r.watermark), enabled: true } : undefined, stripMeta: r.stripMeta ?? !!r.watermark?.stripMeta } });
             }}>按同样设置再导出</Button>
         </div>
       </div>;

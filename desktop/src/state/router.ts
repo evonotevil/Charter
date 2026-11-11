@@ -1,4 +1,6 @@
 // 页面跳转与弹窗。移植自 Swift 版 Router。
+/** 5.5.5：按某次发送记录再导出时的一次性设置，不写回用途。wm 为空表示不加水印。 */
+export type PacketPreset = { wm?: import("../domain/models").PacketWatermark; stripMeta: boolean };
 
 import * as D from "../domain/day";
 import type { Day } from "../domain/day";
@@ -28,7 +30,7 @@ export type Sheet =
   | { kind: "groupMembers"; group: string } | { kind: "addRelation"; companyID: string; upward: boolean } | { kind: "companyItems"; companyID: string } | { kind: "scope"; ownerKind: "company" | "person"; owners?: string[] } | { kind: "trashDocs"; ids: string[] }
   | { kind: "quickSearch" } | { kind: "exportAll"; companyID: string } | { kind: "chainQuery"; from?: NodeRef; to?: string }
   | { kind: "editCompany"; companyID: string } | { kind: "importFiles"; paths: string[] } | { kind: "resumeImport" }
-  | { kind: "packet"; companyID?: string } | { kind: "packetFor"; companyID: string; purposeID: string; recipient?: string } | { kind: "change"; companyID: string }
+  | { kind: "packet"; companyID?: string } | { kind: "packetFor"; companyID: string; purposeID: string; recipient?: string; preset?: PacketPreset } | { kind: "change"; companyID: string }
   | { kind: "changeFrom"; companyID: string; changeKind: ChangeKind; appointmentID?: string; holdingID?: string }
   | { kind: "obligation"; key: string } | { kind: "document"; id: string } | { kind: "confirmRule"; ruleID: string; companyID?: string };
 
@@ -39,12 +41,12 @@ export interface CalendarPreset { partyID?: string; range: CalendarRange; status
 
 export type ImportContext = { kind: "company"; id: string } | { kind: "group"; id: string };
 
-export type SettingsPane = "sync" | "reminders" | "groups" | "archiveItems" | "scope" | "purposes" | "rules" | "backup" | "privacy";
-export const settingsPanes: SettingsPane[] = ["reminders", "groups", "archiveItems", "scope", "purposes", "rules", "backup", "privacy"];
-export const settingsPaneTitle: Record<SettingsPane, string> = { sync: "数据与同步", reminders: "提醒", groups: "集团", archiveItems: "档案清单", purposes: "文件包用途", rules: "合规规则", backup: "备份与恢复", scope: "材料范围", privacy: "隐私与本地处理" };
-export const settingsPaneSymbol: Record<SettingsPane, string> = { sync: "icloud", reminders: "bell", groups: "square.stack.3d.up", archiveItems: "list.bullet.rectangle", purposes: "shippingbox", rules: "calendar.badge.clock", backup: "clock.arrow.circlepath", scope: "checklist", privacy: "lock.circle" };
+export type SettingsPane = "sync" | "reminders" | "about" | "groups" | "archiveItems" | "scope" | "purposes" | "rules" | "backup" | "privacy";
+export const settingsPanes: SettingsPane[] = ["reminders", "about", "groups", "archiveItems", "scope", "purposes", "rules", "backup", "privacy"];
+export const settingsPaneTitle: Record<SettingsPane, string> = { sync: "数据与同步", reminders: "提醒", about: "关于与更新", groups: "集团", archiveItems: "档案清单", purposes: "文件包用途", rules: "合规规则", backup: "备份与恢复", scope: "材料范围", privacy: "隐私与本地处理" };
+export const settingsPaneSymbol: Record<SettingsPane, string> = { sync: "icloud", reminders: "bell", about: "info.circle", groups: "square.stack.3d.up", archiveItems: "list.bullet.rectangle", purposes: "shippingbox", rules: "calendar.badge.clock", backup: "clock.arrow.circlepath", scope: "checklist", privacy: "lock.circle" };
 export const settingsGroups = (): { title: string; panes: SettingsPane[] }[] => [
-  { title: "常规", panes: ["reminders"] },
+  { title: "常规", panes: ["reminders", "about"] },
   { title: "公司资料", panes: ["groups", "archiveItems", "scope", "purposes"] },
   { title: "到期规则", panes: ["rules"] },
   { title: "高级", panes: ["backup", "privacy"] },

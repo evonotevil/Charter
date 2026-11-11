@@ -170,7 +170,7 @@ describe("exports", () => {
     const c = company(s, "远澜控股（香港）有限公司");
     const t = s.data.library.packets.find((x) => x.name === "银行开户")!;
     const items = packetItems(t, c, s);
-    const zip = await buildPacket(items, t, c, s);
+    const zip = (await buildPacket(items, t, c, s)).path;
     const names = await zipNames(p, zip);
     expect(names[0]).toMatch(/00 目录\.pdf$/);
     expect(names.length).toBe(1 + items.filter((i) => i.included && i.document).length);
@@ -181,7 +181,7 @@ describe("exports", () => {
     const { p, s } = await fresh();
     const c = company(s, "Yuanlan Group Ltd.");
     const t = s.data.library.packets.find((x) => x.name === "银行开户")!;
-    const zip = await buildPacket(packetItems(t, c, s), t, c, s);
+    const zip = (await buildPacket(packetItems(t, c, s), t, c, s)).path;
     expect(zip).toMatch(/_部分_/);
     expect((await zipNames(p, zip)).length).toBeGreaterThan(1);
   });
@@ -194,7 +194,7 @@ describe("exports", () => {
     const victim = items.find((i) => i.included && i.document)!.document!;
     await p.removeFile(s.fileURL(victim));
     const fresh2 = packetItems(t, c, s);
-    const zip = await buildPacket(fresh2, t, c, s);
+    const zip = (await buildPacket(fresh2, t, c, s)).path;
     const names = await zipNames(p, zip);
     expect(names.length).toBe(fresh2.filter((i) => i.included && i.document).length); // 少了缺失的那份，但有目录
     expect(zip).toMatch(/_部分_/);

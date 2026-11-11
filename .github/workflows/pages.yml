@@ -51,6 +51,14 @@ jobs:
           test -f "$output/workspace.html"
           test -f "$output/assets/charter-icon.png"
 
+      - name: Generate public update feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$GH_REPO/releases/latest" --jq '{tag_name, name, body, html_url, published_at}' > desktop/web-demo/dist/update.json
+          node -e "const r = require('./desktop/web-demo/dist/update.json'); if (!r.tag_name || !r.html_url) process.exit(1)"
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

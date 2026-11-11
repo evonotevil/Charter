@@ -48,6 +48,7 @@ export interface Data {
   sends: SendRecord[];
 }
 export type Part = keyof Data;
+const partLabel: Partial<Record<Part, string>> = { companies: "公司", people: "人员", holdings: "持股", appointments: "任职", parties: "中介", documents: "文件", records: "事项", changes: "变更记录", groups: "集团", settings: "设置", library: "模板库", requests: "补件请求", inbox: "待整理", trash: "废纸篓", sends: "发送记录" };
 const parts: Part[] = ["companies", "people", "holdings", "appointments", "parties", "documents", "records", "changes", "groups", "settings", "library", "requests", "inbox", "trash", "sends"];
 const fileOf: Record<Exclude<Part, "library">, string> = {
   companies: "companies", people: "people", holdings: "holdings", appointments: "appointments", parties: "parties",
@@ -143,9 +144,15 @@ export class Store {
     this.fileCheckDocs = docs;
     const p = platform();
     const miss = new Set<string>();
+    let unreadable = 0, why = "";
     await Promise.all(docs.filter((d) => !d.supersededBy && d.filePath).map(async (d) => {
-      try { if (!(await p.stat(this.fileURL(d))).exists) miss.add(d.id); } catch { miss.add(d.id); }
+      try {
+        const st = await p.stat(this.fileURL(d));
+        // 5.5.5：读不到（权限、读写错误）不算缺文件，单独提示原因
+        if (st.error) { unreadable++; why = st.error; } else if (!st.exists) miss.add(d.id);
+      } catch { miss.add(d.id); }
     }));
+    if (unreadable && docs === this.data.documents && force) this.setError(`有 ${unreadable} 份文件读不到（${why}），可能是权限或磁盘问题，不是文件丢失。请检查数据文件夹的访问权限。`);
     if (docs !== this.data.documents) return;
     const same = miss.size === this.missingFiles.size && [...miss].every((x) => this.missingFiles.has(x));
     if (!same) { this.missingFiles = miss; this.emit(); }
@@ -176,6 +183,8 @@ export class Store {
 
   async changeDataRoot(root: string) {
     if (this.isImporting) { this.setError("文件正在归档，请完成后再切换数据文件夹。"); return; }
+    // 5.5.5：先把排队中的修改写回旧文件夹；写不成就不切换，免得写进新文件夹
+    if (!(await this.ensureSaved("更换数据文件夹"))) return;
     platform().prefSet("dataRoot", root);
     this.folder = new FolderStore(root);
     await this.load();
@@ -246,6 +255,9 @@ export class Store {
   /** 回到前台或文件夹有变化时：另一台设备改过数据就重新载入。 */
   async reloadIfChangedElsewhere() {
     if (this.isLoading || this.isImporting) return;
+    // 5.5.5：先等本机排队中的保存写完，免得读到写了一半的文件，或载入后又被旧的保存覆盖
+    await this.flushWrites();
+    if (this.isLoading || this.isImporting) return;
     this.today = D.today();
     const now = await this.folder.modificationDates();
     const changed = Object.keys(now).some((k) => now[k] !== this.lastLoaded[k]);
@@ -259,16 +271,20 @@ export class Store {
       return Promise.resolve();
     }
     const snapshot = this.data;
+    // 5.5.5：写入目标在排队时就固定；文件夹切换后，旧任务不会写进新文件夹
+    const folder = this.folder;
     const job = async () => {
       for (const p of ps) {
         try {
-          if (p === "library") await this.folder.saveTemplates(snapshot.library);
+          if (p === "library") { await folder.saveTemplates(snapshot.library); if (folder === this.folder) this.lastLoaded.templates = (await folder.modificationDates()).templates; }
           else {
             const name = fileOf[p];
-            await this.folder.save(snapshot[p], name);
-            this.lastLoaded[name] = await this.folder.modificationDate(name);
+            await folder.save(snapshot[p], name);
+            if (folder === this.folder) this.lastLoaded[name] = await folder.modificationDate(name);
           }
+          if (folder === this.folder) this.unsaved.delete(p);
         } catch (e) {
+          if (folder === this.folder) this.unsaved.add(p);
           this.setError(`保存失败：${(e instanceof Error ? e.message : String(e))}`);
         }
       }
@@ -281,19 +297,34 @@ export class Store {
   /** 等排队中的保存全部写完。备份、快照读的是磁盘上的文件，先调用它，免得漏掉刚做的修改。 */
   async flushWrites() { try { await this.writeQueue; } catch { /* 错误已在保存时报告 */ } }
 
+  /** 5.5.5：保存失败、还没写进数据文件夹的集合。导出备份、切换文件夹等依赖磁盘数据的操作前要先处理。 */
+  unsaved = new Set<Part>();
+  get unsavedLabels(): string[] { return [...this.unsaved].map((p) => partLabel[p] ?? p); }
+  /** 等排队的保存写完；有失败的就重试一次。仍失败时报错并返回 false。 */
+  async ensureSaved(action: string): Promise<boolean> {
+    await this.flushWrites();
+    if (this.unsaved.size) { await this.persist([...this.unsaved]); }
+    if (!this.unsaved.size) return true;
+    this.setError(`有修改还没保存到数据文件夹（${this.unsavedLabels.join("、")}），暂不能${action}。请检查数据文件夹是否可写入，然后在“备份与恢复”里点“重试保存”。`);
+    this.emit();
+    return false;
+  }
+  async retrySave() { await this.ensureSaved("继续"); this.emit(); }
+
   /** 多个集合作为一次事务写入：失败时回滚已写的集合，并保持内存里的旧数据。 */
   async persistCollections(next: Partial<Data>) {
     if (this.loadFailed || this.isLoading) throw unavailableError();
     const writes: [string, unknown][] = [];
     for (const [k, v] of Object.entries(next) as [Part, unknown][]) if (k !== "library") writes.push([fileOf[k as Exclude<Part, "library">], v]);
     await (this.writeQueue = this.writeQueue.then(() => undefined, () => undefined));
-    try { await this.folder.saveCollections(writes); }
+    const folder = this.folder;
+    try { await folder.saveCollections(writes); }
     catch (e) {
       if (e instanceof CollectionSaveError && e.rollbackFailures.length) this.loadFailed = true;
       throw e;
     }
     for (const [name] of writes) this.lastLoaded[name] = await this.folder.modificationDate(name);
-    if (next.library) await this.folder.saveTemplates(next.library);
+    if (next.library) { await this.folder.saveTemplates(next.library); this.lastLoaded.templates = (await this.folder.modificationDates()).templates; }
     this.onSaved?.();
   }
 
@@ -748,6 +779,7 @@ export class Store {
       d.companies = d.companies.filter((x) => x.id !== c.id);
       d.holdings = d.holdings.filter((h) => h.companyID !== c.id && !sameRef(h.holder, ref("company", c.id)));
       d.appointments = d.appointments.filter((a) => a.companyID !== c.id);
+      d.sends = d.sends.filter((r) => r.companyID !== c.id);
     });
   }
 
@@ -806,12 +838,6 @@ export class Store {
     return true;
   }
 
-  deleteDocument(doc: Document) {
-    this.performUndoable("移除文件记录", "已移除这份文件的记录，文件夹里的文件仍保留。", (d) => {
-      d.documents = d.documents.filter((x) => x.id !== doc.id);
-      for (const x of d.documents) if (x.supersededBy === doc.id) x.supersededBy = undefined;
-    });
-  }
 
   // MARK: 档案清单
 
@@ -1006,14 +1032,37 @@ export class Store {
     const appts = target === "company" ? new Set(this.data.appointments.filter((a) => a.companyID === id).map((a) => a.id)) : target === "person" ? new Set(this.data.appointments.filter((a) => a.personID === id).map((a) => a.id)) : new Set<string>();
     const holds = target === "company" ? new Set(this.data.holdings.filter((h) => h.companyID === id).map((h) => h.id)) : target === "person" ? new Set(this.data.holdings.filter((h) => h.holder.kind === "person" && h.holder.id === id).map((h) => h.id)) : new Set<string>();
     for (const doc of this.data.documents) {
-      if (doc.supersededBy) continue;
       for (const l of this.linksOf(doc)) {
+        // 5.5.5：旧版文件只在它仍是任职或持股的核实依据时列出（标“旧版”），免得依据“消失”
+        if (doc.supersededBy && !(l.target === "appointment" || l.target === "holding")) continue;
         if ((l.target === target && l.id === id) || (l.target === "appointment" && appts.has(l.id)) || (l.target === "holding" && holds.has(l.id))) {
           if (sameRef(doc.owner, ref(target === "company" ? "company" : "person", id)) && l.target === target) continue;
           out.push({ doc, link: l }); }
       }
     }
     return out;
+  }
+  /** 一份文件的最新版本（沿 supersededBy 往下找）。 */
+  latestVersion(doc: Document): Document {
+    let d = doc; const seen = new Set<string>();
+    while (d.supersededBy && !seen.has(d.id)) { seen.add(d.id); const n = this.data.documents.find((x) => x.id === d.supersededBy); if (!n) break; d = n; }
+    return d;
+  }
+  /** 5.5.5：把旧版作为依据的任职、持股和证据关联改到最新版本上，保持“已核实”。 */
+  useLatestAsEvidence(old: Document) {
+    const latest = this.latestVersion(old);
+    if (latest.id === old.id) return;
+    this.commit((d) => {
+      for (const h of d.holdings) if (h.evidence?.documentID === old.id) h.evidence = { ...h.evidence, documentID: latest.id };
+      for (const a of d.appointments) if (a.evidence?.documentID === old.id) a.evidence = { ...a.evidence, documentID: latest.id };
+      const o = d.documents.find((x) => x.id === old.id), n = d.documents.find((x) => x.id === latest.id);
+      if (o && n && o.links?.length) {
+        const keep = (o.links ?? []).filter((l) => l.target === "appointment" || l.target === "holding");
+        n.links = [...(n.links ?? []), ...keep.filter((l) => !(n.links ?? []).some((x) => x.target === l.target && x.id === l.id))] as any;
+        o.links = (o.links ?? []).filter((l) => !keep.includes(l)) as any;
+      }
+    }, { label: "改用新版作为依据" });
+    this.showToast("已改用新版作为依据，核实状态保持不变。");
   }
   setLinks(docID: string, links: EvidenceLink[]) {
     this.commit((d) => { const x = d.documents.find((y) => y.id === docID); if (!x) return; x.links = links as any; delete x.relatedCompanyID; }, { label: "证据关联" });
@@ -1336,6 +1385,29 @@ export class Store {
       if (x.from && x.from >= this.today) d.holdings = d.holdings.filter((y) => y.id !== h.id); else x.to = this.today;
       this.tidyGroups(d);
     });
+  }
+
+  /**
+   * 5.5.5：修改持股比例。mode = "change" 是实际股权变更：原记录截止到生效日，从生效日起新建一段，历史结构保持原样；
+   * mode = "correct" 是更正录入错误：直接改原记录。可一次改多位股东（成组调整）。
+   */
+  applyHoldingChanges(companyID: string, changes: { h: Holding; percent: number }[], mode: "change" | "correct", effective?: Day): boolean {
+    const list = changes.filter((x) => x.percent !== x.h.percent);
+    if (!list.length) return true;
+    if (list.some((x) => !(x.percent > 0 && x.percent <= 100))) { this.setError("持股比例应在 0 到 100 之间。"); return false; }
+    const on = effective ?? this.today;
+    if (mode === "change" && list.some((x) => x.h.from && on <= x.h.from)) { this.setError(`生效日要晚于原持股的起始日期。如果是录错了，请选“更正录入错误”。`); return false; }
+    const summary = list.map((x) => `${this.nameOf(x.h.holder)} ${percentLabel(x.h.percent)} → ${percentLabel(x.percent)}`).join("；");
+    this.editWithHistory(mode === "change" ? "股权变更" : "更正持股比例", companyID, "shareholderChange", mode === "change" ? `股权变更：${summary}` : `更正录入：${summary}`, (d) => {
+      for (const { h, percent } of list) {
+        const x = d.holdings.find((y) => y.id === h.id);
+        if (!x) continue;
+        if (mode === "correct") { x.percent = percent; continue; }
+        x.to = on;
+        d.holdings.push({ ...structuredClone(h), id: uuid(), percent, from: on, to: h.to, verified: false, evidence: undefined, recordedOn: this.today } as any);
+      }
+    }, mode === "change" ? { effectiveOn: on } : { backfill: true });
+    return true;
   }
 
   setHoldingPercent(h: Holding, percent: number) {
@@ -2158,7 +2230,7 @@ export class Store {
     const d = this.data;
     return [["公司", d.companies.length, "家"], ["集团", d.groups.length, "个"], ["人员", d.people.length, "人"], ["任职记录", d.appointments.length, "条"],
       ["持股记录", d.holdings.length, "条"], ["文件（记录和已归档的文件本身）", d.documents.length, "份"], ["中介", d.parties.length, "个"],
-      ["合规事项和交办记录", d.records.length, "条"], ["变更记录", d.changes.length, "条"]].map(([a, b, c]) => `${a}：${b} ${c}`);
+      ["合规事项和交办记录", d.records.length, "条"], ["变更记录", d.changes.length, "条"], ["材料包发送记录", d.sends.length, "条"]].map(([a, b, c]) => `${a}：${b} ${c}`);
   }
 
   async clearAllData() {
@@ -2166,12 +2238,13 @@ export class Store {
     if (this.loadFailed || this.isLoading) { this.setError("数据还没有正常载入，暂不能清空。请检查数据文件夹后重新载入。"); return; }
     // 清空前的快照连同归档文件一起保存，恢复这份快照就能完整找回。快照写不成就不清空。
     let snap: DataSnapshot;
-    try { await this.flushWrites(); snap = await makeSnapshot(this.folder, "清空所有数据前"); }
+    if (!(await this.ensureSaved("清空数据"))) return;
+    try { snap = await makeSnapshot(this.folder, "清空所有数据前"); }
     catch (e) { this.setError(`清空前的备份没有写成，数据没有改动：${(e instanceof Error ? e.message : String(e))}。请确认数据文件夹可写入后重试。`); return; }
     this.undoStack = []; this.redoStack = [];
     const files = this.data.documents.map((d) => this.fileURL(d));
     const rels = this.data.documents.map((d) => d.filePath);
-    const empty = { companies: [], people: [], holdings: [], appointments: [], parties: [], documents: [], records: [], changes: [], groups: [], requests: [], inbox: [], trash: [] };
+    const empty = { companies: [], people: [], holdings: [], appointments: [], parties: [], documents: [], records: [], changes: [], groups: [], requests: [], inbox: [], trash: [], sends: [] };
     try { await this.persistCollections(empty); }
     catch (e) { this.setError(`清空失败，数据没有改动：${(e instanceof Error ? e.message : String(e))}。请确认数据文件夹可写入后重试。`); return; }
     this.data = { ...this.data, ...empty };

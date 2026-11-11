@@ -1,11 +1,12 @@
 // 主窗口外壳：侧栏（集团切换、五个页面、同步状态与设置）、页面区、弹窗、提示条。移植自 RootView。
 
-import { useEffect, useState } from "react";
+import { showUpdateBadge, subscribeUpdate } from "../services/update";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useApp } from "../state/hooks";
 import { sections, workspaceSections, type Section } from "../state/router";
 import { ungrouped } from "../state/store";
 import { Icon } from "../ui/Icon";
-import { ActionMenu, Button, CountBadge, shortcutLabel, ErrorStateView, Modal, Skeleton, Spinner, divider, item } from "../ui/kit";
+import { ActionMenu, Button, CountBadge, Pill, shortcutLabel, ErrorStateView, Modal, Skeleton, Spinner, divider, item } from "../ui/kit";
 import { syncNeedsAttention, syncSymbol, syncTitle } from "../state/sync";
 import { platform } from "../platform/platform";
 import { SheetHost } from "./SheetHost";
@@ -66,6 +67,7 @@ function Sidebar() {
   const s = sync.state;
   const spin = s.kind === "syncing" || s.kind === "checking" ? { animation: "spin 2s linear infinite" } : undefined;
   const active = (id: Section) => router.section === id || (id === "people" && (router.section === "agents" || router.section === "parties")) || (id === "companies" && router.section === "overview");
+  const hasUpdate = useSyncExternalStore(subscribeUpdate, showUpdateBadge);
   const navButton = (sec: { id: Section; title: string; symbol: string }, i?: number) => {
     const n = sec.id === "due" ? soon.length : sec.id === "files" ? missing : 0;
     const bad = sec.id === "due" && overdue > 0;
@@ -75,7 +77,8 @@ function Sidebar() {
         <span className="ic"><Icon name={sec.symbol} size={17} /></span>
         <span className="lbl grow ellipsis">{sec.title}</span>
         {n > 0 && <span className="nav-count"><CountBadge count={n} tone={bad ? "bad" : undefined} /></span>}
-        {(bad || n > 0) && <span className="rail-dot" aria-hidden />}
+        {sec.id === "settings" && hasUpdate && <span className="nav-count"><Pill text="有新版本" kind="valid" /></span>}
+        {(bad || n > 0 || (sec.id === "settings" && hasUpdate)) && <span className="rail-dot" aria-hidden />}
       </button>
     );
   };

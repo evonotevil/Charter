@@ -1,5 +1,7 @@
 // 设置（Charter 4）：居中浮层。常规（数据与同步、提醒）/ 公司资料（集团、档案清单、文件包用途）/ 到期规则（合规规则）/ 高级（备份与恢复）。
 
+import { AboutSettings } from "./About";
+import { safeName } from "../domain/folder";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
 import { type CorporateGroup, type DateAdjust, type DocumentType, type NodeKind, type NodeRef, type RuleTemplate, type ValidityKind, brandPalette, isHexColor, isStatusLike, dateAdjustLabel, ref, refKey, uuid, validityKinds, validityLabel } from "../domain/models";
@@ -17,7 +19,7 @@ import { Icon } from "../ui/Icon";
 import { autoSyncOn, autoSyncPref, autoSyncStatus, autoSyncSupported, describeError, runCalendarSync } from "../services/calendarSync";
 import { useChildMotion } from "../ui/motion";
 import { companyTint, groupRing, setDensity, useDensity } from "../ui/uistyle";
-import { Avatar, Banner, Card, PageHeader, Button, Segmented, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField } from "../ui/kit";
+import { Avatar, Banner, Card, PageHeader, Button, Segmented, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, RadioGroup, SelectField, SheetScaffold, Switch, TextField, Note } from "../ui/kit";
 import { ScheduleEditor } from "./common";
 import { ArchiveItemFields, type ItemDraft, newItemDraft } from "./Companies";
 import { PurposeEditor } from "./Packet";
@@ -42,7 +44,7 @@ export function SettingsView() {
           <span className="t-label num" style={{ padding: "16px 12px" }}>Charter {typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : ""}</span>
         </nav>
         <div className="col" style={{ minWidth: 0 }} key={pane}>
-          {pane === "scope" ? <ScopeSettings /> : pane === "privacy" ? <PrivacySettings /> : pane === "groups" ? <GroupsSettings /> : pane === "archiveItems" ? <ArchiveItemsSettings /> : pane === "purposes" ? <PacketSettings /> : pane === "rules" ? <RulesSettings /> : <GeneralSettings pane={pane} />}
+          {pane === "about" ? <AboutSettings /> : pane === "scope" ? <ScopeSettings /> : pane === "privacy" ? <PrivacySettings /> : pane === "groups" ? <GroupsSettings /> : pane === "archiveItems" ? <ArchiveItemsSettings /> : pane === "purposes" ? <PacketSettings /> : pane === "rules" ? <RulesSettings /> : <GeneralSettings pane={pane} />}
         </div>
       </div>
     </div></div>
@@ -120,7 +122,7 @@ export function SyncView() {
 
 // MARK: - 共用（设置组：白色卡片，行 = 左名称+说明，右控件）
 
-function PaneHeader({ title, detail, children }: { title: string; detail?: string; children?: ReactNode }) {
+export function PaneHeader({ title, detail, children }: { title: string; detail?: string; children?: ReactNode }) {
   return (
     <div className="row start gap12" style={{ paddingRight: 36 }}>
       <div className="col grow" style={{ gap: 4, minWidth: 0 }}>
@@ -149,7 +151,7 @@ export function SRow({ title, detail, children, danger }: { title: ReactNode; de
   );
 }
 
-const Scroll = ({ children }: { children: ReactNode; max?: number }) => (
+export const Scroll = ({ children }: { children: ReactNode; max?: number }) => (
   <div className="col" style={{ gap: 20 }}>{children}</div>
 );
 
@@ -217,7 +219,7 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
     if (dir) await store.changeDataRoot(dir);
   };
   const counts = (x: DataSnapshot) => [x.companies != null ? `${x.companies} 家公司` : null, x.documents != null ? `${x.documents} 份文件` : null].filter(Boolean) as string[];
-  const icsPath = p.join(root, `${settings.calendarName}.ics`);
+  const icsPath = p.join(root, `${safeName(settings.calendarName || "Charter")}.ics`);
   return (
     <Scroll>
       <PaneHeader title={settingsPaneTitle[pane]} detail={paneDetail[pane]} />
@@ -249,6 +251,8 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
         </SGroup>
       </>}
       {pane === "backup" && <>
+        {store.unsaved.size > 0 && <Note tone="warn" action={<Button size="small" onClick={() => void store.retrySave()}>重试保存</Button>}>
+          有修改还没保存到数据文件夹（{store.unsavedLabels.join("、")}）。先重试保存，成功后才能导出备份或更换数据文件夹。</Note>}
         <SGroup>
           <SRow title="导出备份" detail="把公司、集团、人员、中介、事项和归档的 PDF 打包成一个 ZIP，可在另一台电脑上恢复。">
             <Button size="small" kind="primary" disabled={store.isLoading || store.loadFailed || backupBusy} onClick={async () => {
@@ -840,6 +844,7 @@ function PrivacySettings() {
     ["识别结果存在哪里", "只存在你的数据文件夹里（data/inbox.json 保存前 600 个字的摘录）。归档后摘录随待整理条目一起清除。"],
     ["文件副本", "归档时 Charter 把文件复制进数据文件夹；移到废纸篓或清空，都只作用于这份副本，不碰你原来的文件。"],
     ["同步", "Charter 不运营服务器。数据文件夹放在 iCloud 云盘或 OneDrive 时，由它们负责同步。"],
+    ["检查更新", "唯一会主动联网的功能：只读取最新版本号和发布说明，不上传任何档案数据。可在“关于与更新”里关闭自动检查。"],
   ];
   return (
     <Scroll>

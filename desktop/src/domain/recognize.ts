@@ -140,7 +140,7 @@ interface FoundDate { day: Day; offset: number }
 export function findDates(text: string): FoundDate[] {
   const out: FoundDate[] = [];
   const add = (y: number, m: number, d: number, at: number) => {
-    if (!(m >= 1 && m <= 12) || !(d >= 1 && d <= 31)) return;
+    if (!D.isRealDay(y, m, d)) return;   // 5.5.5：识别到不存在的日期时不用它
     if (y > 1950 && y < 2100) out.push({ day: D.makeDay(y, m, d), offset: at });
   };
   const months: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };

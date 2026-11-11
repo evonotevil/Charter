@@ -11,6 +11,18 @@ export function daysIn(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
+/** 5.5.5：这一天是否真实存在（2 月 31 日、4 月 31 日等返回 false）。 */
+export function isRealDay(y: number, m: number, d: number): boolean {
+  return Number.isInteger(y) && y >= 1 && y <= 9999 && m >= 1 && m <= 12 && d >= 1 && d <= daysIn(y, m);
+}
+/** 用户输入不是合法日期时的说明；格式不对返回通用提示。 */
+export function dayError(s: string): string {
+  const p = s.trim().replace(/[/.]/g, "-").split("-").map(Number);
+  if (p.length === 3 && p.every(Number.isInteger) && p[1] >= 1 && p[1] <= 12 && p[2] >= 1 && !isRealDay(p[0], p[1], p[2]))
+    return `没有这一天：${p[0]} 年 ${p[1]} 月只有 ${daysIn(p[0], p[1])} 天。`;
+  return "日期格式应为 2026-10-27。";
+}
+
 export function makeDay(y: number, m: number, d: number): Day {
   const dd = Math.min(Math.max(d, 1), daysIn(y, m));
   return `${pad(y, 4)}-${pad(m)}-${pad(dd)}`;
@@ -32,7 +44,7 @@ export function parseDay(s: string): Day | null {
   if (p.length !== 3) return null;
   const [y, m, d] = p.map((x) => Number(x));
   if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
-  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  if (!isRealDay(y, m, d)) return null;
   return makeDay(y, m, d);
 }
 

@@ -7,8 +7,9 @@ import * as D from "../domain/day";
 import { type Document, type NodeRef, type PacketTemplate, type PacketWatermark, archiveStateLabel, ref, sameRef, stateNeedsAttention, typeAppliesTo, latinPadEnd } from "../domain/models";
 import { expiryOf, freshnessLabel } from "../domain/engine";
 import { EvidenceSheet, LinkChips } from "./Evidence";
+import type { PacketPreset } from "../state/router";
 import { useApp } from "../state/hooks";
-import { type PacketItem, buildPacket, packetBaseName, wmContext, exportAll, exportPlan, packetIncluded, packetItemID, packetItemTitle, packetItems, packetMissing, packetReason, recencyText } from "../services/packets";
+import { type PacketFailure, type PacketItem, type PacketResult, PacketFailuresError, buildPacket, legacyPacketItemID, packetBaseName, wmContext, exportAll, exportPlan, packetIncluded, packetItemID, packetItemTitle, packetItems, packetMissing, packetReason, recencyText } from "../services/packets";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { ActionMenu, Button, Checkbox, type Fate, FileFate, Note, OptionCard, ProgressBar, StepBar, Tabs, useNarrow, ConfirmSheet, CopyTextSheet, DateField, FieldRow, FormGroup, Modal, Pill, Segmented, SelectField, SheetScaffold, Switch, TextField, divider, item } from "../ui/kit";
@@ -25,11 +26,11 @@ export function purposeSummary(p: PacketTemplate): string {
   return parts.join("；") + "。";
 }
 
-type Phase = { kind: "choosing" } | { kind: "building" } | { kind: "failed"; message: string } | { kind: "done"; path: string; complete: boolean; missing: number; files: number; watermarked: number };
+type Phase = { kind: "choosing" } | { kind: "building" } | { kind: "failed"; message: string } | { kind: "done"; result: PacketResult };
 type RowState = { state: "wait" | "run" | "done"; note: string };
 const lastDirKey = "packet.lastDir";
 
-export function PacketView({ companyID: initialCompany, purposeID, recipient: initialRecipient, onClose }: { companyID?: string; purposeID?: string; recipient?: string; onClose: () => void }) {
+export function PacketView({ companyID: initialCompany, purposeID, recipient: initialRecipient, preset, onClose }: { companyID?: string; purposeID?: string; recipient?: string; preset?: PacketPreset; onClose: () => void }) {
   const { store } = useApp();
   const locked = !!initialCompany;
   const [companyID, setCompanyID] = useState<string>(initialCompany ?? store.data.companies[0]?.id ?? "");
@@ -51,7 +52,11 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   const [note, setNote] = useState(false);
   const company = store.company(companyID);
   const template = packets.find((p) => p.id === templateID);
-  const [wm, setWmLocal] = useState<PacketWatermark>(() => template?.watermark ?? defaultPacketWatermark());
+  const fromTemplate = () => template?.watermark ?? defaultPacketWatermark();
+  const fromPreset = () => { const base = preset?.wm ?? { ...fromTemplate(), enabled: false }; return { ...base, stripMeta: preset!.stripMeta }; };
+  const [wm, setWmLocal] = useState<PacketWatermark>(() => (preset ? fromPreset() : fromTemplate()));
+  /** 按发送记录再导出时，本次改动不写回用途。切换到别的用途后恢复正常。 */
+  const presetFor = useRef<string | null>(preset ? templateID : null);
   const [recipient, setRecipient] = useState(initialRecipient ?? "");
   const [signedOK, setSignedOK] = useState<string[]>([]);
   const [askSigned, setAskSigned] = useState<{ id: string; title: string } | null>(null);
@@ -62,24 +67,39 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   const [focusRecipient, setFocusRecipient] = useState(false);
   const [nameEdit, setNameEdit] = useState<string | null>(null);
   const [askClose, setAskClose] = useState(false);
+  const nameKey = `${companyID}|${templateID}|${recipient}|${wm.enabled}`;
+  const lastNameKey = useRef(nameKey);
+  useEffect(() => {
+    if (lastNameKey.current === nameKey) return;
+    lastNameKey.current = nameKey;
+    if (nameEdit !== null) { setNameEdit(null); store.showToast("文件名已按新的用途、公司或接收方更新。"); }
+  }, [nameKey]);
   const lastDir = platform().prefGet(lastDirKey);
   const [dest, setDest] = useState<{ kind: "packets" } | { kind: "last"; dir: string } | { kind: "path"; path: string }>({ kind: "packets" });
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
   const abort = useRef<AbortController | null>(null);
-  useEffect(() => { setWmLocal(template?.watermark ?? defaultPacketWatermark()); setSignedOK([]); }, [templateID]);
+  useEffect(() => { if (presetFor.current === templateID) return; presetFor.current = null; setWmLocal(fromTemplate()); setSignedOK([]); }, [templateID]);
   const setWm = (w: PacketWatermark) => {
     setWmLocal(w); clearTimeout(saveTimer.current);
+    if (presetFor.current === templateID) return;
     const id = templateID;
     saveTimer.current = setTimeout(() => store.saveLibrary((l) => { const t = l.packets.find((x) => x.id === id); if (t) t.watermark = structuredClone(w) as never; }), 400);
   };
   useEffect(() => () => clearTimeout(saveTimer.current), []);
-  const reload = () => { setItems(company && template ? packetItems(template, company, store) : []); setPhase({ kind: "choosing" }); setStepRaw(0); };
-  useEffect(reload, [companyID, templateID]);
+  const reload = (keep = false) => {
+    const fresh = company && template ? packetItems(template, company, store) : [];
+    if (keep) { const was = new Map(items.map((i) => [packetItemID(i), i.included])); for (const i of fresh) { const v = was.get(packetItemID(i)); if (v !== undefined && i.document) i.included = v; } }
+    setItems(fresh); setPhase({ kind: "choosing" }); if (!keep) setStepRaw(0);
+  };
+  useEffect(() => reload(), [companyID, templateID]);
   const included = packetIncluded(items), missing = packetMissing(items);
   const complete = missing.length === 0;
   const elig = useEligibility(items, store);
   const canWM = (id: string) => { const e = elig[id]; return !!e && e.ok; };
-  const skipOf = (id: string) => { const e = elig[id]; return wm.skip.includes(id) || !e || !e.ok || ("signed" in e && !signedOK.includes(id)); };
+  const legacy = new Map(items.map((i) => [packetItemID(i), legacyPacketItemID(i)]));
+  const skipOf = (id: string) => { const e = elig[id]; return wm.skip.includes(id) || wm.skip.includes(legacy.get(id) ?? "") || !e || !e.ok || ("signed" in e && !signedOK.includes(id)); };
+  /** 5.5.5：资格检查还没完成的文件（不能当作“原样”）。 */
+  const checking = wm.enabled ? included.filter((i) => !elig[packetItemID(i)]) : [];
   const wmItems = wm.enabled ? included.filter((i) => !skipOf(packetItemID(i))) : [];
   const effective: PacketWatermark = { ...wm, settings: inked(wm.settings), skip: items.map(packetItemID).filter(skipOf) };
   const needsRecipient = wm.enabled && wm.settings.parts.some((p) => p.kind === "tag" && p.tag === "recipient") && !recipient.trim();
@@ -109,7 +129,8 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   const fileName = company && template ? packetBaseName(company, template, store, complete, wm.enabled ? recipient : undefined) + ".zip" : "";
   const destLabel = dest.kind === "path" ? dest.path.replace(/[\\/][^\\/]*$/, "") : dest.kind === "last" ? dest.dir : store.folder.packetsDir;
   const shownName = dest.kind === "path" ? dest.path.split(/[\\/]/).pop()! : nameEdit ?? fileName;
-  const build = async () => {
+  const [failures, setFailures] = useState<(PacketFailure & { choice: "omit" | "asis" })[] | null>(null);
+  const build = async (decisions?: Record<string, "omit" | "asis">) => {
     if (!company || !template) return;
     if (dest.kind !== "path") { const d = dest.kind === "last" ? dest.dir : store.folder.packetsDir; if (!(await platform().stat(d)).exists) { setPhase({ kind: "failed", message: `找不到保存位置：${d}。请换一个位置。` }); return; } }
     const ac = new AbortController(); abort.current = ac;
@@ -117,25 +138,33 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
     setProgress({ done: 0, total: included.length + 1 }); setStartedAt(Date.now());
     setPhase({ kind: "building" });
     try {
-      const path = await buildPacket(items, template, company, store, {
+      const result = await buildPacket(items, template, company, store, {
         watermark: wm.enabled ? { wm: effective, recipient } : undefined, signal: ac.signal,
         outDir: dest.kind === "last" ? dest.dir : undefined, outPath: dest.kind === "path" ? dest.path : undefined, outName: nameEdit ?? undefined, stripMeta: wm.stripMeta,
+        failed: decisions,
         onProgress: (done, total) => setProgress({ done, total }),
         onItem: (i, state, n) => setRowState((rs) => rs.map((r, k) => (k === i ? { state, note: state === "run" ? (n ? `处理中 · ${n}` : "处理中") : n } : r))),
       });
+      const path = result.path;
       if (dest.kind !== "packets") platform().prefSet(lastDirKey, dest.kind === "path" ? path.replace(/[\\/][^\\/]*$/, "") : dest.dir);
       platform().prefSet(lastPurposeKey(company.id), template.id);
-      const rec = store.data.sends[0];
-      setPhase({ kind: "done", path, complete, missing: missing.length, files: included.length, watermarked: rec?.path === path ? rec.watermarked : 0 });
+      setFailures(null);
+      setPhase({ kind: "done", result });
     } catch (e) {
       if (ac.signal.aborted) { setPhase({ kind: "choosing" }); store.showToast("已取消，未生成文件"); }
+      else if (e instanceof PacketFailuresError) { setPhase({ kind: "choosing" }); setFailures(e.failures.map((f) => ({ ...f, choice: "omit" as const }))); }
       else setPhase({ kind: "failed", message: e instanceof Error ? e.message : String(e) });
     } finally { abort.current = null; }
   };
   const sendNote = () => {
-    const lines = [`${company?.name ?? ""} ${latinPadEnd(template?.name ?? "")}文件包（${D.long(store.today)}）`, "", `已包含（${included.length} 份）：`,
-      ...included.map((it, i) => `${String(i + 1).padStart(2, "0")} ${title(it)}${it.document?.issueDate ? `，${D.long(it.document.issueDate)}签发` : ""}`)];
-    if (missing.length) lines.push("", `尚缺（${missing.length} 项）：`, ...missing.map((it) => `— ${packetItemTitle(it)}：${packetReason(it)}`), "", "缺少的文件补齐后另行发送。");
+    // 5.5.5：按实际生成结果写；生成时丢失或处理失败没放入的文件算作尚缺。
+    const R0 = phase.kind === "done" ? phase.result : null;
+    const gone = new Set([...(R0?.lostTitles ?? []), ...(R0?.omittedTitles ?? [])]);
+    const inc = included.filter((it) => !gone.has(title(it)));
+    const miss = [...missing.map((it) => `— ${packetItemTitle(it)}：${packetReason(it)}`), ...(R0?.lostTitles ?? []).map((x) => `— ${x}：源文件不在了`), ...(R0?.omittedTitles ?? []).map((x) => `— ${x}：处理失败，未放入`)];
+    const lines = [`${company?.name ?? ""} ${latinPadEnd(template?.name ?? "")}文件包（${D.long(store.today)}）`, "", `已包含（${inc.length} 份）：`,
+      ...inc.map((it, i) => `${String(i + 1).padStart(2, "0")} ${title(it)}${it.document?.issueDate ? `，${D.long(it.document.issueDate)}签发` : ""}`)];
+    if (miss.length) lines.push("", `尚缺（${miss.length} 项）：`, ...miss, "", "缺少的文件补齐后另行发送。");
     return lines.join("\n");
   };
   const building = phase.kind === "building";
@@ -184,7 +213,8 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
                   <span className="row gap8"><span className={`t-row ellipsis ${it.document ? "" : "muted"}`}>{title(it)}</span>{pill && <Pill text={pill.text} kind={pill.kind} />}</span>
                   <span className={`t-meta ${it.problem ? "amber-text" : "muted"}`}>{it.problem ?? recencyText(it)}</span>
                 </span>
-                {it.document ? <span onClick={(e) => e.stopPropagation()}><FileFate label={title(it)} value={fateOf(it)} onChange={(f) => setFate(i, f)} limited={!wm.enabled || !canWM(id)} /></span>
+                {it.document && wm.enabled && !elig[id] ? <span className="row gap8 t-meta muted"><span className="run-ring" aria-hidden />正在检查能否加水印…</span>
+                  : it.document ? <span onClick={(e) => e.stopPropagation()}><FileFate label={title(it)} value={fateOf(it)} onChange={(f) => setFate(i, f)} limited={!wm.enabled || !canWM(id)} /></span>
                   : null}
               </div>
             </div>;
@@ -248,20 +278,24 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
         <div className="row gap16" style={{ padding: "12px 16px", borderRadius: "var(--r-control)", background: "var(--surface-sunken)" }}>
           <span className="t-row">{estimate === null ? "正在估算大小…" : `预计 ${sizeLabel(estimate)}`}</span>
           <span className="t-meta muted">{included.length} 份文件{wm.enabled ? ` · ${wmItems.length} 份加水印` : ""}</span></div>
+        {estimate !== null && estimate > 1024 ** 3 && <Note tone="warn">这个材料包预计超过 1 GB。生成时会占用较多内存，可能较慢；如果失败，可以减少放入的文件或关闭“压平”后再试。</Note>}
       </>}
     </div>
     <div style={{ width: 340, flex: "none" }}>{toc}</div>
   </div>;
 
-  const doneView = phase.kind === "done" && <div className="col" style={{ alignItems: "center", justifyContent: "center", minHeight: 460 }}>
+  const R = phase.kind === "done" ? phase.result : null;
+  const doneView = R && <div className="col" style={{ alignItems: "center", justifyContent: "center", minHeight: 460 }}>
     <div className="col panel rise-in" style={{ width: 560, padding: 32, gap: 14, alignItems: "center", textAlign: "center" }}>
-      <span className="tick-pop" style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--green-soft)", color: "var(--green-text)", display: "inline-flex", alignItems: "center", justifyContent: "center", animationDelay: "160ms" }}><Icon name="checkmark" size={28} /></span>
-      <span className="t-headline">{phase.complete ? "已生成材料包" : "已生成部分材料包"}</span>
-      <span className="t-meta muted selectable">{phase.path.split(/[\\/]/).pop()}</span>
-      <div className="row gap8" style={{ justifyContent: "center" }}><Pill text={`${phase.files} 份文件`} kind="neutral" />{phase.watermarked > 0 && <Pill text={`${phase.watermarked} 份已加水印`} kind="valid" />}{phase.missing > 0 && <Pill text={`缺 ${phase.missing} 项`} kind="warn" />}</div>
+      <span className={`tick-pop result-badge ${R.complete ? "" : "warn"}`} style={{ animationDelay: "160ms" }}><Icon name="checkmark" size={28} /></span>
+      <span className="t-headline">{R.complete ? "已生成材料包" : "已生成部分材料包"}</span>
+      <span className="t-meta muted selectable">{R.path.split(/[\\/]/).pop()}</span>
+      <div className="row gap8" style={{ justifyContent: "center" }}><Pill text={`${R.files} 份文件`} kind="neutral" />{R.watermarked > 0 && <Pill text={`${R.watermarked} 份已加水印`} kind="valid" />}{R.missing > 0 && <Pill text={`缺 ${R.missing} 项`} kind="warn" />}</div>
+      {R.lostTitles.length > 0 && <Note tone="warn">生成时发现{R.lostTitles.map((x) => `“${x}”`).join("、")}的源文件不在了，已按缺件处理；目录、文件名和发送记录都已注明。</Note>}
+      {R.omittedTitles.length > 0 && <Note tone="warn">{R.omittedTitles.map((x) => `“${x}”`).join("、")}处理失败，没有放入；目录里已注明。</Note>}
       <span className="t-meta muted">已记入公司页“材料包发送记录”。</span>
       <div className="row gap10" style={{ paddingTop: 6 }}>
-        <Button onClick={() => void platform().reveal(phase.path)}>{platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示"}</Button>
+        <Button onClick={() => void platform().reveal(R.path)}>{platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示"}</Button>
         <Button onClick={() => setNote(true)}>复制发送说明</Button>
       </div>
     </div>
@@ -272,7 +306,7 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   const requestClose = () => (building ? setAskClose(true) : onClose());
   const trailing = phase.kind === "done" ? <Button kind="primary" onClick={onClose}>完成</Button>
     : building ? <><Button onClick={() => abort.current?.abort()}>取消</Button><Button kind="primary" disabled>正在生成…</Button></>
-    : step < lastStep ? <Button kind="primary" disabled={!included.length} onClick={() => { if (stage === "watermark" && needsRecipient) { setFocusRecipient(true); return; } go(step + 1); }}>{`下一步：${steps[step + 1]}`}</Button>
+    : step < lastStep ? <Button kind="primary" disabled={!included.length || checking.length > 0} title={checking.length ? `正在检查 ${checking.length} 份文件能否加水印` : undefined} onClick={() => { if (stage === "watermark" && needsRecipient) { setFocusRecipient(true); return; } go(step + 1); }}>{`下一步：${steps[step + 1]}`}</Button>
     : <Button kind="primary" softDisabled={!!blocked} title={blocked} onClick={() => (complete ? void build() : setConfirmPartial(true))}>{phase.kind === "failed" ? "重试" : complete ? "生成材料包" : "生成部分材料包"}</Button>;
 
   return (
@@ -283,10 +317,24 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
           {stage === "files" ? filesStep : stage === "watermark" ? watermarkStep : exportStep}
         </div>}
       </SheetScaffold>
+      {failures && <Modal onClose={() => setFailures(null)}>
+        <SheetScaffold title={`有 ${failures.length} 份文件没能处理`} subtitle="加水印或清除文件信息没有成功。这些文件默认不放入材料包；也可以改为原样放入（不加水印、不清除信息）。" width={640}
+          leading={<Button kind="quiet" onClick={() => setFailures(null)}>取消导出</Button>}
+          trailing={<Button kind="primary" onClick={() => { const d = Object.fromEntries(failures.map((f) => [f.id, f.choice])); void build(d); }}>{`继续生成（${included.length - failures.filter((f) => f.choice === "omit").length} 份）`}</Button>}>
+          <div className="col gap12">
+            <div className="col panel-soft">{failures.map((f, i) => <div key={f.id}>{i > 0 && <div className="hairline" style={{ marginLeft: 16 }} />}
+              <div className="row gap12" style={{ padding: "10px 14px 10px 16px" }}>
+                <span className="col grow" style={{ gap: 2 }}><span className="t-row">{f.title}</span><span className="t-meta amber-text">{f.reason}</span></span>
+                <FileFate label={f.title} limited value={f.choice} onChange={(v) => setFailures(failures.map((x) => (x.id === f.id ? { ...x, choice: v as "omit" | "asis" } : x)))} />
+              </div></div>)}</div>
+            {failures.some((f) => f.choice === "asis") && <Note tone="warn">原样放入的文件不会加水印，也不会清除文件信息；目录里会逐份注明。</Note>}
+          </div>
+        </SheetScaffold>
+      </Modal>}
       {askClose && <ConfirmSheet title="取消导出并关闭？" message="正在生成的材料包会被丢弃，不会留下半成品。" cancelTitle="继续生成" confirmTitle="取消并关闭" destructive onClose={() => setAskClose(false)} onConfirm={() => { setAskClose(false); abort.current?.abort(); onClose(); }} />}
       {confirmPartial && <ConfirmSheet title="生成部分材料包？" message={`目录和文件名会标明“部分材料包”，并列出缺少的 ${missing.length} 项。`} confirmTitle="生成部分材料包" onClose={() => setConfirmPartial(false)} onConfirm={() => { setConfirmPartial(false); void build(); }} />}
       {askSigned && <SignedConfirm title={askSigned.title} onClose={() => setAskSigned(null)} onConfirm={() => { setSignedOK([...signedOK, askSigned.id]); setWm({ ...wm, skip: wm.skip.filter((x) => x !== askSigned.id) }); }} />}
-      {editing && <PurposeEditor purposeID={editing.id} onClose={() => setEditing(null)} onSaved={(id) => { if (id === templateID) reload(); else setTemplateID(id); }} onDeleted={() => setTemplateID(store.data.library.packets[0]?.id ?? "")} />}
+      {editing && <PurposeEditor purposeID={editing.id} onClose={() => setEditing(null)} onSaved={(id) => { if (id === templateID) reload(true); else setTemplateID(id); }} onDeleted={() => setTemplateID(store.data.library.packets[0]?.id ?? "")} />}
       {reissue && <ReissueRequestSheet owner={reissue.owner} typeIDs={reissue.typeIDs} onClose={() => setReissue(null)} />}
       {note && <CopyTextSheet title="发送说明" subtitle="可直接粘贴进邮件正文，列出包含的文件和尚缺的材料。" initial={sendNote()} onClose={() => setNote(false)} />}
     </Modal>

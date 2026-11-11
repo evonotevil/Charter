@@ -15,13 +15,17 @@ import { englishDocName } from "../domain/docnames";
 export interface PacketItem {
   category: string;
   ownerName: string;
+  /** 5.5.5：主人的 ID（个人项目按人去重、区分同名）。 */
+  ownerID?: string;
   isPersonal: boolean;
   document?: Document;
   problem?: string;
   included: boolean;
   maxAgeMonths?: number;
 }
-export const packetItemID = (i: PacketItem) => i.category + "|" + i.ownerName;
+export const packetItemID = (i: PacketItem) => i.category + "|" + (i.isPersonal && i.ownerID ? `person:${i.ownerID}` : i.ownerName);
+/** 5.5.4 及以前按姓名生成的标识；读取旧的“跳过水印”设置时一并识别。 */
+export const legacyPacketItemID = (i: PacketItem) => i.category + "|" + i.ownerName;
 export const packetItemTitle = (i: PacketItem, typeName?: string) => (i.isPersonal ? `${typeName ?? i.category}（${i.ownerName}）` : typeName ?? i.category);
 
 export function recencyText(i: PacketItem): string {
@@ -62,10 +66,12 @@ export function packetItems(t: PacketTemplate, c: Company, s: Store): PacketItem
     out.push({ category: cat, ownerName: c.name, isPersonal: false, document: doc, problem, included: !!doc && !problem, maxAgeMonths: maxAgeOf(doc) });
   }
   if (t.includeDirectorsPassports) {
+    const seen = new Set<string>();
     for (const p of s.directors(c.id)) {
+      if (seen.has(p.id)) continue; seen.add(p.id);
       const doc = s.ownedDocuments(ref("person", p.id)).find((d) => s.docType(d.typeID)?.category === "护照");
       const problem = check(doc);
-      out.push({ category: "护照", ownerName: p.name, isPersonal: true, document: doc, problem, included: !!doc && !problem, maxAgeMonths: maxAgeOf(doc) });
+      out.push({ category: "护照", ownerName: p.name, ownerID: p.id, isPersonal: true, document: doc, problem, included: !!doc && !problem, maxAgeMonths: maxAgeOf(doc) });
     }
   }
   return out;
@@ -90,6 +96,8 @@ export interface BuildOptions {
   outDir?: string;
   /** 清除文件信息（PDF 作者、标题等，图片拍摄信息）；不加水印时也生效。 */
   stripMeta?: boolean;
+  /** 5.5.5：处理失败的文件怎么办（按 packetItemID）。没给的失败项会抛 PacketFailuresError。 */
+  failed?: Record<string, "omit" | "asis">;
   /** 改过的文件名（不含 .zip）；为空时用默认名。 */
   outName?: string;
   /** 直接保存为这个完整路径（来自系统“存储为”窗口，已由系统确认覆盖）。 */
@@ -123,20 +131,29 @@ export function wmContext(item: PacketItem, t: PacketTemplate, c: Company, s: St
   return { day: s.today, fileName: zh, fileNameEn: en, company: c.name, packet: t.name, recipient };
 }
 
-export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Company, s: Store, opts: BuildOptions = {}): Promise<string> {
+/** 5.5.5：生成服务返回的实际结果；完成页、发送说明、发送记录都以它为准。 */
+export interface PacketResult { path: string; files: number; watermarked: number; missing: number; complete: boolean; missingTitles: string[]; lostTitles: string[]; omittedTitles: string[] }
+export interface PacketFailure { id: string; title: string; reason: string }
+/** 有文件加水印或清除信息失败、且还没决定怎么处理时抛出；什么都没写入。 */
+export class PacketFailuresError extends Error {
+  constructor(public failures: PacketFailure[]) { super(`${failures.length} 份文件没能处理`); this.name = "PacketFailuresError"; }
+}
+
+export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Company, s: Store, opts: BuildOptions = {}): Promise<PacketResult> {
   const p = platform();
   const { watermark: run, signal, onProgress, onItem } = opts;
   const abort = () => { if (signal?.aborted) throw new DOMException("已取消", "AbortError"); };
   // 记录在、但文件不在数据文件夹里（比如另一台电脑还没同步过来）：不让整包失败，算作缺件并注明原因。
   const lost = new Set<string>();
-  for (const i of packetIncluded(items)) if (!(await p.stat(s.fileURL(i.document!))).exists) lost.add(packetItemID(i));
+  const lostTitles: string[] = [];
+  for (const i of packetIncluded(items)) if (!(await p.stat(s.fileURL(i.document!))).exists) { lost.add(packetItemID(i)); lostTitles.push(packetItemTitle(i, s.docType(i.document!.typeID)?.name)); }
   items = items.map((i) => (lost.has(packetItemID(i)) ? { ...i, included: false, problem: "文件不在数据文件夹里，可能还没同步过来" } : i));
   const included = packetIncluded(items), missing = packetMissing(items);
   const complete = missing.length === 0;
   const wm = run?.wm.enabled ? run.wm : undefined;
   const recipient = run?.recipient.trim() ?? "";
   const base = packetBaseName(c, t, s, complete, wm ? recipient : undefined);
-  type Done = { entry: { path: string; data: Uint8Array }; inc: string; wm: string[]; marked: boolean; cleaned: boolean | null; metaLine: string | null };
+  type Done = { entry: { path: string; data: Uint8Array }; inc: string; wm: string[]; marked: boolean; cleaned: boolean | null; metaLine: string | null; failure?: PacketFailure; omit?: boolean; asIs?: boolean };
   const strip = opts.stripMeta ?? !!wm?.stripMeta;
   const one = async (i: number, item: PacketItem): Promise<Done> => {
     abort();
@@ -180,8 +197,16 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
       } else if (wm) wmLines.push(`${label}：未加水印`);
     } else { keepReason = `${ext.toUpperCase()} 文件无法处理`; if (wm) wmLines.push(`${label}：${ext.toUpperCase()} 文件无法加水印，原样放入`); }
     const metaLine = cleaned === null ? null : cleaned ? null : `${label}：未清除（${keepReason || "原样放入"}）`;
+    // 5.5.5：要求加水印或清除信息却没处理成功——先停下让用户决定（默认不放入）。
+    let failure: PacketFailure | undefined, omit = false, asIs = false;
+    const failedProcessing = (want && !marked && /无法读取/.test(wmLines.join())) || (cleaned === false && /无法读取/.test(keepReason));
+    if (failedProcessing) {
+      const id = packetItemID(item), decided = opts.failed?.[id];
+      if (decided === "asis") asIs = true; else if (decided === "omit") omit = true;
+      else failure = { id, title, reason: keepReason || "无法读取" };
+    }
     onItem?.(i, "done", marked ? "已加水印" : "原样放入");
-    return { entry: { path: `${base}/${safeName(label)}.${ext}`, data }, inc: `${two(i + 1)}  ${title}：${recencyText(item)}`, wm: wmLines, marked, cleaned, metaLine };
+    return { entry: { path: `${base}/${safeName(label)}.${ext}`, data }, inc: `${two(i + 1)}  ${title}：${recencyText(item)}${asIs ? "（处理失败，原样放入）" : ""}`, wm: wmLines, marked, cleaned, metaLine, failure, omit, asIs };
   };
   // 两份并行：读写和 PDF 处理交错，整体更快；结果按清单顺序装入。
   const results: Done[] = new Array(included.length);
@@ -189,11 +214,20 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
   onProgress?.(0, included.length + 1, included[0] ? packetItemTitle(included[0]) : "目录");
   const worker = async () => { while (next < included.length) { const i = next++; results[i] = await one(i, included[i]); finished++; onProgress?.(finished, included.length + 1, included[next] ? packetItemTitle(included[next]) : "目录"); } };
   await Promise.all([worker(), worker()]);
-  const entries = results.map((r) => r.entry), incLines = results.map((r) => r.inc), wmLines = results.flatMap((r) => r.wm);
-  const watermarked = results.filter((r) => r.marked).length;
+  const failures = results.flatMap((r) => (r.failure ? [r.failure] : []));
+  if (failures.length) throw new PacketFailuresError(failures);
+  const omittedTitles = included.filter((_, i) => results[i].omit).map((it) => packetItemTitle(it, s.docType(it.document!.typeID)?.name));
+  const kept = results.filter((r) => !r.omit);
+  // 去掉“不放入”的文件后重新编号
+  const renum = (x: string, n: number) => x.replace(/^\d{2}/, two(n));
+  const entries = kept.map((r, k) => ({ ...r.entry, path: r.entry.path.replace(/\/\d{2} /, `/${two(k + 1)} `) })), incLines = kept.map((r, k) => renum(r.inc, k + 1)), wmLines = kept.flatMap((r) => r.wm);
+  const watermarked = kept.filter((r) => r.marked).length;
   abort();
   onProgress?.(included.length, included.length + 1, "目录");
-  const misLines = missing.map((m) => `—  ${packetItemTitle(m)}：${packetReason(m)}`);
+  const misLines = [...missing.map((m) => `—  ${packetItemTitle(m)}：${packetReason(m)}`), ...omittedTitles.map((t2) => `—  ${t2}：处理失败，未放入`)];
+  const done = misLines.length === 0;
+  const finalBase = done === complete ? base : packetBaseName(c, t, s, done, wm ? recipient : undefined);
+  if (finalBase !== base) for (const e of entries) e.path = e.path.replace(base + "/", finalBase + "/");
   const sections: PDFSection[] = [{ heading: `已包含（${incLines.length} 份）`, lines: incLines, alert: false }];
   if (misLines.length) sections.push({ heading: `尚缺（${misLines.length} 项）`, lines: misLines, alert: true });
   const sample = wm ? resolveText(wm.settings, { day: s.today, fileName: "【文件名称】", fileNameEn: "[File name]", company: c.name, packet: t.name, recipient }) : "";
@@ -203,22 +237,22 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
     sections.push({ heading: `文件信息（已清除 ${n} / ${included.length} 份）`, lines: ["已去掉作者、标题、创建软件和照片拍摄信息。", ...keep], alert: false });
   }
   const toc = await writePDF(c.name,
-    complete ? `${latinPadEnd(t.name)}文件包　${D.long(s.today)}` : `${latinPadEnd(t.name)}文件包（部分材料，缺 ${misLines.length} 项）　${D.long(s.today)}`,
-    sections, complete ? undefined : "这是部分材料包。缺少的文件补齐后会另行发送。");
-  entries.unshift({ path: `${base}/00 目录.pdf`, data: toc });
+    done ? `${latinPadEnd(t.name)}文件包　${D.long(s.today)}` : `${latinPadEnd(t.name)}文件包（部分材料，缺 ${misLines.length} 项）　${D.long(s.today)}`,
+    sections, done ? undefined : "这是部分材料包。缺少的文件补齐后会另行发送。");
+  entries.unshift({ path: `${finalBase}/00 目录.pdf`, data: toc });
   abort();
   const zip = await writeZip(entries, (a, b) => onProgress?.(included.length, included.length + 1, `压缩 ${a} / ${b}`));
   let out: string;
   if (opts.outPath) { await p.writeBytes(opts.outPath, zip); out = opts.outPath; }
-  else out = await writeUnique(opts.outDir ?? s.folder.packetsDir, safeName(opts.outName?.replace(/\.zip$/i, "").trim() || base), "zip", zip);
+  else out = await writeUnique(opts.outDir ?? s.folder.packetsDir, safeName(opts.outName?.replace(/\.zip$/i, "").trim() || finalBase), "zip", zip);
   // 发送记录
   s.commit((d) => {
     d.sends.unshift({ id: crypto.randomUUID(), companyID: c.id, at: new Date().toISOString(), day: s.today, packetID: t.id, packetName: t.name, recipient,
-      watermarkText: sample, files: included.length, watermarked, flattened: !!wm?.settings.flatten, missing: missing.length, path: out,
-      watermark: wm ? structuredClone(wm) : undefined });
+      watermarkText: sample, files: kept.length, watermarked, flattened: !!wm?.settings.flatten, missing: misLines.length, path: out,
+      watermark: wm ? structuredClone(wm) : undefined, stripMeta: strip });
     if (d.sends.length > 500) d.sends.length = 500;
   });
-  return out;
+  return { path: out, files: kept.length, watermarked, missing: misLines.length, complete: done, missingTitles: missing.map((m) => packetItemTitle(m)), lostTitles, omittedTitles };
 }
 
 // MARK: 全部材料
@@ -384,10 +418,11 @@ export function startReminderLoop(s: Store): () => void {
 // MARK: 日历
 
 /** 把未完成事项写成 iCalendar 文件，放在数据文件夹里：Outlook、Apple 日历、Google 日历都能订阅或导入。 */
-export async function writeCalendarFile(s: Store): Promise<string> {
-  const p = platform();
+export function calendarPath(s: Store): string { return platform().join(s.folder.root, `${safeName(s.data.settings.calendarName || "Charter")}.ics`); }
+
+/** 日历文件的完整内容；stamp 为空时用于比较是否需要重写（不含生成时间）。 */
+export function calendarText(s: Store, stamp = ""): string {
   const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
-  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Charter//CN", `X-WR-CALNAME:${esc(s.data.settings.calendarName)}`, "CALSCALE:GREGORIAN"];
   const limit = D.addDays(s.today, 400);
   for (const o of s.openObligations) {
@@ -401,7 +436,35 @@ export async function writeCalendarFile(s: Store): Promise<string> {
       `SUMMARY:${esc(`${o.company.name}：${o.rule.name}`)}`, `DESCRIPTION:${esc(notes)}`, "END:VEVENT");
   }
   lines.push("END:VCALENDAR");
-  const path = p.join(s.folder.root, `${safeName(s.data.settings.calendarName)}.ics`);
-  await p.writeText(path, lines.join("\r\n"));
+  return lines.join("\r\n");
+}
+
+export async function writeCalendarFile(s: Store): Promise<string> {
+  const path = calendarPath(s);
+  await platform().writeText(path, calendarText(s, new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")));
   return path;
 }
+
+/**
+ * 5.5.5：数据变化后同步日历文件。按最终内容判断是否重写（公司改名、换中介、改日历名都会更新）；
+ * 改名时删掉旧文件，关闭“同步到日历”时删掉文件。
+ */
+let calendarState: { key: string; path: string | null } = { key: "", path: null };
+export async function syncCalendarFile(s: Store) {
+  const p = platform();
+  const on = s.data.settings.calendarEnabled && s.complianceOn;
+  const path = calendarPath(s);
+  if (!on) {
+    if (calendarState.path === null && calendarState.key === "off") return;
+    calendarState = { key: "off", path: null };
+    try { if ((await p.stat(path)).exists) await p.removeFile(path); } catch { /* 忽略 */ }
+    return;
+  }
+  const key = path + "\n" + calendarText(s);
+  if (key === calendarState.key) return;
+  const old = calendarState.path;
+  calendarState = { key, path };
+  await writeCalendarFile(s);
+  if (old && old !== path) { try { if ((await p.stat(old)).exists) await p.removeFile(old); } catch { /* 忽略 */ } }
+}
+export function resetCalendarFileState() { calendarState = { key: "", path: null }; }

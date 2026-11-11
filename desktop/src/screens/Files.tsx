@@ -265,8 +265,8 @@ function DocumentsView() {
           </>}
           <Button size="small" onClick={() => void removeSelected(selectedDocs)}>移到废纸篓…</Button>
           <Button kind="primary" size="small" disabled={exporting} onClick={() => void exportZIP(selectedDocs)}>{exporting ? "正在导出…" : "导出为 ZIP…"}</Button>
-          <span style={{ width: 1, height: 20, background: "var(--hairline)" }} />
-          <button className="muted" style={{ width: 28, height: 28, display: "grid", placeItems: "center" }} title="取消选择（Esc）" aria-label="取消选择" onClick={() => { setSelected(new Set()); setAnchor(null); }}><Icon name="xmark" size={11} /></button>
+          <span className="vrule" />
+          <Button kind="quiet" size="small" icon="xmark" ariaLabel="取消选择" title="取消选择（Esc）" onClick={() => { setSelected(new Set()); setAnchor(null); }} />
         </div>
       )}
     </DropTarget>

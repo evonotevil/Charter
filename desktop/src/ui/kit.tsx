@@ -279,9 +279,10 @@ export function DateField({ value, onChange, placeholder = "选择日期", relat
     const d = D.parseDay(t);
     if (d) { onChange(d); setInvalid(false); } else setInvalid(true);
   };
-  return (
-    // 5.4.1：外观与 .field 一致（高度、圆角、2px 边框、悬停、绿色聚焦环、错误红框）
-    <div ref={ref} className={`row gap6 date-field ${focused || open ? "focus" : ""} ${invalid ? "invalid" : ""}`} title={invalid ? "日期格式应为 2026-10-27" : undefined}
+  const why = invalid ? D.dayError(text) : "";
+  // 5.4.1：外观与 .field 一致（高度、圆角、2px 边框、悬停、绿色聚焦环、错误红框）
+  return (<span style={{ position: "relative", display: "inline-flex", flexDirection: "column", alignItems: "flex-end" }}>
+    <div ref={ref} className={`row gap6 date-field ${focused || open ? "focus" : ""} ${invalid ? "invalid" : ""}`} title={why || undefined} aria-invalid={invalid || undefined}
       style={{ minWidth }}>
       <button onClick={() => setOpen((o) => !o)} title="打开日历" className="muted row" style={{ width: 22, height: 22, justifyContent: "center" }}><Icon name="calendar" size={14} /></button>
       <input value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onFocus={() => setFocused(true)}
@@ -292,6 +293,8 @@ export function DateField({ value, onChange, placeholder = "选择日期", relat
         <CalendarPanel value={value} onPick={(d) => { onChange(d); setOpen(false); }} relativeTo={relativeTo} relativeLabel={relativeLabel} allowsClear={allowsClear} />
       </Popover>
     </div>
+    {why && <span role="alert" className="t-meta red-text" style={{ marginTop: 4, whiteSpace: "nowrap" }}>{why}</span>}
+    </span>
   );
 }
 
@@ -405,9 +408,9 @@ export function RadioGroup<V>({ options, value, onChange, horizontal }: { option
   );
 }
 
-export function Segmented<V extends string | number | boolean>({ options, value, onChange }: { options: [V, string][]; value: V; onChange: (v: V) => void }) {
+export function Segmented<V extends string | number | boolean>({ options, value, onChange, ariaLabel, className }: { options: [V, ReactNode][]; value: V; onChange: (v: V) => void; ariaLabel?: string; className?: string }) {
   return (
-    <div className="seg slide-host" role="tablist">
+    <div className={`seg slide-host ${className ?? ""}`} role="tablist" aria-label={ariaLabel}>
       <SlideBg />
       {options.map(([v, l]) => <button key={String(v)} className={v === value ? "on" : ""} onClick={() => onChange(v)} role="tab" aria-selected={v === value}>{l}</button>)}
     </div>
@@ -441,12 +444,12 @@ export function FieldRow({ label, hint, error, children }: { label: string; hint
   );
 }
 
-export function TextField({ value, onChange, placeholder, invalid, autoFocus, onEnter, style, multiline, rows, mono, width }: {
+export function TextField({ value, onChange, placeholder, invalid, autoFocus, onEnter, style, multiline, rows, mono, width, ariaLabel }: {
   value: string; onChange: (s: string) => void; placeholder?: string; invalid?: boolean; autoFocus?: boolean; onEnter?: () => void; style?: CSSProperties;
-  multiline?: boolean; rows?: number; mono?: boolean; width?: number;
+  multiline?: boolean; rows?: number; mono?: boolean; width?: number; ariaLabel?: string;
 }) {
-  if (multiline) return <textarea className={`field ${invalid ? "invalid" : ""}`} value={value} placeholder={placeholder} rows={rows ?? 3} autoFocus={autoFocus} onChange={(e) => onChange(e.target.value)} style={{ width, ...style }} />;
-  return <input className={`field ${invalid ? "invalid" : ""} ${mono ? "mono" : ""}`} value={value} placeholder={placeholder} autoFocus={autoFocus} onChange={(e) => onChange(e.target.value)}
+  if (multiline) return <textarea className={`field ${invalid ? "invalid" : ""}`} value={value} placeholder={placeholder} rows={rows ?? 3} aria-label={ariaLabel} autoFocus={autoFocus} onChange={(e) => onChange(e.target.value)} style={{ width, ...style }} />;
+  return <input className={`field ${invalid ? "invalid" : ""} ${mono ? "mono" : ""}`} aria-label={ariaLabel} value={value} placeholder={placeholder} autoFocus={autoFocus} onChange={(e) => onChange(e.target.value)}
     onKeyDown={(e) => { if (e.key === "Enter" && onEnter) { e.preventDefault(); onEnter(); } }} style={{ width, ...style }} />;
 }
 
@@ -819,4 +822,16 @@ export function OptionCard({ checked, onChange, icon, title, children, disabled 
 /** 一行滑块：标签 ｜ 滑块 ｜ 数值框。 */
 export function SliderRow(p: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void; format?: (v: number) => string }) {
   return <div className="slider-line"><span className="t-row slider-line-label">{p.label}</span><Slider {...p} /></div>;
+}
+
+/** 5.5.5：单选选项卡（圆形单选 + 标题 + 说明），选中时 green-soft 底、品牌绿描边。children 放在说明下方（如生效日）。 */
+export function RadioCard({ selected, onSelect, title, detail, children }: { selected: boolean; onSelect: () => void; title: string; detail: ReactNode; children?: ReactNode }) {
+  return <div className={`option-card radio ${selected ? "on" : ""}`} role="radio" aria-checked={selected} tabIndex={0} onClick={onSelect}
+    onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); onSelect(); } }} style={{ flexDirection: "row", gap: 12, cursor: "pointer" }}>
+    <ChoiceMark on={selected} />
+    <span className="col grow" style={{ gap: 6, minWidth: 0 }}>
+      <span className="t-row">{title}</span><span className="t-meta muted">{detail}</span>
+      {selected && children && <span onClick={(e) => e.stopPropagation()}>{children}</span>}
+    </span>
+  </div>;
 }

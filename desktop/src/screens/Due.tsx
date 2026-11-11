@@ -8,7 +8,7 @@ import { type Obligation, obligationStatus } from "../domain/engine";
 import { contactsOf } from "../domain/models";
 import { platform } from "../platform/platform";
 import { writeCalendarFile } from "../services/packets";
-import { ActionMenu, Banner, Button, Card, DateField, PageHeader, PopoverRow, SelectField, Tabs, item } from "../ui/kit";
+import { ActionMenu, Banner, Button, Card, DateField, PageHeader, PopoverRow, SelectField, Tabs, item , TextField } from "../ui/kit";
 import { PickChip } from "./PropChips";
 import { writePDF } from "../services/files";
 import { useStageFile } from "./common";
@@ -193,7 +193,7 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
       </div>
       <div className="col gap6">
         <span className="v4-label">邮件草稿（可改）</span>
-        <textarea className="v4-mail" style={{ minHeight: 150 }} value={mail} onChange={(e) => setMail(e.target.value)} aria-label="邮件草稿" />
+        <TextField multiline rows={7} ariaLabel="邮件草稿" value={mail} onChange={setMail} />
       </div>
       <div className="row gap8">
         <Button kind="primary" style={{ flex: 1 }} icon="doc.on.doc" onClick={() => {

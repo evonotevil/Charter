@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import JSZip from "jszip";
 import { PDFDocument, degrees } from "pdf-lib";
+import { buildAsIs } from "./packetHelper";
 import { MemoryPlatform } from "../platform/memory";
 import { setPlatform } from "../platform/platform";
 import { Store } from "../state/store";
@@ -67,7 +68,7 @@ describe("5.5 材料包导出", () => {
     const items = packetItems(t, c, s);
     const first = items.find((i) => i.included && i.document)!;
     await p.writeBytes(s.fileURL(first.document!), await realPDF());
-    const zip = await buildPacket(items, t, c, s, { watermark: { wm: { enabled: true, settings: { ...defaultWatermark(), parts: [{ kind: "text", text: "For" }, { kind: "tag", tag: "date" }] , lang: "en" }, skip: [], stripMeta: true }, recipient: "汇丰银行" } });
+    const zip = (await buildPacket(items, t, c, s, { watermark: { wm: { enabled: true, settings: { ...defaultWatermark(), parts: [{ kind: "text", text: "For" }, { kind: "tag", tag: "date" }] , lang: "en" }, skip: [], stripMeta: true }, recipient: "汇丰银行" } })).path;
     expect(zip).toContain("_银行开户_汇丰银行_");
     expect(zip.split("/").pop()!.startsWith(packetBaseName(c, t, s, true, "汇丰银行"))).toBe(true);
     const names = Object.keys((await JSZip.loadAsync(await p.readBytes(zip))).files).filter((n) => !n.endsWith("/"));
@@ -88,7 +89,7 @@ describe("5.5 材料包导出", () => {
     const { s } = await fresh();
     const c = s.data.companies.find((x) => x.name === "远澜控股（香港）有限公司")!;
     const t = s.data.library.packets.find((x) => x.name === "银行开户")!;
-    const zip = await buildPacket(packetItems(t, c, s), t, c, s, { watermark: { wm: { enabled: false, settings: defaultWatermark(), skip: [], stripMeta: false }, recipient: "汇丰银行" } });
+    const zip = (await buildPacket(packetItems(t, c, s), t, c, s, { watermark: { wm: { enabled: false, settings: defaultWatermark(), skip: [], stripMeta: false }, recipient: "汇丰银行" } })).path;
     expect(zip).not.toContain("汇丰银行");
   });
 });
@@ -103,10 +104,10 @@ describe("5.5.4 清除文件信息与水印无关", () => {
     let pdf = await realPDF();
     if (opts.signed) pdf = new Uint8Array([...pdf, ...new TextEncoder().encode("\n% /ByteRange[0 1 2 3] /Type /Sig\n")]);
     await p.writeBytes(s.fileURL(first.document!), pdf);
-    const zip = await buildPacket(items, t, c, s, {
+    const zip = (await buildAsIs(items, t, c, s, {
       stripMeta: opts.stripMeta,
       watermark: opts.watermark ? { wm: { enabled: true, settings: { ...defaultWatermark(), parts: [{ kind: "text", text: "HSBC" }] }, skip: opts.signed ? [packetItemID(first)] : [], stripMeta: !!opts.stripMeta }, recipient: "" } : undefined,
-    });
+    })).path;
     const z = await JSZip.loadAsync(await p.readBytes(zip));
     const name = Object.keys(z.files).find((n) => n.includes(" 01 ") || /\/01 /.test(n))!;
     const d = await PDFDocument.load(await z.files[name].async("uint8array"), { ignoreEncryption: true });

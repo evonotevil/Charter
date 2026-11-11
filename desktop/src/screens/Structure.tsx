@@ -16,7 +16,7 @@ import { platform } from "../platform/platform";
 import { installSampleData } from "../state/sample";
 import { reducedMotion } from "../ui/motion";
 import { Icon } from "../ui/Icon";
-import { ActionMenu, Avatar, shortcutLabel, Button, Card, EmptyStateView, JurisdictionBadge, PageHeader, Pill, item, divider } from "../ui/kit";
+import { ActionMenu, Avatar, shortcutLabel, Button, Card, EmptyStateView, JurisdictionBadge, PageHeader, Pill, item, divider , Segmented , Note } from "../ui/kit";
 import { companyTint } from "../ui/uistyle";
 import { tok } from "../ui/lighttokens";
 import { CompanyChips } from "./PropChips";
@@ -66,7 +66,7 @@ export function StructureView() {
     for (const p of store.data.people) m.set("person:" + p.id, p.name);
     return m;
   }, [store.data.companies, store.data.people]);
-  const snapshot = useMemo(() => buildSnapshot({ companies: store.data.companies, holdings: store.data.holdings, scope: scope(asOf), asOf, names, savedPositions: new Map() }), [asOf, group, ...dataVersion]);
+  const snapshot = useMemo(() => buildSnapshot({ dissolvedOn: dissolvedDates(store), today: store.today, companies: store.data.companies, holdings: store.data.holdings, scope: scope(asOf), asOf, names, savedPositions: new Map() }), [asOf, group, ...dataVersion]);
   const allKeys = new Set(snapshot.nodes.map(refKey));
   const centerKey = center && allKeys.has(center) ? center : null;
   const layout = useMemo(() => layoutTree({ nodes: snapshot.nodes, holdings: snapshot.activeHoldings, collapsed, names, only: centerKey ? chainOf(centerKey, snapshot.activeHoldings) : null }),
@@ -135,10 +135,7 @@ export function StructureView() {
             onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && matches[0]) jump(matches[0]); if (e.key === "Escape") { e.stopPropagation(); setQuery(""); } }} />
           {q && <span className="t-meta muted" style={{ position: "absolute", right: 10 }}>{matches.length ? `${matches.length} 个` : "没有"}</span>}
         </div>
-        <div className="seg" role="tablist" aria-label="视图">
-          <button role="tab" className={view === "chart" ? "on" : ""} aria-selected={view === "chart"} onClick={() => setView("chart")} style={view === "chart" ? { background: "var(--seg-on)", color: "var(--seg-on-text)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}><Icon name="point.3.connected.trianglepath.dotted" size={13} />结构图</button>
-          <button role="tab" className={view === "list" ? "on" : ""} aria-selected={view === "list"} onClick={() => setView("list")} style={view === "list" ? { background: "var(--seg-on)", color: "var(--seg-on-text)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}><Icon name="list.bullet.indent" size={13} />列表</button>
-        </div>
+        <Segmented ariaLabel="视图" value={view} onChange={setView} options={[["chart", <><Icon name="point.3.connected.trianglepath.dotted" size={13} />结构图</>], ["list", <><Icon name="list.bullet.indent" size={13} />列表</>]]} />
         <button className={`v4-toggle ${checkOn ? "on" : ""}`} aria-pressed={checkOn} title="按股东录入情况给公司标注，列出需要补充的公司" onClick={() => router.set("structureCheck", !checkOn)}>核对股东{checkOn && unchecked ? ` · ${unchecked}` : ""}</button>
         {stops.length > 1 && <button className={`v4-toggle ${showHistory ? "on" : ""}`} aria-pressed={showHistory} title="回看历年的持股结构" onClick={() => setShowHistory(!showHistory)}>历史</button>}
         <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" showsChevron={false} entries={[
@@ -150,10 +147,7 @@ export function StructureView() {
           item("导出 PDF…", "doc.text", () => void exportChart(store, layout, store.filterName(group), true)),
         ]} />
       </div>
-      {showHistory && stops.length > 1 && <div className="seg" style={{ alignSelf: "flex-start", maxWidth: "100%", overflowX: "auto" }} role="tablist" aria-label="历史年份">
-        {stops.map((d, i) => { const on = d === asOf; return (
-          <button key={d} role="tab" aria-selected={on} className={`num ${on ? "on" : ""}`} onClick={() => setStopIndex(i)} style={on ? { background: "var(--seg-on)", color: "var(--seg-on-text)", boxShadow: "0 0 0 2px var(--green-soft-line)" } : undefined}>{d === store.today ? "今天" : D.year(d)}</button>); })}
-      </div>}
+      {showHistory && stops.length > 1 && <Segmented ariaLabel="历史年份" className="seg-scroll" value={asOf} onChange={(d) => setStopIndex(stops.indexOf(d))} options={stops.map((d) => [d, <span className="num">{d === store.today ? "今天" : D.year(d)}</span>])} />}
       <div className="row grow" style={{ gap: 16, alignItems: "stretch", minHeight: 0 }}>
         {view === "chart"
           ? <Chart layout={layout} snapshotKey={`${group ?? "all"}|${centerKey ?? ""}|${asOf}`} chain={chain} selectedKey={selectedKey} select={select} open={open} toggleFold={toggleFold}
@@ -346,6 +340,7 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
                 onClick={(e) => { e.stopPropagation(); toggleFold(n.key); }}>{n.hiddenBelow ? <><Icon name="plus" size={8} strokeWidth={3} />{n.hiddenBelow}</> : <Icon name="minus" size={8} strokeWidth={3} />}</button>}
               {checkOn && n.ref.kind === "company" && (() => { const c = store.company(n.ref.id); if (!c || !store.shareholderCheckApplies(c)) return null; const st = store.shareholderStatus(c.id, asOf);
                 return st.kind !== "complete" && <span className={`pill ${holderStatusTone(st)}`} style={{ position: "absolute", right: -8, top: -11, height: 20 }}>{holderStatusLabel(st)}</span>; })()}
+              {n.ref.kind === "company" && (totals.get(n.ref.id) ?? 0) > 100.005 && <span style={{ position: "absolute", left: 0, right: 0, bottom: -24, display: "flex", justifyContent: "center" }}><Pill text={`合计 ${percentLabel(totals.get(n.ref.id) ?? 0)}`} kind="bad" /></span>}
               {n.ref.kind === "company" && (totals.get(n.ref.id) ?? 0) < 99.5 && (totals.get(n.ref.id) ?? 0) > 0 && !n.children.length && <span className="t-label" style={{ position: "absolute", left: 0, right: 0, bottom: -20, textAlign: "center" }}>另有 {percentLabel(100 - (totals.get(n.ref.id) ?? 0))} 未录入</span>}
             </div>
           );
@@ -478,8 +473,7 @@ function Summary({ k, asOf, isToday, centered, onCenter, onClose, open }: { k: s
         {close}
       </div>
       {actions}
-      {next && <button className="row gap10" style={{ padding: "10px 12px", borderRadius: "var(--r-control)", background: left < 0 ? "var(--red-soft)" : left <= 30 ? "var(--amber-soft)" : "var(--surface-sunken)", textAlign: "left" }} onClick={() => router.openDue(next.key)}>
-        <Icon name="clock" size={14} /><span className="grow ellipsis" style={{ fontWeight: 700 }}>{next.rule.name}</span><span className="t-meta" style={{ fontWeight: 700 }}>{leftText(left)}</span></button>}
+      {next && <Note tone={left < 0 ? "bad" : left <= 30 ? "warn" : "neutral"} icon="clock" action={<button className="link t-row note-action" onClick={() => router.openDue(next.key)}>查看</button>}><span className="row gap8"><b className="grow ellipsis">{next.rule.name}</b><span className="t-meta">{leftText(left)}</span></span></Note>}
       <div className="col gap6"><span className="t-label">直接股东</span>
         {holders.length ? holders.map((h) => (
           <div key={h.id} className="row gap8">
@@ -607,4 +601,15 @@ async function exportChart(store: Store, layout: TreeLayout, title: string, pdf:
     await p.writeBytes(path, new Uint8Array(await blob.arrayBuffer()));
   }
   store.showToast("结构图已导出。", () => void p.reveal(path), p.os === "windows" ? "在资源管理器中显示" : "在访达中显示");
+}
+
+/** 5.5.5：已注销公司的注销生效日（取最近一次状态变更的生效日）。 */
+function dissolvedDates(store: { data: { companies: { id: string; status: string }[]; changes: { companyID?: string; kind: string; effectiveOn: string; effectiveUnknown?: boolean }[] } }) {
+  const m = new Map<string, string>();
+  for (const c of store.data.companies) {
+    if (c.status !== "dissolved") continue;
+    const ch = store.data.changes.filter((x) => x.companyID === c.id && x.kind === "statusChange" && !x.effectiveUnknown).sort((a, b) => b.effectiveOn.localeCompare(a.effectiveOn))[0];
+    if (ch) m.set(c.id, ch.effectiveOn);
+  }
+  return m;
 }

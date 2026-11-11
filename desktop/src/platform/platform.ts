@@ -7,9 +7,11 @@ export type SyncState =
   | { kind: "conflict"; files: string[] }
   | { kind: "failed"; message: string }
   | { kind: "signedOut" }
-  | { kind: "local" };
+  | { kind: "local" }
+  /** 5.5.5：无法确认同步盘是否已上传完成（检测脚本失败等）。 */
+  | { kind: "unknown"; reason: string };
 
-export interface FileStat { exists: boolean; isDir: boolean; mtime: number | null; size: number }
+export interface FileStat { exists: boolean; isDir: boolean; mtime: number | null; size: number; /** 5.5.5：读不到（权限、读写错误等），不等于不存在。 */ error?: string }
 export interface DirEntry { name: string; isDir: boolean; mtime: number | null; size: number }
 
 export interface Platform {

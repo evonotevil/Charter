@@ -70,8 +70,8 @@ export async function trashDocuments(s: Store, docs: Document[]): Promise<TrashE
         id, kind: "document", trashedOn: s.today, path, originalPath: d.filePath, document: d,
         promoted: s.data.documents.filter((x) => x.supersededBy === d.id && !ids.has(x.id)).map((x) => x.id),
         evidenceRefs: [
-          ...s.data.holdings.filter((h) => h.evidence?.documentID === d.id).map((h) => ({ kind: "holding" as const, id: h.id, page: h.evidence!.page, note: h.evidence!.note })),
-          ...s.data.appointments.filter((a) => a.evidence?.documentID === d.id).map((a) => ({ kind: "appointment" as const, id: a.id, page: a.evidence!.page, note: a.evidence!.note })),
+          ...s.data.holdings.filter((h) => h.evidence?.documentID === d.id).map((h) => ({ kind: "holding" as const, id: h.id, page: h.evidence!.page, note: h.evidence!.note, verified: h.verified })),
+          ...s.data.appointments.filter((a) => a.evidence?.documentID === d.id).map((a) => ({ kind: "appointment" as const, id: a.id, page: a.evidence!.page, note: a.evidence!.note, verified: a.verified })),
         ],
       });
     }
@@ -99,9 +99,14 @@ export async function trashInbox(s: Store, items: InboxItem[]): Promise<TrashEnt
   if (!items.length) return [];
   const ids = new Set(items.map((i) => i.id));
   const entries: TrashEntry[] = [];
-  for (const i of items) { const id = uuid(); const path = await moveInto(s, i.path, id); entries.push({ id, kind: "inbox", trashedOn: s.today, path, originalPath: i.path, inbox: i }); }
+  // 5.5.5：移动或记录写入失败时，已移动的文件放回原处
+  const moved: [string, string][] = [];
+  const undo = async () => { for (const [now, was] of moved) { try { await platform().moveFile(s.folder.abs(now), s.folder.abs(was)); } catch { /* 忽略 */ } } };
+  try {
+    for (const i of items) { const id = uuid(); const path = await moveInto(s, i.path, id); moved.push([path, i.path]); entries.push({ id, kind: "inbox", trashedOn: s.today, path, originalPath: i.path, inbox: i }); }
+  } catch (e) { await undo(); throw e; }
   const next = { inbox: s.data.inbox.filter((x) => !ids.has(x.id)), trash: [...s.data.trash, ...entries] };
-  await s.persistCollections(next);
+  try { await s.persistCollections(next); } catch (e) { await undo(); throw e; }
   s.replace(next);
   return entries;
 }
@@ -111,23 +116,27 @@ export async function restoreTrash(s: Store, entryIDs: string[]): Promise<number
   const p = platform();
   const list = s.data.trash.filter((e) => entryIDs.includes(e.id));
   let docs = [...s.data.documents], inbox = [...s.data.inbox], holdings = [...s.data.holdings], appointments = [...s.data.appointments];
+  const moved: [string, string][] = [];
+  const undo = async () => { for (const [now, was] of moved) { try { await p.moveFile(s.folder.abs(now), s.folder.abs(was)); } catch { /* 忽略 */ } } };
   for (const e of list) {
     const target = await freePath(e.originalPath, s);
-    await p.mkdirs(s.folder.abs(target.split("/").slice(0, -1).join("/")));
-    if ((await p.stat(s.folder.abs(e.path))).exists) await p.moveFile(s.folder.abs(e.path), s.folder.abs(target));
-    try { await p.removeDir(s.folder.abs(`trash/${e.id}`)); } catch { /* 忽略 */ }
+    try {
+      await p.mkdirs(s.folder.abs(target.split("/").slice(0, -1).join("/")));
+      if ((await p.stat(s.folder.abs(e.path))).exists) { await p.moveFile(s.folder.abs(e.path), s.folder.abs(target)); moved.push([target, e.path]); }
+    } catch (err) { await undo(); throw err; }
     if (e.kind === "document" && e.document) {
       const d = { ...e.document, filePath: target };
       docs.push(d);
       docs = docs.map((x) => (e.promoted?.includes(x.id) ? { ...x, supersededBy: d.id } : x));
       for (const r of e.evidenceRefs ?? []) {
-        if (r.kind === "holding") holdings = holdings.map((h) => (h.id === r.id && !h.evidence ? { ...h, evidence: { documentID: d.id, page: r.page, note: r.note } } : h));
-        else appointments = appointments.map((a) => (a.id === r.id && !a.evidence ? { ...a, evidence: { documentID: d.id, page: r.page, note: r.note } } : a));
+        if (r.kind === "holding") holdings = holdings.map((h) => (h.id === r.id && !h.evidence ? { ...h, evidence: { documentID: d.id, page: r.page, note: r.note }, ...(r.verified !== undefined ? { verified: r.verified } : {}) } : h));
+        else appointments = appointments.map((a) => (a.id === r.id && !a.evidence ? { ...a, evidence: { documentID: d.id, page: r.page, note: r.note }, ...(r.verified !== undefined ? { verified: r.verified } : {}) } : a));
       }
     } else if (e.inbox) inbox.push({ ...e.inbox, path: target });
   }
   const next = { documents: docs, inbox, holdings, appointments, trash: s.data.trash.filter((e) => !entryIDs.includes(e.id)) };
-  await s.persistCollections(next);
+  try { await s.persistCollections(next); } catch (err) { await undo(); throw err; }
+  for (const e of list) { try { await p.removeDir(s.folder.abs(`trash/${e.id}`)); } catch { /* 忽略 */ } }
   s.replace(next);
   return list.length;
 }

@@ -1,5 +1,6 @@
 // Charter 4 新建公司：一张表填完。股东选已有的公司或人，没有就就地新建；年审日期按法域规则自动排出。
 
+import { PercentField } from "./Editors";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../state/hooks";
 import * as D from "../domain/day";
@@ -108,8 +109,7 @@ export function NewCompanySheet({ onClose, groupID }: { onClose: () => void; gro
                 <div className="v4-line">
                   <span className="v4-code">{holder.kind === "existing" && holder.ref.kind === "company" ? store.company(holder.ref.id)?.jurisdiction : holder.kind === "newCompany" ? (holder.jurisdiction || "?") : [...holderName][0]}</span>
                   <span className="grow ellipsis" style={{ fontWeight: 600 }}>{holderName}{holder.kind !== "existing" ? "（新建）" : ""}</span>
-                  <input className="field num" style={{ width: 70, height: 30, textAlign: "right" }} value={percent} onChange={(e) => setPercent(e.target.value.replace(/[^\d.]/g, ""))} aria-label="持股比例" />
-                  <span className="muted">%</span>
+                  <PercentField value={parseFloat(percent) || 0} onChange={(n) => setPercent(String(n))} />
                   <button className="v4-x" aria-label="移除股东" onClick={() => { setHolder(null); setQ(""); setTimeout(() => qRef.current?.focus()); }}><Icon name="xmark" size={10} /></button>
                 </div>
               ) : (

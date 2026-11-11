@@ -11,6 +11,7 @@ export function syncTitle(s: SyncState): string {
     case "failed": return "无法同步";
     case "signedOut": return "未登录 iCloud";
     case "local": return "仅保存在本机";
+    case "unknown": return "同步状态未知";
   }
 }
 export function syncSymbol(s: SyncState): string {
@@ -20,9 +21,10 @@ export function syncSymbol(s: SyncState): string {
     case "conflict": return "exclamationmark.icloud";
     case "failed": case "signedOut": return "xmark.icloud";
     case "local": return "internaldrive";
+    case "unknown": return "exclamationmark.icloud";
   }
 }
-export const syncNeedsAttention = (s: SyncState) => s.kind === "conflict" || s.kind === "failed" || s.kind === "signedOut";
+export const syncNeedsAttention = (s: SyncState) => s.kind === "conflict" || s.kind === "failed" || s.kind === "signedOut" || s.kind === "unknown";
 export function syncDetail(s: SyncState): string {
   switch (s.kind) {
     case "checking": return "正在读取同步盘的状态。";
@@ -31,6 +33,7 @@ export function syncDetail(s: SyncState): string {
     case "conflict": return `两台电脑同时修改了 ${s.files.slice(0, 3).join("、")}${s.files.length > 3 ? ` 等 ${s.files.length} 个文件` : ""}。Charter 使用最新的版本；在文件夹中可以找到其他版本。`;
     case "failed": return `${s.message} 请检查网络和云盘空间。`;
     case "signedOut": return "数据文件夹在 iCloud 云盘里，但这台电脑没有登录 iCloud，修改不会同步。";
+    case "unknown": return `无法确认 iCloud 或 OneDrive 是否已上传完成（${s.reason}）。确认前不要在另一台电脑上同时修改。`;
     case "local": return "数据文件夹不在同步盘（iCloud 云盘、OneDrive 等）中，修改只保存在这台电脑上。要在多台电脑之间同步，请把数据文件夹换到同步盘里。";
   }
 }

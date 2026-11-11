@@ -22,6 +22,7 @@ import { Icon } from "../ui/Icon";
 import {
   ActionMenu, Button, Checkbox, CopyTextSheet, DateField, FieldRow, FormGroup, type MenuEntry, Modal, type PillKind, Pill, RadioGroup,
   SelectField, SheetScaffold, Skeleton, Spinner, TextField, divider, header, item, useContextMenu, JurisdictionBadge, Avatar, type OptionInfo,
+  Note,
 } from "../ui/kit";
 
 // MARK: - 状态到样式
@@ -232,7 +233,10 @@ export function ArchiveConfirmSheet({ file, onClose }: { file: StagedFile; onClo
               <Checkbox checked={keepBoth} onChange={setKeepBoth} title="勾选后不替换现有版本，两份都保留为现行文件"><span className="t-meta">另存为一份</span></Checkbox>
             </div>
           )}
-          {file.replaces && (
+          {file.replaces && (typeID !== file.replaces.typeID || !owner || !sameRef(owner, file.replaces.owner)) && (
+            <Note tone="info">{`已改成${typeID !== file.replaces.typeID ? "另一种文件类型" : "另一个归属"}，将作为新文件归档；原来的“${store.docType(file.replaces.typeID)?.name ?? "文件"}${file.replaces.issueDate ? `（${D.long(file.replaces.issueDate)}签发）` : ""}”不受影响，仍是现行版本。`}</Note>
+          )}
+          {file.replaces && typeID === file.replaces.typeID && owner && sameRef(owner, file.replaces.owner) && (
             <FormGroup title="新旧版本">
               <div className="row start gap16">
                 {card("旧版（保留）", file.replaces.issueDate, file.replaces.originalFileName)}
@@ -518,7 +522,7 @@ export function ReissueRequestSheet({ owner, typeIDs, onClose }: { owner: NodeRe
               <span className="spacer" />
               {message !== generated && <Button kind="quiet" size="small" onClick={() => setMessage(generated)}>按所选重新生成</Button>}
             </div>
-            <textarea className="field" style={{ minHeight: 160 }} value={message} onChange={(e) => setMessage(e.target.value)} />
+            <TextField multiline rows={7} ariaLabel="文字" value={message} onChange={setMessage} />
           </div>
         </div>
       </SheetScaffold>

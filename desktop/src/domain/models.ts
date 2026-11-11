@@ -231,7 +231,7 @@ export interface TrashEntry {
   document?: Document;
   inbox?: InboxItem;
   /** 移除时一并清掉的“核实依据”，恢复时放回。 */
-  evidenceRefs?: { kind: "holding" | "appointment"; id: string; page?: string; note?: string }[];
+  evidenceRefs?: { kind: "holding" | "appointment"; id: string; page?: string; note?: string; verified?: boolean }[];
   /** 移除后变回现行的旧版本 id。 */
   promoted?: string[];
 }
@@ -468,6 +468,8 @@ export interface PacketWatermark {
 
 /** 5.5：材料包发送记录。每次生成材料包记一条。 */
 export interface SendRecord {
+  /** 5.5.5：当次是否清除文件信息（与水印无关）。 */
+  stripMeta?: boolean;
   id: string;
   companyID: string;
   at: string;

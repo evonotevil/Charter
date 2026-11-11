@@ -6,7 +6,7 @@
 // - Word、Excel 等其他格式无法加水印，原样放入并在目录里注明。
 // 带电子签名的 PDF 加水印会使签名失效，加密的 PDF 无法修改；这两类由界面提示。
 
-import { PDFDocument, PDFName, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName, PDFRef, PDFStream, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { platform } from "../platform/platform";
 import { brandFont, brandFontSubset } from "./brandfont";
@@ -150,7 +150,21 @@ function pageFrame(page: PDFPage) {
 
 export function stripMetadata(doc: PDFDocument) {
   doc.setTitle(""); doc.setAuthor(""); doc.setSubject(""); doc.setKeywords([]); doc.setCreator("Charter"); doc.setProducer("Charter");
-  try { doc.catalog.delete(PDFName.of("Metadata")); } catch { /* 没有 XMP */ }
+  // 5.5.5：不只解除引用，还要把 XMP 对象本身删掉，否则保存后仍留在文件里。页面、字体等对象上的 Metadata 一并处理。
+  const M = PDFName.of("Metadata");
+  const drop = (dict: { get(k: PDFName): unknown; delete(k: PDFName): void }) => {
+    const v = dict.get(M);
+    if (!v) return;
+    dict.delete(M);
+    if (v instanceof PDFRef) doc.context.delete(v);
+  };
+  try { drop(doc.catalog); } catch { /* 没有 XMP */ }
+  for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
+    const dict = obj instanceof PDFDict ? obj : obj instanceof PDFStream ? obj.dict : null;
+    if (!dict) continue;
+    if (dict.get(PDFName.of("Type")) === M || dict.get(PDFName.of("Subtype")) === PDFName.of("XML")) { doc.context.delete(ref); continue; }
+    try { drop(dict); } catch { /* 忽略 */ }
+  }
 }
 
 /** 给 PDF 每页叠文字水印。text 为空时只清除元数据。 */

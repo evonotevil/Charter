@@ -134,7 +134,11 @@ handle("zip_files", async (target, entries) => {
 });
 handle("stat", async (p) => {
   try { const st = await fsp.stat(p); return { exists: true, isDir: st.isDirectory(), mtime: mtime(st), size: st.size }; }
-  catch { return { exists: false, isDir: false, mtime: null, size: 0 }; }
+  catch (e) {
+    // 5.5.5：只有“不存在”才算不存在；权限或读写错误如实返回
+    if (e && (e.code === "ENOENT" || e.code === "ENOTDIR")) return { exists: false, isDir: false, mtime: null, size: 0 };
+    return { exists: false, isDir: false, mtime: null, size: 0, error: `${e?.code ?? "读取失败"}` };
+  }
 });
 handle("list_dir", async (p) => {
   const out = [];
@@ -233,7 +237,8 @@ function run(cmd, args, opts = {}) {
 async function syncStatus(root) {
   if (isMac) {
     const out = await run("/usr/bin/osascript", ["-l", "JavaScript", "-e", SYNC_SCRIPT, root, ...dataFiles(root)]);
-    let v; try { v = JSON.parse(out); } catch { v = { kind: root.includes("Mobile Documents") ? "synced" : "local" }; }
+    // 5.5.5：检测失败时不再假定“已同步”
+    let v; try { v = JSON.parse(out); } catch { v = root.includes("Mobile Documents") ? { kind: "unknown", reason: out === null ? "检测脚本没有运行成功" : "检测结果无法识别" } : { kind: "local" }; }
     if (v.kind === "synced") v.at = Date.now();
     return v;
   }
@@ -243,7 +248,8 @@ async function syncStatus(root) {
     if (!synced) return { kind: "local" };
     const ps = "$n=0; foreach($f in $args){ $a=(Get-Item -LiteralPath $f -Force).Attributes; if(($a -band 0x400000) -or ($a -band 0x1000)){ $n++ } }; $n";
     const out = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps, ...dataFiles(root)]);
-    const n = parseInt(out || "0", 10) || 0;
+    if (out === null || !/^\d+$/.test(out)) return { kind: "unknown", reason: "检测脚本没有运行成功" };
+    const n = parseInt(out, 10);
     return n > 0 ? { kind: "syncing", count: n } : { kind: "synced", at: Date.now() };
   }
   return { kind: "local" };
@@ -344,7 +350,8 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url); return { action: "deny" }; });
   mainWindow.webContents.on("will-navigate", (e, url) => { if (!url.startsWith("app://")) e.preventDefault(); });
   if (isWin) nativeTheme.on("updated", () => mainWindow?.setTitleBarOverlay?.({ symbolColor: nativeTheme.shouldUseDarkColors ? "#E9F1E6" : "#25352C" }));
-  const dev = process.env.CHARTER_DEV_URL;
+  // 5.5.5：打包版不读开发地址
+  const dev = app.isPackaged ? undefined : process.env.CHARTER_DEV_URL;
   void mainWindow.loadURL(dev || "app://charter/index.html");
   mainWindow.on("closed", () => { mainWindow = null; });
   // 打包后的启动自检：charter --smoke-test=<结果文件>。界面画出来（侧栏或错误页）就写 ok，然后退出。

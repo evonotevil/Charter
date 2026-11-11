@@ -265,12 +265,12 @@ export function CompanyEditor({ companyID, groupID: initialGroup, onClose }: { c
   );
 }
 
-export function PercentField({ value, onChange, invalid }: { value: number; onChange: (n: number) => void; invalid?: boolean }) {
+export function PercentField({ value, onChange, invalid, ariaLabel }: { value: number; onChange: (n: number) => void; invalid?: boolean; ariaLabel?: string }) {
   const [text, setText] = useState(String(value));
   useEffect(() => { if (parseFloat(text) !== value) setText(String(value)); }, [value]);
   return (
     <span className="row gap6">
-      <input className={`field num ${invalid ? "invalid" : ""}`} style={{ width: 90, textAlign: "right" }} value={text} inputMode="decimal"
+      <input className={`field num ${invalid ? "invalid" : ""}`} style={{ width: 90, textAlign: "right" }} value={text} inputMode="decimal" aria-label={ariaLabel ?? "持股比例"}
         onChange={(e) => { setText(e.target.value); const n = parseFloat(e.target.value); onChange(Number.isFinite(n) ? n : 0); }} />
       <span className="muted">%</span>
     </span>
