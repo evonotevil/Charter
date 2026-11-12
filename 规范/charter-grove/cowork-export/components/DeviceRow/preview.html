@@ -1,0 +1,12 @@
+<!-- @dsCard group="数据" height=230 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>DeviceRow</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{style:{maxWidth:640}},h(C.Card,{title:"已连接的设备",link:"2 台设备"},h(C.DeviceRow,{name:"林嘉禾的 MacBook Pro",status:"device",system:"macOS 15.6 · Charter 4.5.1",syncText:"今天 10:42 已同步 · 没有待上传的改动"}),h("hr",{className:"g-divider"}),h(C.DeviceRow,{kind:"windows",name:"办公室 Surface",status:"offline",system:"Windows 11 · Charter 4.5.1",syncText:"上次同步今天 10:18 · 3 处改动待上传",pending:true,note:"这台设备联网后会自动上传。"}))));
+</script>
+</body>
+</html>

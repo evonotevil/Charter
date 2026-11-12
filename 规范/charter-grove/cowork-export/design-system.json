@@ -1,0 +1,33 @@
+{
+ "v": 3,
+ "layout": "files",
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-10-21T08:04:20Z"
+ },
+ "title": "Charter 设计系统",
+ "namespace": "Charter",
+ "libraries": [
+  {
+   "name": "react",
+   "version": "18"
+  },
+  {
+   "name": "react-dom",
+   "version": "18"
+  }
+ ],
+ "sections": {},
+ "groups": [],
+ "assetGroups": {},
+ "blobs": {},
+ "docs": {
+  "sections": []
+ },
+ "lastChange": {
+  "by": "Claude",
+  "at": "2026-10-21T08:04:20Z",
+  "via": "Claude",
+  "note": "首版：由 Figma 初稿（grove）整理，令牌、品牌手册、动效、37 个组件、5 个屏幕"
+ }
+}

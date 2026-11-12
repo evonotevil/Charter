@@ -1,0 +1,12 @@
+<!-- @dsCard group="输入" height=190 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Field</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:16,maxWidth:600}},h(C.Field,{label:"法域",value:"香港",options:["香港","新加坡","英属维尔京群岛","开曼群岛"],detected:"已从商业登记证识别"}),h(C.Field,{label:"公司注册编号",value:"3021477",hint:"公司注册处签发的 CR 编号"}),h(C.Field,{label:"成立日期",value:"2019/6/14",error:"日期格式应为 2019-06-14"}),h(C.Field,{label:"注册地址",placeholder:"例如：香港中环皇后大道中 99 号"})));
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+<!-- @dsCard group="导航" height=760 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Sidebar</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h(C.Sidebar,{active:"portfolio",style:{height:740},items:[{key:"portfolio",label:"公司总览",icon:"grid"},{key:"calendar",label:"申报日历",icon:"calendar",badge:3},{key:"structure",label:"股权结构",icon:"tree"},{key:"docs",label:"文件",icon:"folder"},{key:"people",label:"人员与中介",icon:"users"}],more:[{key:"sync",label:"设备与同步",icon:"sync"},{key:"settings",label:"设置",icon:"settings"}]}));
+</script>
+</body>
+</html>

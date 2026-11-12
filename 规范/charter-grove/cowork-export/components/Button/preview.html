@@ -1,0 +1,12 @@
+<!-- @dsCard group="操作" height=130 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Button</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{className:"g-col",style:{gap:14}},h("div",{className:"g-row",style:{gap:12}},h(C.Button,{variant:"primary",icon:"plus"},"添加公司"),h(C.Button,{icon:"download"},"导出名单"),h(C.Button,{variant:"quiet"},"查看全部"),h(C.Button,{variant:"danger"},"删除公司…"),h(C.Button,{icon:"more",label:"更多操作"})),h("div",{className:"g-row",style:{gap:12}},h(C.Button,{variant:"primary",size:"sm",icon:"arrow-right"},"开始办理"),h(C.Button,{size:"sm",icon:"plus"},"连接设备"),h(C.Button,{variant:"primary",loading:true},"正在同步"),h(C.Button,{variant:"primary",disabled:true},"保留所选版本"))));
+</script>
+</body>
+</html>

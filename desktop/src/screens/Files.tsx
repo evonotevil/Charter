@@ -257,7 +257,7 @@ function DocumentsView() {
         </div>
       </div>
       {selectedDocs.length > 0 && (
-        <div className="row gap8 floating appear" style={{ position: "absolute", left: "50%", bottom: 24, transform: "translateX(-50%)", height: 48, padding: "0 10px", borderRadius: "var(--r-pill)", zIndex: 4 }}>
+        <div className="row gap8 floating appear" style={{ position: "absolute", left: "50%", bottom: 24, transform: "translateX(-50%)", height: 48, padding: "0 10px", borderRadius: "var(--r-full)", zIndex: 4 }}>
           <span className="num" style={{ fontSize: 13, fontWeight: 600, padding: "0 4px 0 8px" }}>已选 {selectedDocs.length} 份</span>
           {selectedDocs.some((d) => !store.fileMissing(d)) && <>
             <Button kind="quiet" size="small" onClick={() => batchOpen(store, selectedDocs)}>打开</Button>

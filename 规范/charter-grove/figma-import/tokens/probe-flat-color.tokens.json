@@ -1,0 +1,24 @@
+{
+  "color/canvas": {
+    "$type": "color",
+    "$value": {
+      "colorSpace": "srgb",
+      "components": [
+        0.9686274528503418,
+        0.9764705896377563,
+        0.9607843160629272
+      ],
+      "alpha": 1,
+      "hex": "#F7F9F5"
+    },
+    "$extensions": {
+      "com.figma.variableId": "VariableID:7:58",
+      "com.figma.scopes": [
+        "ALL_SCOPES"
+      ]
+    }
+  },
+  "$extensions": {
+    "com.figma.modeName": "light"
+  }
+}

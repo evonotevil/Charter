@@ -1,0 +1,12 @@
+<!-- @dsCard group="数据" height=480 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>HealthBanner</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{className:"g-col",style:{gap:16}},h(C.HealthBanner,{title:"看起来不错，远澜！",body:"6 家公司里有 4 家一切就绪，2 件申报需要你留意。",segments:["warn","ok","ok","warn","ok","ok"],segmentsLabel:"6 家公司：4 家正常，2 家需要留意",animateSegments:true,action:h(C.Button,null,h(C.Icon,{name:"arrow-right",size:17}),"查看 2 件申报")}),h(C.HealthBanner,{tone:"bad",title:"有 1 件已经逾期。",body:"Harbor Crest Investments 的经济实质申报 10 月 18 日到期，已经过了 3 天。",segments:["bad","ok","ok","warn","ok","ok"],segmentsLabel:"1 家逾期",action:h(C.Button,{variant:"primary"},"马上处理")}),h(C.HealthBanner,{icon:"cloud",title:"这台 Mac 已经是最新的。",body:"今天 10:42 同步 · 本机的改动都已保存。",foot:"集团：远澜集团 · 存储在你的 iCloud"})));
+</script>
+</body>
+</html>

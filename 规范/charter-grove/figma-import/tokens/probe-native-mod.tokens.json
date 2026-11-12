@@ -1,0 +1,645 @@
+{
+  "Color": {
+    "$type": "color",
+    "$value": {
+      "colorSpace": "srgb",
+      "components": [
+        0.9686274509803922,
+        0.9764705882352941,
+        0.9607843137254902
+      ],
+      "alpha": 1,
+      "hex": "#F7F9F5"
+    },
+    "$extensions": {
+      "com.figma.variableId": "VariableID:7:58",
+      "com.figma.scopes": [
+        "ALL_SCOPES"
+      ]
+    }
+  },
+  "space": {
+    "1": {
+      "$type": "number",
+      "$value": 4,
+      "$description": "图标与文字。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:3",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "2": {
+      "$type": "number",
+      "$value": 8,
+      "$description": "导航项之间、胶囊之间。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:4",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "3": {
+      "$type": "number",
+      "$value": 12,
+      "$description": "卡片内行间距。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:5",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "4": {
+      "$type": "number",
+      "$value": 16,
+      "$description": "侧栏左右内边距、小卡片内边距。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:6",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "5": {
+      "$type": "number",
+      "$value": 20,
+      "$description": "卡片之间。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:7",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "6": {
+      "$type": "number",
+      "$value": 24,
+      "$description": "卡片内边距、页面区块之间。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:8",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "7": {
+      "$type": "number",
+      "$value": 32,
+      "$description": "页面边距。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:9",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    }
+  },
+  "radius": {
+    "pill": {
+      "$type": "number",
+      "$value": 8,
+      "$description": "状态胶囊、视图切换项。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:10",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "input": {
+      "$type": "number",
+      "$value": 10,
+      "$description": "输入框、组织头像。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:11",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "control": {
+      "$type": "number",
+      "$value": 12,
+      "$description": "按钮、导航项、公司徽章、选择卡片。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:12",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "tile": {
+      "$type": "number",
+      "$value": 16,
+      "$description": "数字卡、侧栏提示卡。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:13",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "card": {
+      "$type": "number",
+      "$value": 20,
+      "$description": "卡片、横幅、表格容器。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:14",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "emblem": {
+      "$type": "number",
+      "$value": 24,
+      "$description": "横幅里的大徽标。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:15",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    }
+  },
+  "size": {
+    "border-width": {
+      "$type": "number",
+      "$value": 2,
+      "$description": "卡片、按钮、导航项、输入框的描边宽度。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:16",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "button-height": {
+      "$type": "number",
+      "$value": 46,
+      "$description": "大按钮；小按钮 36px。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:17",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "nav-height": {
+      "$type": "number",
+      "$value": 48,
+      "$description": "侧栏导航项。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:18",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "input-height": {
+      "$type": "number",
+      "$value": 40,
+      "$description": "搜索框、下拉框。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:19",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "row-height": {
+      "$type": "number",
+      "$value": 72,
+      "$description": "公司表格行；紧凑密度 52px。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:20",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "sidebar-width": {
+      "$type": "number",
+      "$value": 224,
+      "$description": "侧栏宽度。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:21",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "appbar-height": {
+      "$type": "number",
+      "$value": 72,
+      "$description": "顶栏高度。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:22",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    }
+  },
+  "font": {
+    "display": {
+      "$type": "string",
+      "$value": "Nunito",
+      "$description": "Nunito, \"PingFang SC\", \"Noto Sans SC\", system-ui, sans-serif; Figma 请使用第一个字体，中文回落到苹方。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:23",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ],
+        "com.figma.type": "string"
+      }
+    },
+    "sans": {
+      "$type": "string",
+      "$value": "Inter",
+      "$description": "Inter, \"PingFang SC\", \"Noto Sans SC\", system-ui, sans-serif; Figma 请使用第一个字体，中文回落到苹方。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:24",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ],
+        "com.figma.type": "string"
+      }
+    }
+  },
+  "font-size": {
+    "display": {
+      "$type": "number",
+      "$value": 32,
+      "$description": "页面大标题，每页一次。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:25",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "headline": {
+      "$type": "number",
+      "$value": 23,
+      "$description": "状态横幅、“下一件事”卡片的标题。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:26",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "title": {
+      "$type": "number",
+      "$value": 19,
+      "$description": "卡片标题。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:27",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "subtitle": {
+      "$type": "number",
+      "$value": 15,
+      "$description": "侧栏提示卡、蓝色说明卡的标题。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:28",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "figure": {
+      "$type": "number",
+      "$value": 29,
+      "$description": "数字卡的数值。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:29",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "body": {
+      "$type": "number",
+      "$value": 13,
+      "$description": "正文、表格单元。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:30",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "body-strong": {
+      "$type": "number",
+      "$value": 13,
+      "$description": "行主文字、公司名、人名。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:31",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "small": {
+      "$type": "number",
+      "$value": 12,
+      "$description": "次要信息、来源、时间。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:32",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "label": {
+      "$type": "number",
+      "$value": 11,
+      "$description": "字段标签、表头、侧栏分组名。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:33",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "button": {
+      "$type": "number",
+      "$value": 13,
+      "$description": "按钮文字。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:34",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "pill": {
+      "$type": "number",
+      "$value": 11,
+      "$description": "状态胶囊文字。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:35",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    }
+  },
+  "font-weight": {
+    "display": {
+      "$type": "number",
+      "$value": 900,
+      "$description": "页面大标题，每页一次。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:36",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "headline": {
+      "$type": "number",
+      "$value": 900,
+      "$description": "状态横幅、“下一件事”卡片的标题。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:37",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "title": {
+      "$type": "number",
+      "$value": 800,
+      "$description": "卡片标题。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:38",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "subtitle": {
+      "$type": "number",
+      "$value": 800,
+      "$description": "侧栏提示卡、蓝色说明卡的标题。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:39",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "figure": {
+      "$type": "number",
+      "$value": 900,
+      "$description": "数字卡的数值。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:40",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "body": {
+      "$type": "number",
+      "$value": 400,
+      "$description": "正文、表格单元。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:41",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "body-strong": {
+      "$type": "number",
+      "$value": 700,
+      "$description": "行主文字、公司名、人名。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:42",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "small": {
+      "$type": "number",
+      "$value": 400,
+      "$description": "次要信息、来源、时间。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:43",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "label": {
+      "$type": "number",
+      "$value": 700,
+      "$description": "字段标签、表头、侧栏分组名。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:44",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "button": {
+      "$type": "number",
+      "$value": 800,
+      "$description": "按钮文字。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:45",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "pill": {
+      "$type": "number",
+      "$value": 700,
+      "$description": "状态胶囊文字。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:46",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    }
+  },
+  "line-height": {
+    "display": {
+      "$type": "number",
+      "$value": 1.2999999523162842,
+      "$description": "页面大标题，每页一次。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:47",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "headline": {
+      "$type": "number",
+      "$value": 1.350000023841858,
+      "$description": "状态横幅、“下一件事”卡片的标题。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:48",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "title": {
+      "$type": "number",
+      "$value": 1.399999976158142,
+      "$description": "卡片标题。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:49",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "subtitle": {
+      "$type": "number",
+      "$value": 1.399999976158142,
+      "$description": "侧栏提示卡、蓝色说明卡的标题。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:50",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "figure": {
+      "$type": "number",
+      "$value": 1.2000000476837158,
+      "$description": "数字卡的数值。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:51",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "body": {
+      "$type": "number",
+      "$value": 1.5,
+      "$description": "正文、表格单元。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:52",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "body-strong": {
+      "$type": "number",
+      "$value": 1.5,
+      "$description": "行主文字、公司名、人名。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:53",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "small": {
+      "$type": "number",
+      "$value": 1.4500000476837158,
+      "$description": "次要信息、来源、时间。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:54",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "label": {
+      "$type": "number",
+      "$value": 1.399999976158142,
+      "$description": "字段标签、表头、侧栏分组名。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:55",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "button": {
+      "$type": "number",
+      "$value": 1.399999976158142,
+      "$description": "按钮文字。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:56",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    },
+    "pill": {
+      "$type": "number",
+      "$value": 1.399999976158142,
+      "$description": "状态胶囊文字。",
+      "$extensions": {
+        "com.figma.variableId": "VariableID:7:57",
+        "com.figma.scopes": [
+          "ALL_SCOPES"
+        ]
+      }
+    }
+  },
+  "$extensions": {
+    "com.figma.modeName": "light"
+  }
+}

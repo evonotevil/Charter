@@ -1,0 +1,12 @@
+<!-- @dsCard group="数据" height=70 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>ProgressSegments</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h(C.ProgressSegments,{segments:["ok","ok","warn","ok","bad","ok","ok"],label:"7 家公司：5 家正常，1 家快到期，1 家逾期",animate:true}));
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+<!-- @dsCard group="基础" height=70 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Avatar</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{className:"g-row",style:{gap:12}},h(C.Avatar,{text:"HK",tone:"green",size:38}),h(C.Avatar,{text:"VG",tone:"blue",size:38}),h(C.Avatar,{text:"SG",tone:"purple",size:38}),h(C.Avatar,{text:"林",tone:"amber",size:36,round:true}),h(C.Avatar,{text:"A",tone:"purple",size:34}),h(C.Avatar,{text:"汇",size:29,round:true})));
+</script>
+</body>
+</html>

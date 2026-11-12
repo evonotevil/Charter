@@ -1,0 +1,276 @@
+{
+  "manifestVersion": 3,
+  "name": "Charter 设计系统",
+  "namespace": "Charter",
+  "files": [
+    "components/ActivityList/README.md",
+    "components/AppBar/README.md",
+    "components/AuditNote/README.md",
+    "components/Avatar/README.md",
+    "components/Button/README.md",
+    "components/Card/README.md",
+    "components/Celebration/README.md",
+    "components/ChoiceCard/README.md",
+    "components/DeviceRow/README.md",
+    "components/Dialog/README.md",
+    "components/DocumentList/README.md",
+    "components/DropZone/README.md",
+    "components/EmptyState/README.md",
+    "components/EntitySnapshot/README.md",
+    "components/EntityTable/README.md",
+    "components/FactGrid/README.md",
+    "components/Field/README.md",
+    "components/FilingTimeline/README.md",
+    "components/HealthBanner/README.md",
+    "components/HorizonList/README.md",
+    "components/Icon/README.md",
+    "components/InfoNote/README.md",
+    "components/MetricTile/README.md",
+    "components/NextUpCard/README.md",
+    "components/PageHeading/README.md",
+    "components/PeopleTable/README.md",
+    "components/ProcessSteps/README.md",
+    "components/ProgressSegments/README.md",
+    "components/SearchField/README.md",
+    "components/Sidebar/README.md",
+    "components/StatusPill/README.md",
+    "components/StructureChart/README.md",
+    "components/Tabs/README.md",
+    "components/Toast/README.md",
+    "components/Toggle/README.md",
+    "components/UploadRow/README.md",
+    "components/ViewToggle/README.md",
+    "components/bundle.css",
+    "components/bundle.js",
+    "components/index.d.ts",
+    "figma.md",
+    "layout.md",
+    "motion.md",
+    "tokens.css"
+  ],
+  "libraries": [
+    {
+      "name": "react",
+      "version": "18",
+      "global": "React"
+    },
+    {
+      "name": "react-dom",
+      "version": "18",
+      "global": "ReactDOM"
+    }
+  ],
+  "components": [
+    {
+      "name": "Icon",
+      "group": "基础",
+      "summary": "线性图标：24 网格、2px 描边、圆角端点，与初稿使用的 Lucide 风格一致。"
+    },
+    {
+      "name": "Button",
+      "group": "操作",
+      "summary": "立体按钮：底部 4px 深色边，按下时整块下沉 4px、底边消失，松开时回弹一下。这是整套设计最有辨识度的元素。"
+    },
+    {
+      "name": "Avatar",
+      "group": "基础",
+      "summary": "头像与徽章：浅色底 + 同色系深色字。"
+    },
+    {
+      "name": "StatusPill",
+      "group": "状态",
+      "summary": "状态胶囊：小圆点（或图标）+ 文字 + 浅色底，圆角 8px。颜色只是加强，去掉颜色也能读懂。"
+    },
+    {
+      "name": "Sidebar",
+      "group": "导航",
+      "summary": "侧栏：224px 白底，右侧 2px 描边。从上到下：标志、集团切换、主导航、工作区导航、安心提示卡、当前用户。"
+    },
+    {
+      "name": "AppBar",
+      "group": "导航",
+      "summary": "顶栏：72px 白底，底部 1px 描边。左侧是当前集团和位置，右侧是同步状态、今天日期、提醒、帮助。"
+    },
+    {
+      "name": "PageHeading",
+      "group": "导航",
+      "summary": "页面标题：面包屑（12/600 灰）→ 大标题（Nunito 900 32px）+ 操作按钮 → 一行副标题（14 灰）。"
+    },
+    {
+      "name": "HealthBanner",
+      "group": "数据",
+      "summary": "状态横幅：每页最多一个，放在页面标题下方，用一句话回答“现在情况怎么样”。"
+    },
+    {
+      "name": "ProgressSegments",
+      "group": "数据",
+      "summary": "进度段：一段代表一个对象（一家公司、一项档案），按状态着色。"
+    },
+    {
+      "name": "MetricTile",
+      "group": "数据",
+      "summary": "数字卡：大数字（Nunito 900 29px）+ 图标 + 名称 + 一句补充说明。总览页一排四个。"
+    },
+    {
+      "name": "SearchField",
+      "group": "输入",
+      "summary": "搜索框：40px 高、10px 圆角、2px 描边，左侧放大镜。聚焦时描边变品牌绿并加 3px 浅绿光圈。"
+    },
+    {
+      "name": "Field",
+      "group": "输入",
+      "summary": "表单字段：标签（11/700 灰）在上，输入框在下，说明或错误在最下。"
+    },
+    {
+      "name": "ViewToggle",
+      "group": "输入",
+      "summary": "显示方式切换：列表 / 卡片。选中项浅绿底绿色图标，未选中只有灰色图标。"
+    },
+    {
+      "name": "Tabs",
+      "group": "导航",
+      "summary": "页签：底部 2px 灰线，选中项绿字 + 4px 绿色下划线。"
+    },
+    {
+      "name": "Card",
+      "group": "布局",
+      "summary": "卡片：白底、2px line 描边、20px 圆角、24px 内边距，没有阴影。"
+    },
+    {
+      "name": "EntityTable",
+      "group": "数据",
+      "summary": "公司表：总览页的主体。列：公司（徽章 + 名称 + 编号与形式）、法域（地区 + 登记机关）、合规、下一件事（日期 + 事项）、负责中介、进入箭头。"
+    },
+    {
+      "name": "EntitySnapshot",
+      "group": "数据",
+      "summary": "公司概况条：公司页面标题下方，一行回答四个问题——登记状态、合规、档案完整度、默认中介。"
+    },
+    {
+      "name": "FactGrid",
+      "group": "数据",
+      "summary": "字段网格：两列，每格是标签 + 值 + 一行补充说明。上方一行写数据来源和核对人、核对日期，这是专业信任感的来源（初稿里的「UK registry record · Reviewed by …」）。"
+    },
+    {
+      "name": "PeopleTable",
+      "group": "数据",
+      "summary": "人员与持股：三列——人员、职务、持股。"
+    },
+    {
+      "name": "DocumentList",
+      "group": "数据",
+      "summary": "文件列表：概览页里的精简版文件清单，只放最重要的 3–5 份。完整的文件表在「文件」页签。"
+    },
+    {
+      "name": "NextUpCard",
+      "group": "数据",
+      "summary": "下一件事：公司页右栏的第一张卡，琥珀底 + 琥珀描边，告诉用户这家公司最近要做的一件事。"
+    },
+    {
+      "name": "HorizonList",
+      "group": "数据",
+      "summary": "远期事项：“下一件事”之后的两三件，日期绿色加粗在上，事项名在中，机关与表格编号在下。"
+    },
+    {
+      "name": "AuditNote",
+      "group": "反馈",
+      "summary": "变更记录说明：放在右栏底部，告诉用户每次改动都有记录、可以撤销。只是说明，不是卡片。"
+    },
+    {
+      "name": "InfoNote",
+      "group": "反馈",
+      "summary": "提示卡：蓝色底，用于消除顾虑的说明（离线、隐私、数据位置）。标题亲切，正文写清实际行为。"
+    },
+    {
+      "name": "DeviceRow",
+      "group": "数据",
+      "summary": "设备行：设备图标块、名称 + 状态胶囊、系统与版本、同步情况、更多操作。"
+    },
+    {
+      "name": "Toggle",
+      "group": "输入",
+      "summary": "开关：44×26，打开为品牌绿。圆点滑动带一点回弹（200ms）。"
+    },
+    {
+      "name": "ChoiceCard",
+      "group": "输入",
+      "summary": "选择卡片：一组单选，每个选项是一张卡片。用于同步冲突、识别结果二选一等“请你来定”的场景。"
+    },
+    {
+      "name": "ActivityList",
+      "group": "数据",
+      "summary": "动态列表：图标 + 一句话 + 时间。绿色双勾表示完成，琥珀图标表示需要注意。"
+    },
+    {
+      "name": "StructureChart",
+      "group": "数据",
+      "summary": "股权结构图：节点是带 4px 底边的立体卡片，和按钮同一种语言；点阵背景。"
+    },
+    {
+      "name": "FilingTimeline",
+      "group": "数据",
+      "summary": "申报日历：按月分组，每行是日期与剩余天数、事项、公司与机关、状态、完成圆圈。"
+    },
+    {
+      "name": "Celebration",
+      "group": "反馈",
+      "summary": "庆祝时刻：只在完成一个有意义的阶段时出现——本月申报全部办完、一家公司档案补齐到 100%、第一次导入完成。"
+    },
+    {
+      "name": "DropZone",
+      "group": "输入",
+      "summary": "拖放区：2px 虚线框、浅灰底。拖入时变为品牌绿虚线 + 浅绿底。整个公司页面都接受拖放。"
+    },
+    {
+      "name": "UploadRow",
+      "group": "输入",
+      "summary": "上传行：文件名 + 真实进度条（品牌绿）→ 完成后换成识别出的类型和一句摘要。多份识别完后出现蓝色汇总框（上浮淡入 200ms），每一项都能点回原文件。识别失败时在行内写原因和下一步。"
+    },
+    {
+      "name": "ProcessSteps",
+      "group": "反馈",
+      "summary": "处理步骤：几秒钟的后台任务拆成看得见的几步。每步真正完成时才打勾（对勾弹出），当前步转圈，完成的步右侧写结果。少于 1 秒的任务不显示。"
+    },
+    {
+      "name": "EmptyState",
+      "group": "反馈",
+      "summary": "空状态：浅绿图标块 + 标题（说清缺什么）+ 一句话（这类信息通常在哪份文件里）+ 一个主按钮。不写「暂无数据」。"
+    },
+    {
+      "name": "Toast",
+      "group": "反馈",
+      "summary": "轻提示：底部居中，墨色圆角块，左侧绿色对勾圆。"
+    },
+    {
+      "name": "Dialog",
+      "group": "反馈",
+      "summary": "弹窗：24px 圆角、28px 内边距，弹入（320ms 回弹）。只用于不可逆操作的确认和 4 个字段以内的短表单。"
+    },
+    {
+      "name": "ScreenCalendar",
+      "group": "屏幕",
+      "page": true
+    },
+    {
+      "name": "ScreenEntity",
+      "group": "屏幕",
+      "page": true
+    },
+    {
+      "name": "ScreenPortfolio",
+      "group": "屏幕",
+      "page": true
+    },
+    {
+      "name": "ScreenStructure",
+      "group": "屏幕",
+      "page": true
+    },
+    {
+      "name": "ScreenSync",
+      "group": "屏幕",
+      "page": true
+    }
+  ],
+  "assetGroups": []
+}

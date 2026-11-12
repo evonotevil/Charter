@@ -1,0 +1,12 @@
+<!-- @dsCard group="数据" height=180 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>HorizonList</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{style:{maxWidth:420}},h(C.Card,{title:"接下来"},h(C.HorizonList,{items:[{date:"2027-01-31",title:"周年申报表",meta:"公司注册处 · NAR1"},{date:"2027-04-30",title:"利得税报税表",meta:"税务局 · BIR51 · 2026/27 课税年度"}]}))));
+</script>
+</body>
+</html>

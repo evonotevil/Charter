@@ -1,0 +1,19 @@
+{
+  "red": {
+    "$type": "color",
+    "$value": {
+      "colorSpace": "srgb",
+      "components": [
+        0.8886906504631042,
+        0.15790081024169922,
+        0.15790081024169922
+      ],
+      "alpha": 1,
+      "hex": "#E32828"
+    }
+  },
+  "danger": {
+    "$type": "color",
+    "$value": "{red}"
+  }
+}

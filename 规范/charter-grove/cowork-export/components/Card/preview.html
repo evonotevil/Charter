@@ -1,0 +1,12 @@
+<!-- @dsCard group="布局" height=170 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Card</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{style:{maxWidth:560}},h(C.Card,{title:"公司背后的人",link:"查看全部人员 →"},h("p",{className:"g-small",style:{margin:0}},"卡片标题用 Nunito 800 19px，右上角最多一个链接或按钮。"))));
+</script>
+</body>
+</html>

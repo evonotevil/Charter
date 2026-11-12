@@ -1,0 +1,12 @@
+<!-- @dsCard group="屏幕" height=980 subtitle="申报日历" page width=1440 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>ScreenCalendar</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{className:"g-window"},h(C.Sidebar,{active:"calendar",items:[{key:"portfolio",label:"公司总览",icon:"grid"},{key:"calendar",label:"申报日历",icon:"calendar",badge:3},{key:"structure",label:"股权结构",icon:"tree"},{key:"docs",label:"文件",icon:"folder"},{key:"people",label:"人员与中介",icon:"users"}],more:[{key:"sync",label:"设备与同步",icon:"sync"},{key:"settings",label:"设置",icon:"settings"}]}),h("div",{className:"g-work"},h(C.AppBar,null),h("div",{className:"g-page"},h(C.PageHeading,{crumb:"远澜集团",title:"一件一件来。",subtitle:"所有公司接下来要做的事，按截止日排好了。",actions:[h(C.Button,{key:1,icon:"download"},"导出日历")]}),h(C.HealthBanner,{tone:"bad",title:"有 1 件已经逾期。",body:"Harbor Crest Investments 的经济实质申报 10 月 18 日到期，已经过了 3 天。",segments:["bad","warn","warn","ok","ok","ok","ok","ok"],segmentsLabel:"本季度 8 件：1 件逾期，2 件 30 天内到期，5 件已完成",action:h(C.Button,{variant:"primary"},"马上处理")}),h(C.Tabs,{label:"范围",items:[{key:"a",label:"全部",count:12},{key:"b",label:"30 天内",count:3},{key:"c",label:"逾期",count:1},{key:"d",label:"已完成",count:5}]}),h(C.FilingTimeline,{groups:[{label:"2026 年 10 月",items:[{date:"10-18",days:-3,title:"经济实质申报",company:"Harbor Crest Investments",authority:"BVI 国际税务局",status:"overdue"},{date:"10-31",days:10,title:"BVI 政府年费",company:"Harbor Crest Investments",authority:"BVI 公司事务处",status:"progress"}]},{label:"2026 年 11 月",items:[{date:"11-18",days:28,title:"商业登记证续期",company:"远澜控股（香港）",authority:"税务局商业登记署",status:"soon"},{date:"11-30",days:40,title:"企业所得税申报",company:"Mingan Singapore",authority:"IRAS",status:"todo"}]}]})))));
+</script>
+</body>
+</html>

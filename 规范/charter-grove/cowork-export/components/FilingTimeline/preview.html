@@ -1,0 +1,12 @@
+<!-- @dsCard group="数据" height=420 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>FilingTimeline</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{className:"g-col",style:{gap:16}},h(C.FilingTimeline,{groups:[{label:"2026 年 10 月",items:[{date:"10-18",days:-3,title:"经济实质申报",company:"Harbor Crest Investments",authority:"BVI 国际税务局",status:"overdue"},{date:"10-31",days:10,title:"BVI 政府年费",company:"Harbor Crest Investments",authority:"BVI 公司事务处",status:"progress"}]},{label:"2026 年 11 月",items:[{date:"11-18",days:28,title:"商业登记证续期",company:"远澜控股（香港）",authority:"税务局商业登记署",status:"soon"},{date:"11-30",days:40,title:"企业所得税申报",company:"Mingan Singapore",authority:"IRAS",status:"todo"}]}]}),h("p",{className:"g-small",style:{margin:0}},"试试点右侧的圆圈：标为完成时对勾弹出，并有一小圈彩点。")));
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+<!-- @dsCard group="基础" height=70 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Icon</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{className:"g-row",style:{gap:18,color:"var(--ink)"}},["grid","calendar","tree","folder","users","sync","settings","shield","building","landmark","cloud","bell","file","upload","download","pencil","search","history","compare","alert","clock","trophy","check-check","wifi-off"].map(function(n){return h(C.Icon,{key:n,name:n,size:20,label:n})})));
+</script>
+</body>
+</html>

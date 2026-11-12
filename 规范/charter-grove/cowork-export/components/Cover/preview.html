@@ -1,0 +1,36 @@
+<!-- @dsCard height=300 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Cover</title>
+<style>
+  html, body { margin: 0 !important; padding: 0 !important; background: var(--canvas); }
+  .cv { position: relative; width: 960px; height: 300px; overflow: hidden; background: var(--canvas); }
+  .cv svg { position: absolute; left: 0; top: 0; }
+  .g { fill: var(--green); } .ge { fill: var(--green-edge); } .a { fill: var(--amber); } .ae { fill: var(--amber-text); }
+  .bs { fill: var(--blue-soft); } .ps { fill: var(--purple-soft); } .gs { fill: var(--green-soft); } .ln { fill: var(--line); } .sf { fill: var(--surface); }
+  .nm { position: absolute; left: 40px; bottom: 70px; margin: 0; font: 900 104px/.92 var(--font-display); letter-spacing: -0.02em; color: var(--green-text); }
+  .tg { position: absolute; left: 44px; bottom: 36px; width: 420px; font: 14px/20px var(--font-sans); color: var(--muted); }
+</style></head>
+<body>
+<div class="cv">
+  <svg width="960" height="300" viewBox="0 0 960 300" aria-hidden="true">
+    <!-- blocks: green 176×176 with green-edge 8px base (radius-emblem 24); amber 112×72 with amber-text edge; blue-soft 160×96; purple-soft 96×96; green-soft 120×56
+         arrangement: a staggered stack of raised tiles stepping up to the right, one big green tile as the anchor, bleeding off the top-right
+         pattern: literal motif — the raised "press me" tile with a darker bottom edge, the draft's signature (buttons and emblems), repeated at three sizes
+         scales: radii radius-control 12, radius-tile 16, radius-card 20, radius-emblem 24; edges 4px and 6px; gaps space-5 20 and space-6 24 -->
+    <rect class="bs" x="500" y="168" width="160" height="96" rx="20"/>
+    <rect class="ps" x="684" y="196" width="96" height="96" rx="16"/>
+    <rect class="ge" x="704" y="-30" width="176" height="182" rx="24"/>
+    <rect class="g" x="704" y="-30" width="176" height="176" rx="24"/>
+    <rect class="ae" x="560" y="56" width="112" height="78" rx="16"/>
+    <rect class="a" x="560" y="56" width="112" height="72" rx="16"/>
+    <rect class="ln" x="804" y="176" width="120" height="60" rx="12"/>
+    <rect class="gs" x="804" y="176" width="120" height="56" rx="12"/>
+    <rect class="ge" x="904" y="250" width="72" height="62" rx="12"/>
+    <rect class="g" x="904" y="250" width="72" height="56" rx="12"/>
+  </svg>
+  <h1 class="nm">Charter</h1>
+  <div class="tg">每家公司都在这里。轻松一点，安心一点。</div>
+</div>
+</body>
+</html>

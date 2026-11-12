@@ -1,0 +1,12 @@
+<!-- @dsCard group="数据" height=190 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>DocumentList</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{style:{maxWidth:660}},h(C.Card,{title:"样样都在",link:"查看 12 份文件 →"},h(C.DocumentList,{items:[{name:"公司注册证明书.pdf",meta:"PDF · 184 KB · 2019-06-14"},{name:"组织章程细则（2023 年修订）.pdf",meta:"PDF · 312 KB · 2023-04-12"},{name:"2026年度商业登记证（远澜控股）已盖章扫描件.pdf",status:"soon",statusText:"28 天后到期",meta:"PDF · 96 KB · 2025-11-19"}]}))));
+</script>
+</body>
+</html>

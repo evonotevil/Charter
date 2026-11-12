@@ -1,0 +1,12 @@
+<!-- @dsCard group="导航" height=70 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Tabs</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h(C.Tabs,{label:"公司页面",items:[{key:"o",label:"概览"},{key:"p",label:"人员与持股",count:4},{key:"d",label:"文件",count:12},{key:"f",label:"申报",count:3},{key:"a",label:"变更历史"}]}));
+</script>
+</body>
+</html>

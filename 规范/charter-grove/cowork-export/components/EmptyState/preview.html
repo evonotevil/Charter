@@ -1,0 +1,12 @@
+<!-- @dsCard group="反馈" height=240 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>EmptyState</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{style:{maxWidth:460}},h(C.Card,null,h(C.EmptyState,{title:"还没有董事",body:"董事名单通常在公司注册处的周年申报表里，上传一份就能自动读出来。",action:h(C.Button,{variant:"primary",icon:"upload"},"上传周年申报表")}))));
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+<!-- @dsCard group="输入" height=300 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>ChoiceCard</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h(function(){var s=React.useState(0);return h("div",{style:{maxWidth:420}},h(C.Card,{tone:"attention",title:"有一处要你来定。"},h(C.StatusPill,{status:"conflict"},"1 处冲突 · 需要确认"),h("div",null,h("div",{className:"g-strong"},"远澜控股（香港）有限公司"),h("div",{className:"g-small"},"注册地址在两台设备上都被改过。保留哪一个？")),h("div",{role:"radiogroup",className:"g-col",style:{gap:10}},h(C.ChoiceCard,{checked:s[0]===0,onClick:function(){s[1](0)},source:"这台 Mac · 林嘉禾 · 10:31",value:"香港中环皇后大道中 99 号 28 楼",note:"中环中心"}),h(C.ChoiceCard,{checked:s[0]===1,onClick:function(){s[1](1)},source:"办公室 Surface · 林嘉禾 · 10:16",value:"香港金钟道 88 号太古广场一座 12 楼"})),h("div",null,h(C.Button,{variant:"primary"},"保留所选版本")),h("p",{className:"g-small",style:{margin:0}},"两个版本都会留在变更历史里。")))}));
+</script>
+</body>
+</html>

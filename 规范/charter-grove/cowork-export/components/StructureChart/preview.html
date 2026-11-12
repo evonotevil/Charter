@@ -1,0 +1,12 @@
+<!-- @dsCard group="数据" height=460 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>StructureChart</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h(C.StructureChart,{replay:true,width:680,selected:"b",nodes:[{id:"p",name:"林嘉禾",kind:"person",meta:"个人 · 中国香港",level:0},{id:"g",name:"远澜集团控股有限公司",meta:"开曼群岛",level:0},{id:"b",name:"远澜控股（香港）有限公司",meta:"香港",level:1},{id:"c",name:"远澜科技（深圳）有限公司",meta:"中国内地",level:2},{id:"d",name:"Yuanlan Ventures Pte. Ltd.",meta:"新加坡",tone:"purple",level:2}],edges:[{from:"p",to:"b",label:"30%"},{from:"g",to:"b",label:"70%"},{from:"b",to:"c",label:"100%"},{from:"b",to:"d",label:"100%"}]}));
+</script>
+</body>
+</html>

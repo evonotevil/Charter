@@ -70,7 +70,7 @@
 | --- | --- |
 | `desktop/` | Electron + React + TypeScript 应用、测试和打包配置 |
 | `desktop/src-tauri/` | 4.x Tauri 源码，保留作兼容参考，不再用于发布 |
-| `规范/` | 产品设计、交互与视觉规范 |
+| `规范/` | 设计规范说明（`DESIGN.md`）。视觉与组件以 [Figma · Charter](https://www.figma.com/design/wZfK0kIMBZWCxBYAtlxxa5/Charter) 为唯一依据 |
 | `.github/workflows/release.yml` | Windows 与两种 Mac 架构的原生构建、安装测试和发布流程 |
 
 开发说明见 [desktop/README.md](desktop/README.md)，5.3.2 发布说明见 [desktop/RELEASE.md](desktop/RELEASE.md)。

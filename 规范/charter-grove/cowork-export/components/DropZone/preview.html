@@ -1,0 +1,12 @@
+<!-- @dsCard group="输入" height=130 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>DropZone</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{className:"g-col",style:{gap:12,maxWidth:560}},h(C.DropZone,null),h(C.DropZone,{active:true,title:"松开即可上传 3 份文件"})));
+</script>
+</body>
+</html>

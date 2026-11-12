@@ -1,0 +1,12 @@
+<!-- @dsCard group="数据" height=230 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>FactGrid</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{style:{maxWidth:640}},h(C.Card,{title:"基本信息",link:"公司注册处 ↗"},h(C.FactGrid,{source:"香港公司注册处记录 · 林嘉禾于 2026-10-20 核对",items:[{label:"公司注册编号",value:"3021477",note:"香港"},{label:"成立日期",value:"2019-06-14",note:"私人股份有限公司"},{label:"注册地址",value:"香港中环皇后大道中 99 号 28 楼",note:"中环中心"},{label:"商业登记号",value:"",note:"在商业登记证上"}]}))));
+</script>
+</body>
+</html>

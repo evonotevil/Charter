@@ -1,0 +1,12 @@
+<!-- @dsCard group="反馈" height=220 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>ProcessSteps</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{style:{maxWidth:460}},h(C.ProcessSteps,{simulate:true,steps:[{label:"读取文件",result:"2 份"},{label:"确认法域",result:"香港"},{label:"匹配合规规则",result:"8 项适用"},{label:"生成申报日历"}]})));
+</script>
+</body>
+</html>

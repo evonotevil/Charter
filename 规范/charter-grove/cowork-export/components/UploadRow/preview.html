@@ -1,0 +1,12 @@
+<!-- @dsCard group="输入" height=230 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>UploadRow</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{className:"g-col",style:{gap:10,maxWidth:560}},h(C.UploadRow,{simulate:true,name:"Business_Registration_Certificate_2026.pdf",recognized:{type:"商业登记证",summary:"远澜控股（香港）有限公司 · 2026-11-18 到期"}}),h(C.UploadRow,{name:"AoA_Yuanlan_Holdings.pdf",recognized:{type:"组织章程细则",summary:"公司名称、成立日期、股本"}}),h("div",{className:"g-found"},h("div",{className:"h"},h(C.Icon,{name:"sparkle",size:14}),"从这两份文件里读到"),h("div",null,h("b",null,"远澜控股（香港）有限公司")," · 香港 · 私人股份有限公司 · 商业登记 ",h("b",null,"2026-11-18 到期")))));
+</script>
+</body>
+</html>

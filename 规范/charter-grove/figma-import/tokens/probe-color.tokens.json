@@ -1,0 +1,18 @@
+{
+  "color": {
+    "canvas-probe": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.9686274509803922,
+          0.9764705882352941,
+          0.9607843137254902
+        ],
+        "alpha": 1,
+        "hex": "#F7F9F5"
+      },
+      "$description": "窗口画布、页面底色。"
+    }
+  }
+}

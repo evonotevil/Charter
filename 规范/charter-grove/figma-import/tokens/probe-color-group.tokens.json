@@ -1,0 +1,30 @@
+{
+  "palette": {
+    "probe-a": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.9686274509803922,
+          0.9764705882352941,
+          0.9607843137254902
+        ],
+        "alpha": 1,
+        "hex": "#F7F9F5"
+      }
+    },
+    "probe-b": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.34509803921568627,
+          0.8,
+          0.00784313725490196
+        ],
+        "alpha": 1,
+        "hex": "#58CC02"
+      }
+    }
+  }
+}

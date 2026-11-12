@@ -1,0 +1,786 @@
+{
+  "color": {
+    "$type": "color",
+    "canvas": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.9686274509803922,
+          0.9764705882352941,
+          0.9607843137254902
+        ],
+        "alpha": 1,
+        "hex": "#F7F9F5"
+      },
+      "$description": "窗口画布、页面底色。"
+    },
+    "surface": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "alpha": 1,
+        "hex": "#FFFFFF"
+      },
+      "$description": "卡片、侧栏、顶栏、表格。"
+    },
+    "surface-sunken": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.9490196078431372,
+          0.9607843137254902,
+          0.9372549019607843
+        ],
+        "alpha": 1,
+        "hex": "#F2F5EF"
+      },
+      "$description": "表头、组织切换器、图标底、卡片内分组。"
+    },
+    "surface-hover": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.9725490196078431,
+          0.9882352941176471,
+          0.9568627450980393
+        ],
+        "alpha": 1,
+        "hex": "#F8FCF4"
+      },
+      "$description": "表格行悬停和选中。"
+    },
+    "line": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.8784313725490196,
+          0.9058823529411765,
+          0.8666666666666667
+        ],
+        "alpha": 1,
+        "hex": "#E0E7DD"
+      },
+      "$description": "卡片 2px 描边、分隔线、次按钮描边与底边。只做分隔，不承担含义。"
+    },
+    "line-strong": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.5294117647058824,
+          0.5803921568627451,
+          0.4980392156862745
+        ],
+        "alpha": 1,
+        "hex": "#87947F"
+      },
+      "$description": "输入框描边、单选框、开关关闭态（≥3:1）。"
+    },
+    "ink": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.1450980392156863,
+          0.20784313725490197,
+          0.17254901960784313
+        ],
+        "alpha": 1,
+        "hex": "#25352C"
+      },
+      "$description": "标题和正文，用在所有面上。"
+    },
+    "muted": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.37254901960784315,
+          0.42745098039215684,
+          0.4
+        ],
+        "alpha": 1,
+        "hex": "#5F6D66"
+      },
+      "$description": "说明文字、标签、元信息，用在所有面上（≥4.5:1）。原稿 #738078 只有 3.9:1，已加深。"
+    },
+    "faint": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.6039215686274509,
+          0.6470588235294118,
+          0.615686274509804
+        ],
+        "alpha": 1,
+        "hex": "#9AA59D"
+      },
+      "$description": "只用于占位符和禁用文字。"
+    },
+    "green": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.34509803921568627,
+          0.8,
+          0.00784313725490196
+        ],
+        "alpha": 1,
+        "hex": "#58CC02"
+      },
+      "$description": "品牌绿：主按钮、徽标、选中标签下划线、进度段、开关打开。不用作文字色。"
+    },
+    "green-edge": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.21176470588235294,
+          0.5411764705882353,
+          0.0
+        ],
+        "alpha": 1,
+        "hex": "#368A00"
+      },
+      "$description": "主按钮和徽标底部的立体边。"
+    },
+    "on-green": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.10588235294117647,
+          0.21176470588235294,
+          0.03137254901960784
+        ],
+        "alpha": 1,
+        "hex": "#1B3608"
+      },
+      "$description": "主按钮上的文字和图标。原稿用白字只有 2.09:1，改为深绿字（6.2:1）。"
+    },
+    "green-text": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.1843137254901961,
+          0.47843137254901963,
+          0.0
+        ],
+        "alpha": 1,
+        "hex": "#2F7A00"
+      },
+      "$description": "绿色文字：选中导航、链接、正常状态、日期强调。"
+    },
+    "green-soft": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.9294117647058824,
+          0.9803921568627451,
+          0.8862745098039215
+        ],
+        "alpha": 1,
+        "hex": "#EDFAE2"
+      },
+      "$description": "选中导航底、正常状态胶囊底、好消息横幅底。"
+    },
+    "green-soft-line": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.7803921568627451,
+          0.9058823529411765,
+          0.6784313725490196
+        ],
+        "alpha": 1,
+        "hex": "#C7E7AD"
+      },
+      "$description": "green-soft 上的 2px 描边。"
+    },
+    "green-deep": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.1568627450980392,
+          0.3568627450980392,
+          0.1411764705882353
+        ],
+        "alpha": 1,
+        "hex": "#285B24"
+      },
+      "$description": "好消息横幅里的正文。"
+    },
+    "amber": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.9568627450980393,
+          0.8274509803921568,
+          0.4196078431372549
+        ],
+        "alpha": 1,
+        "hex": "#F4D36B"
+      },
+      "$description": "进度段里“需要处理”的一段。"
+    },
+    "amber-text": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.5411764705882353,
+          0.3568627450980392,
+          0.0
+        ],
+        "alpha": 1,
+        "hex": "#8A5B00"
+      },
+      "$description": "需要处理：快到期、待核实、冲突。"
+    },
+    "amber-soft": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1.0,
+          0.9529411764705882,
+          0.8117647058823529
+        ],
+        "alpha": 1,
+        "hex": "#FFF3CF"
+      },
+      "$description": "需要处理的胶囊底、“下一件事”卡片底。"
+    },
+    "amber-line": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.9176470588235294,
+          0.8431372549019608,
+          0.592156862745098
+        ],
+        "alpha": 1,
+        "hex": "#EAD797"
+      },
+      "$description": "amber-soft 卡片的 2px 描边。"
+    },
+    "red": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1.0,
+          0.29411764705882354,
+          0.29411764705882354
+        ],
+        "alpha": 1,
+        "hex": "#FF4B4B"
+      },
+      "$description": "进度段里“逾期”的一段、危险按钮底。"
+    },
+    "red-edge": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.8274509803921568,
+          0.19215686274509805,
+          0.19215686274509805
+        ],
+        "alpha": 1,
+        "hex": "#D33131"
+      },
+      "$description": "危险按钮的立体边。"
+    },
+    "red-text": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.7058823529411765,
+          0.13725490196078433,
+          0.09411764705882353
+        ],
+        "alpha": 1,
+        "hex": "#B42318"
+      },
+      "$description": "逾期、已过期、错误说明。"
+    },
+    "red-soft": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          1.0,
+          0.8980392156862745,
+          0.8823529411764706
+        ],
+        "alpha": 1,
+        "hex": "#FFE5E1"
+      },
+      "$description": "逾期胶囊底、错误提示底。"
+    },
+    "blue-text": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.23921568627450981,
+          0.38823529411764707,
+          0.6274509803921569
+        ],
+        "alpha": 1,
+        "hex": "#3D63A0"
+      },
+      "$description": "提示性信息：本机、离线说明、识别来源。"
+    },
+    "blue-soft": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.9176470588235294,
+          0.9490196078431372,
+          1.0
+        ],
+        "alpha": 1,
+        "hex": "#EAF2FF"
+      },
+      "$description": "提示卡片底、本机标签底。"
+    },
+    "purple-text": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.43529411764705883,
+          0.30980392156862746,
+          0.6196078431372549
+        ],
+        "alpha": 1,
+        "hex": "#6F4F9E"
+      },
+      "$description": "个人股东、自然人头像文字。"
+    },
+    "purple-soft": {
+      "$type": "color",
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [
+          0.9411764705882353,
+          0.9215686274509803,
+          0.9882352941176471
+        ],
+        "alpha": 1,
+        "hex": "#F0EBFC"
+      },
+      "$description": "自然人头像底、个人标签底。"
+    }
+  },
+  "space": {
+    "$type": "dimension",
+    "1": {
+      "$type": "dimension",
+      "$value": {
+        "value": 4,
+        "unit": "px"
+      },
+      "$description": "图标与文字。"
+    },
+    "2": {
+      "$type": "dimension",
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      },
+      "$description": "导航项之间、胶囊之间。"
+    },
+    "3": {
+      "$type": "dimension",
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      },
+      "$description": "卡片内行间距。"
+    },
+    "4": {
+      "$type": "dimension",
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      },
+      "$description": "侧栏左右内边距、小卡片内边距。"
+    },
+    "5": {
+      "$type": "dimension",
+      "$value": {
+        "value": 20,
+        "unit": "px"
+      },
+      "$description": "卡片之间。"
+    },
+    "6": {
+      "$type": "dimension",
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      },
+      "$description": "卡片内边距、页面区块之间。"
+    },
+    "7": {
+      "$type": "dimension",
+      "$value": {
+        "value": 32,
+        "unit": "px"
+      },
+      "$description": "页面边距。"
+    }
+  },
+  "radius": {
+    "$type": "dimension",
+    "pill": {
+      "$type": "dimension",
+      "$value": {
+        "value": 8,
+        "unit": "px"
+      },
+      "$description": "状态胶囊、视图切换项。"
+    },
+    "input": {
+      "$type": "dimension",
+      "$value": {
+        "value": 10,
+        "unit": "px"
+      },
+      "$description": "输入框、组织头像。"
+    },
+    "control": {
+      "$type": "dimension",
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      },
+      "$description": "按钮、导航项、公司徽章、选择卡片。"
+    },
+    "tile": {
+      "$type": "dimension",
+      "$value": {
+        "value": 16,
+        "unit": "px"
+      },
+      "$description": "数字卡、侧栏提示卡。"
+    },
+    "card": {
+      "$type": "dimension",
+      "$value": {
+        "value": 20,
+        "unit": "px"
+      },
+      "$description": "卡片、横幅、表格容器。"
+    },
+    "emblem": {
+      "$type": "dimension",
+      "$value": {
+        "value": 24,
+        "unit": "px"
+      },
+      "$description": "横幅里的大徽标。"
+    }
+  },
+  "size": {
+    "$type": "dimension",
+    "border-width": {
+      "$type": "dimension",
+      "$value": {
+        "value": 2,
+        "unit": "px"
+      },
+      "$description": "卡片、按钮、导航项、输入框的描边宽度。"
+    },
+    "button-height": {
+      "$type": "dimension",
+      "$value": {
+        "value": 46,
+        "unit": "px"
+      },
+      "$description": "大按钮；小按钮 36px。"
+    },
+    "nav-height": {
+      "$type": "dimension",
+      "$value": {
+        "value": 48,
+        "unit": "px"
+      },
+      "$description": "侧栏导航项。"
+    },
+    "input-height": {
+      "$type": "dimension",
+      "$value": {
+        "value": 40,
+        "unit": "px"
+      },
+      "$description": "搜索框、下拉框。"
+    },
+    "row-height": {
+      "$type": "dimension",
+      "$value": {
+        "value": 72,
+        "unit": "px"
+      },
+      "$description": "公司表格行；紧凑密度 52px。"
+    },
+    "sidebar-width": {
+      "$type": "dimension",
+      "$value": {
+        "value": 224,
+        "unit": "px"
+      },
+      "$description": "侧栏宽度。"
+    },
+    "appbar-height": {
+      "$type": "dimension",
+      "$value": {
+        "value": 72,
+        "unit": "px"
+      },
+      "$description": "顶栏高度。"
+    }
+  },
+  "font": {
+    "$type": "fontFamily",
+    "display": {
+      "$type": "fontFamily",
+      "$value": "Nunito",
+      "$description": "Nunito, \"PingFang SC\", \"Noto Sans SC\", system-ui, sans-serif; Figma 请使用第一个字体，中文回落到苹方。"
+    },
+    "sans": {
+      "$type": "fontFamily",
+      "$value": "Inter",
+      "$description": "Inter, \"PingFang SC\", \"Noto Sans SC\", system-ui, sans-serif; Figma 请使用第一个字体，中文回落到苹方。"
+    }
+  },
+  "font-size": {
+    "$type": "dimension",
+    "display": {
+      "$type": "dimension",
+      "$value": {
+        "value": 32,
+        "unit": "px"
+      },
+      "$description": "页面大标题，每页一次。"
+    },
+    "headline": {
+      "$type": "dimension",
+      "$value": {
+        "value": 23,
+        "unit": "px"
+      },
+      "$description": "状态横幅、“下一件事”卡片的标题。"
+    },
+    "title": {
+      "$type": "dimension",
+      "$value": {
+        "value": 19,
+        "unit": "px"
+      },
+      "$description": "卡片标题。"
+    },
+    "subtitle": {
+      "$type": "dimension",
+      "$value": {
+        "value": 15,
+        "unit": "px"
+      },
+      "$description": "侧栏提示卡、蓝色说明卡的标题。"
+    },
+    "figure": {
+      "$type": "dimension",
+      "$value": {
+        "value": 29,
+        "unit": "px"
+      },
+      "$description": "数字卡的数值。"
+    },
+    "body": {
+      "$type": "dimension",
+      "$value": {
+        "value": 13,
+        "unit": "px"
+      },
+      "$description": "正文、表格单元。"
+    },
+    "body-strong": {
+      "$type": "dimension",
+      "$value": {
+        "value": 13,
+        "unit": "px"
+      },
+      "$description": "行主文字、公司名、人名。"
+    },
+    "small": {
+      "$type": "dimension",
+      "$value": {
+        "value": 12,
+        "unit": "px"
+      },
+      "$description": "次要信息、来源、时间。"
+    },
+    "label": {
+      "$type": "dimension",
+      "$value": {
+        "value": 11,
+        "unit": "px"
+      },
+      "$description": "字段标签、表头、侧栏分组名。"
+    },
+    "button": {
+      "$type": "dimension",
+      "$value": {
+        "value": 13,
+        "unit": "px"
+      },
+      "$description": "按钮文字。"
+    },
+    "pill": {
+      "$type": "dimension",
+      "$value": {
+        "value": 11,
+        "unit": "px"
+      },
+      "$description": "状态胶囊文字。"
+    }
+  },
+  "font-weight": {
+    "$type": "number",
+    "display": {
+      "$type": "number",
+      "$value": 900,
+      "$description": "页面大标题，每页一次。"
+    },
+    "headline": {
+      "$type": "number",
+      "$value": 900,
+      "$description": "状态横幅、“下一件事”卡片的标题。"
+    },
+    "title": {
+      "$type": "number",
+      "$value": 800,
+      "$description": "卡片标题。"
+    },
+    "subtitle": {
+      "$type": "number",
+      "$value": 800,
+      "$description": "侧栏提示卡、蓝色说明卡的标题。"
+    },
+    "figure": {
+      "$type": "number",
+      "$value": 900,
+      "$description": "数字卡的数值。"
+    },
+    "body": {
+      "$type": "number",
+      "$value": 400,
+      "$description": "正文、表格单元。"
+    },
+    "body-strong": {
+      "$type": "number",
+      "$value": 700,
+      "$description": "行主文字、公司名、人名。"
+    },
+    "small": {
+      "$type": "number",
+      "$value": 400,
+      "$description": "次要信息、来源、时间。"
+    },
+    "label": {
+      "$type": "number",
+      "$value": 700,
+      "$description": "字段标签、表头、侧栏分组名。"
+    },
+    "button": {
+      "$type": "number",
+      "$value": 800,
+      "$description": "按钮文字。"
+    },
+    "pill": {
+      "$type": "number",
+      "$value": 700,
+      "$description": "状态胶囊文字。"
+    }
+  },
+  "line-height": {
+    "$type": "number",
+    "display": {
+      "$type": "number",
+      "$value": 1.3,
+      "$description": "页面大标题，每页一次。"
+    },
+    "headline": {
+      "$type": "number",
+      "$value": 1.35,
+      "$description": "状态横幅、“下一件事”卡片的标题。"
+    },
+    "title": {
+      "$type": "number",
+      "$value": 1.4,
+      "$description": "卡片标题。"
+    },
+    "subtitle": {
+      "$type": "number",
+      "$value": 1.4,
+      "$description": "侧栏提示卡、蓝色说明卡的标题。"
+    },
+    "figure": {
+      "$type": "number",
+      "$value": 1.2,
+      "$description": "数字卡的数值。"
+    },
+    "body": {
+      "$type": "number",
+      "$value": 1.5,
+      "$description": "正文、表格单元。"
+    },
+    "body-strong": {
+      "$type": "number",
+      "$value": 1.5,
+      "$description": "行主文字、公司名、人名。"
+    },
+    "small": {
+      "$type": "number",
+      "$value": 1.45,
+      "$description": "次要信息、来源、时间。"
+    },
+    "label": {
+      "$type": "number",
+      "$value": 1.4,
+      "$description": "字段标签、表头、侧栏分组名。"
+    },
+    "button": {
+      "$type": "number",
+      "$value": 1.4,
+      "$description": "按钮文字。"
+    },
+    "pill": {
+      "$type": "number",
+      "$value": 1.4,
+      "$description": "状态胶囊文字。"
+    }
+  }
+}

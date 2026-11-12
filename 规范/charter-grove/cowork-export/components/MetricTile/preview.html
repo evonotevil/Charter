@@ -1,0 +1,12 @@
+<!-- @dsCard group="数据" height=130 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>MetricTile</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{className:"g-metrics"},h(C.MetricTile,{value:6,icon:"building",label:"公司",hint:"全部存续"}),h(C.MetricTile,{value:5,icon:"globe",label:"法域",hint:"一个集团"}),h(C.MetricTile,{value:2,icon:"calendar-clock",label:"30 天内要申报",hint:"下一件：2026-11-04",tone:"warn",button:true}),h(C.MetricTile,{value:"98%",icon:"badge",label:"档案完整",hint:"还差 1 份股东名册",button:true})));
+</script>
+</body>
+</html>

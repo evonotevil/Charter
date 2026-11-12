@@ -1,0 +1,12 @@
+<!-- @dsCard group="数据" height=230 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>PeopleTable</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{style:{maxWidth:660}},h(C.Card,{title:"公司背后的人",link:"查看全部人员 →"},h(C.PeopleTable,{rows:[{name:"林嘉禾",initial:"林",tone:"amber",roles:[{title:"董事 · 重要控制人",since:"2019-06-14 起"}],percent:30},{name:"Alexandra Catherine Montgomery-Whitfield",initial:"A",tone:"purple",roles:[{title:"董事",since:"2023-04-12 起"},{title:"公司秘书",since:"2023-04-12 起"}]},{name:"远澜集团控股有限公司",initial:"远",tone:"green",roles:[{title:"股东",since:"2019-06-14 起"}],percent:70}]}),h("p",{className:"g-small",style:{margin:0}},"已发行 10,000 股普通股 · 持股合计 100%"))));
+</script>
+</body>
+</html>

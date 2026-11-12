@@ -1,0 +1,12 @@
+<!-- @dsCard group="状态" height=120 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>StatusPill</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{className:"g-col",style:{gap:10}},h("div",{className:"g-row"},["ok","done","held","verified","active"].map(function(s){return h(C.StatusPill,{key:s,status:s})})),h("div",{className:"g-row"},["soon","progress","review","conflict","overdue","expired"].map(function(s){return h(C.StatusPill,{key:s,status:s})})),h("div",{className:"g-row"},["todo","missing","na","offline","device"].map(function(s){return h(C.StatusPill,{key:s,status:s})}),h(C.StatusPill,{status:"overdue"},"逾期 3 天"),h(C.StatusPill,{status:"soon"},"28 天后到期"))));
+</script>
+</body>
+</html>

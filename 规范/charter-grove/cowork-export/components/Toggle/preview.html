@@ -1,0 +1,12 @@
+<!-- @dsCard group="输入" height=200 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>Toggle</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h("div",{style:{maxWidth:560}},h(C.Card,{title:"按你的习惯来"},h(C.Toggle,{label:"自动同步",hint:"在你的设备之间保持档案和文件一致。",checked:true}),h("hr",{className:"g-divider"}),h(C.Toggle,{label:"文件离线可用",hint:"把 412 份文件下载到这台 Mac · 1.2 GB。",checked:true}),h("hr",{className:"g-divider"}),h(C.Toggle,{label:"处理冲突前先问我",hint:"由你决定保留哪个版本，不会悄悄覆盖。"}))));
+</script>
+</body>
+</html>

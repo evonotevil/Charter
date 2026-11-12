@@ -1,0 +1,12 @@
+<!-- @dsCard group="数据" height=470 -->
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>EntityTable</title></head>
+<body>
+<div id="root"></div>
+<script>
+  var C = window.Charter, h = React.createElement;
+  ReactDOM.createRoot(document.getElementById("root")).render(h(C.Card,{flush:true,title:"你的公司",badge:h(C.StatusPill,{status:"neutral"},"6 家"),action:h(C.Button,{size:"sm",icon:"download"},"导出名单")},h(C.EntityTable,{rows:[{code:"HK",tone:"green",name:"远澜控股（香港）有限公司",reg:"CR 3021477 · 私人股份有限公司",place:"香港",registry:"公司注册处",status:"soon",statusText:"快到期",next:"2026-11-18",nextWhat:"商业登记证续期",agent:"汇",agentName:"汇诚秘书服务",selected:true},{code:"VG",tone:"blue",name:"Harbor Crest Investments Ltd",reg:"BVI 2104455 · BC 公司",place:"英属维尔京群岛",registry:"BVI 公司事务处",status:"overdue",statusText:"逾期 3 天",next:"2026-10-18",nextWhat:"经济实质申报",agent:"V",agentName:"Vistra BVI"},{code:"SG",tone:"purple",name:"Harbor Crest Strategic Infrastructure & Renewable Energy Investment Holdings (Asia Pacific) Pte. Ltd.",reg:"UEN 202318472K · Pte. Ltd.",place:"新加坡",registry:"ACRA",status:"ok",statusText:"正常",next:"2027-01-31",nextWhat:"周年申报",agent:"T",agentName:"Tricor SG"},{code:"KY",tone:"green",name:"远澜集团控股有限公司",reg:"KY 381204 · 豁免公司",place:"开曼群岛",registry:"开曼公司注册处",status:"ok",statusText:"正常",next:"2027-01-31",nextWhat:"年度申报",agent:""},{code:"JP",tone:"blue",name:"株式会社明岸ジャパン",reg:"法人番号 0104-01-123456",place:"日本",registry:"法务局",status:"review",statusText:"待核实",next:"2026-12-31",nextWhat:"法人税申告"}]}),h("div",{className:"g-tfoot"},h("span",{className:"g-small"},"显示全部 6 家 · 登记信息核对于 2026-10-20"),h("button",{className:"g-link"},"查看全部动态 →"))));
+</script>
+</body>
+</html>
