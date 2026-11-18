@@ -4,7 +4,7 @@
 
 Charter 是面向海外子公司管理的 Mac / Windows 桌面应用。你可以查看一家公司背后的股东与任职人员，追踪下一次申报，整理材料，并按用途导出带水印的文件包。
 
-**当前版本：5.5.5** · [下载应用](#下载与安装) · [产品网站与交互演示](https://evonotevil.github.io/Charter/) · [更新记录](https://github.com/evonotevil/Charter/releases)
+**当前版本：5.5.6** · [下载应用](#下载与安装) · [产品网站与交互演示](https://evonotevil.github.io/Charter/) · [更新记录](https://github.com/evonotevil/Charter/releases)
 
 ![Charter 公司总览：集中查看集团公司、法域和待办事项](site/assets/screens/03-companies.png)
 
@@ -12,15 +12,15 @@ Charter 是面向海外子公司管理的 Mac / Windows 桌面应用。你可以
 
 | 系统 | 安装包 | 其他方式 |
 | --- | --- | --- |
-| macOS 12+ · Apple 芯片（M1 及以后） | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.5/Charter-5.5.5-Mac-arm64.dmg) | [ZIP](https://github.com/evonotevil/Charter/releases/download/v5.5.5/Charter-5.5.5-Mac-arm64.zip) |
-| macOS 12+ · Intel | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.5/Charter-5.5.5-Mac-x64.dmg) | [ZIP](https://github.com/evonotevil/Charter/releases/download/v5.5.5/Charter-5.5.5-Mac-x64.zip) |
-| Windows 10 / 11 · x64 | [下载安装版 EXE](https://github.com/evonotevil/Charter/releases/download/v5.5.5/Charter-5.5.5-Windows-Setup.exe) | [免安装 ZIP](https://github.com/evonotevil/Charter/releases/download/v5.5.5/Charter-5.5.5-Windows-x64.zip) |
+| macOS 12+ · Apple 芯片（M1 及以后） | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Mac-arm64.dmg) | [ZIP](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Mac-arm64.zip) |
+| macOS 12+ · Intel | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Mac-x64.dmg) | [ZIP](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Mac-x64.zip) |
+| Windows 10 / 11 · x64 | [下载安装版 EXE](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Windows-Setup.exe) | [免安装 ZIP](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Windows-x64.zip) |
 
 Mac 打开 DMG 后，将 Charter 拖入“应用程序”；Windows 运行安装程序，或解压 ZIP 后运行 `Charter.exe`。升级前先退出正在运行的 Charter。
 
 安装包尚未使用 Apple Developer ID 或 Windows 商业代码签名证书，首次打开可能出现系统提示。Mac 可在访达中右键选择“打开”，或在“系统设置 → 隐私与安全性”中允许打开；Windows SmartScreen 可选择“更多信息 → 仍要运行”。
 
-[完整发布说明](https://github.com/evonotevil/Charter/releases/latest) · [SHA-256 校验值](https://github.com/evonotevil/Charter/releases/download/v5.5.5/SHA256SUMS.txt)
+[完整发布说明](https://github.com/evonotevil/Charter/releases/latest) · [SHA-256 校验值](https://github.com/evonotevil/Charter/releases/download/v5.5.6/SHA256SUMS.txt)
 
 ## 能做什么
 
@@ -71,7 +71,7 @@ Mac 打开 DMG 后，将 Charter 拖入“应用程序”；Windows 运行安装
 ## 快速上手
 
 1. **安装并选择数据文件夹。** 在“设备与同步”中确认数据位置。多台电脑共用档案时，可选择两端都能访问的 iCloud 云盘或 OneDrive 文件夹。
-2. **先熟悉示例，再建立正式档案。** 可以先访问[网页交互演示](https://evonotevil.github.io/Charter/)。桌面版也可在设置中“载入示例数据”，请使用独立空文件夹：载入示例会替换该文件夹的当前档案。
+2. **先熟悉示例，再建立正式档案。** 首次用空档案打开桌面版，会进入八步导览。导览使用虚构数据，结束后即可录入自己的档案。在“设置 → 关于与更新”中可以重看，也可以先体验[网页交互演示](https://evonotevil.github.io/Charter/)。
 3. **录入公司与关系。** 新建公司，补充法域和集团，关联股东、董事、高管与中介，再到股权结构核对关系。
 4. **归档文件并设置材料范围。** 添加公司或个人文件，确认归属、日期与有效期；在“完整性审阅”中明确哪些材料由自己负责。
 5. **跟进事项并导出材料。** 在申报日历完成待办；需要对外提供材料时，从公司页“准备文件包”进入选文件、水印和导出流程。
