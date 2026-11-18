@@ -27,10 +27,10 @@ export function AgentsView() {
   const openFor = (p: Party) => store.openObligations.filter((o) => store.responsibleParty(o)?.id === p.id);
 
   return !sel ? <Card><EmptyStateView symbol="person.2" title="还没有中介" message="把公司秘书、注册代理、税务师加进来，到期提醒会自动带上对接人。" actionTitle="添加中介" action={add} /></Card> : (
-    <div className="row" style={{ gap: 20, alignItems: "flex-start" }}>
-      <Card flush style={{ width: 320, flex: "none" }}>
+    <div className="people-split agents-split">
+      <Card flush className="people-list-card">
         <div className="card-head pad"><h2 className="t-card">中介</h2><Button size="small" kind="primary" icon="plus" onClick={add}>添加</Button></div>
-        <div className="col" style={{ padding: "0 8px 8px", gap: 2 }}>
+        <div className="col scroll people-list-scroll">
           {parties.map((p) => {
             const on = p.id === sel.id;
             return (
@@ -64,7 +64,7 @@ function AgentDetail({ p }: { p: Party }) {
   const dues = openFor(p).sort((a, b) => (a.due < b.due ? -1 : 1));
   const contactMotion = useListMotion(contacts.map((c) => c.id));
   return (
-    <section className="card grow appear" style={{ gap: 22 }}>
+    <section className="card grow appear people-detail-scroll" style={{ gap: 22 }}>
       <div className="row gap12">
         <InlineText value={p.name} onCommit={(v) => v.trim() && save((x) => { x.name = v.trim(); })} style={{ font: "900 23px var(--display)" }} label="中介名称" />
         <span className="spacer" />

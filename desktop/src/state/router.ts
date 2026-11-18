@@ -24,6 +24,7 @@ export const workspaceSections: { id: Section; title: string; symbol: string }[]
 export const sectionShortcuts: Section[] = ["companies", "due", "structure", "files", "people"];
 
 export type CompaniesMode = "list" | "matrix" | "structure";
+export type EvidenceRecordFocus = { target: "holding" | "appointment"; id: string };
 
 export type Sheet =
   | { kind: "newCompany" } | { kind: "newCompanyInGroup"; group: string } | { kind: "newGroup" } | { kind: "editGroup"; group: string }
@@ -41,12 +42,12 @@ export interface CalendarPreset { partyID?: string; range: CalendarRange; status
 
 export type ImportContext = { kind: "company"; id: string } | { kind: "group"; id: string };
 
-export type SettingsPane = "sync" | "reminders" | "about" | "groups" | "archiveItems" | "scope" | "purposes" | "rules" | "backup" | "privacy";
-export const settingsPanes: SettingsPane[] = ["reminders", "about", "groups", "archiveItems", "scope", "purposes", "rules", "backup", "privacy"];
-export const settingsPaneTitle: Record<SettingsPane, string> = { sync: "数据与同步", reminders: "提醒", about: "关于与更新", groups: "集团", archiveItems: "档案清单", purposes: "文件包用途", rules: "合规规则", backup: "备份与恢复", scope: "材料范围", privacy: "隐私与本地处理" };
-export const settingsPaneSymbol: Record<SettingsPane, string> = { sync: "icloud", reminders: "bell", about: "info.circle", groups: "square.stack.3d.up", archiveItems: "list.bullet.rectangle", purposes: "shippingbox", rules: "calendar.badge.clock", backup: "clock.arrow.circlepath", scope: "checklist", privacy: "lock.circle" };
+export type SettingsPane = "sync" | "reminders" | "appearance" | "about" | "groups" | "archiveItems" | "scope" | "purposes" | "rules" | "backup" | "privacy";
+export const settingsPanes: SettingsPane[] = ["reminders", "appearance", "about", "groups", "archiveItems", "scope", "purposes", "rules", "backup", "privacy"];
+export const settingsPaneTitle: Record<SettingsPane, string> = { sync: "数据与同步", reminders: "提醒", appearance: "外观", about: "关于与更新", groups: "集团", archiveItems: "档案清单", purposes: "文件包用途", rules: "合规规则", backup: "备份与恢复", scope: "材料范围", privacy: "隐私与本地处理" };
+export const settingsPaneSymbol: Record<SettingsPane, string> = { sync: "icloud", reminders: "bell", appearance: "slider.horizontal.3", about: "info.circle", groups: "square.stack.3d.up", archiveItems: "list.bullet.rectangle", purposes: "shippingbox", rules: "calendar.badge.clock", backup: "clock.arrow.circlepath", scope: "checklist", privacy: "lock.circle" };
 export const settingsGroups = (): { title: string; panes: SettingsPane[] }[] => [
-  { title: "常规", panes: ["reminders", "about"] },
+  { title: "常规", panes: ["reminders", "appearance", "about"] },
   { title: "公司资料", panes: ["groups", "archiveItems", "scope", "purposes"] },
   { title: "到期规则", panes: ["rules"] },
   { title: "高级", panes: ["backup", "privacy"] },
@@ -67,6 +68,8 @@ export class Router {
   selectedPersonID: string | null = null;
   groupFilter: string | null = null;
   companyTab = 0;
+  /** 从证据关联跳回的具体持股或任职；公司页会滚动并高亮这一条。 */
+  evidenceRecordFocus: EvidenceRecordFocus | null = null;
   filesFilter = 0;
   filesOwnerKind: NodeKind | null = null;
   filesHorizon = 30;
@@ -141,7 +144,7 @@ export class Router {
 
   resetSelection() {
     this.sheet = null; this.calendarPreset = null; this._selectedCompanyID = null; this.selectedPersonID = null; this.groupFilter = null;
-    this.filesOwnerKind = null; this.filesFilter = 0; this.companyTab = 0; this.companiesMode = "list"; this.showCalendar = false; this.section = "companies"; this.companyOpen = false;
+    this.filesOwnerKind = null; this.filesFilter = 0; this.companyTab = 0; this.evidenceRecordFocus = null; this.companiesMode = "list"; this.showCalendar = false; this.section = "companies"; this.companyOpen = false;
     this.emit();
   }
 
@@ -155,7 +158,7 @@ export class Router {
     this.emit();
   }
   openPerson(id: string) { this.selectedPersonID = id; this.showCalendar = false; this.section = "people"; this.emit(); }
-  openCompany(id: string, tab = this.companyTab) { this.selectedCompanyID = id; this.companyTab = tab; this.companyOpen = true; this.companiesMode = "list"; this.showCalendar = false; this.section = "companies"; this.emit(); }
+  openCompany(id: string, tab = this.companyTab, evidenceRecordFocus: EvidenceRecordFocus | null = null) { this.selectedCompanyID = id; this.companyTab = tab; this.evidenceRecordFocus = evidenceRecordFocus; this.companyOpen = true; this.companiesMode = "list"; this.showCalendar = false; this.section = "companies"; this.emit(); }
   openDue(key?: string) { if (key) this.selectedObligationKey = key; this.showCalendar = false; this.section = "due"; this.emit(); }
   openAgent(id: string) { this.selectedAgentID = id; this.showCalendar = false; this.section = "agents"; this.emit(); }
   openSettings(pane: SettingsPane = "reminders", groupID?: string | null) {

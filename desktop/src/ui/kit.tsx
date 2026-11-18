@@ -387,9 +387,9 @@ export function Checkbox({ checked, onChange, children, disabled, title, ariaLab
   );
 }
 
-export function Switch({ checked, onChange, children, disabled }: { checked: boolean; onChange: (v: boolean) => void; children?: ReactNode; disabled?: boolean }) {
+export function Switch({ checked, onChange, children, disabled, ariaLabel }: { checked: boolean; onChange: (v: boolean) => void; children?: ReactNode; disabled?: boolean; ariaLabel?: string }) {
   return (
-    <button className="row gap10" onClick={() => onChange(!checked)} disabled={disabled} role="switch" aria-checked={checked}>
+    <button className="row gap10" onClick={() => onChange(!checked)} disabled={disabled} role="switch" aria-checked={checked} aria-label={ariaLabel}>
       {children && <span className="grow" style={{ textAlign: "left" }}>{children}</span>}
       <span className={`switch ${checked ? "on" : ""}`} />
     </button>

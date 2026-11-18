@@ -79,10 +79,21 @@ export function TourOverlay() {
     };
   }, [step]);
 
+  useLayoutEffect(() => { card.current?.focus({ preventScroll: true }); }, []);
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      const buttons = card.current?.querySelectorAll<HTMLButtonElement>("button");
+      if (e.key === "Tab" && buttons?.length) {
+        if (e.shiftKey && (document.activeElement === buttons[0] || document.activeElement === card.current)) {
+          e.preventDefault(); buttons[buttons.length - 1].focus();
+        } else if (!e.shiftKey && document.activeElement === buttons[buttons.length - 1]) {
+          e.preventDefault(); buttons[0].focus();
+        }
+        return;
+      }
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finishTour(); }
-      else if (e.key === "ArrowRight" || e.key === "Enter") { e.preventDefault(); e.stopPropagation(); if (last) finishTour(); else goTo(i + 1); }
+      else if (e.key === "ArrowRight" || (e.key === "Enter" && !(e.target instanceof HTMLButtonElement))) { e.preventDefault(); e.stopPropagation(); if (last) finishTour(); else goTo(i + 1); }
       else if (e.key === "ArrowLeft" && i > 0) { e.preventDefault(); e.stopPropagation(); goTo(i - 1); }
     };
     window.addEventListener("keydown", h, true);
@@ -95,7 +106,7 @@ export function TourOverlay() {
   const hole = rect ? { x: Math.max(0, rect.x - pad), y: Math.max(0, rect.y - pad), r: Math.min(vp.w, rect.x + rect.w + pad), b: Math.min(vp.h, rect.y + rect.h + pad) } : null;
   let cx = (vp.w - cardSize.w) / 2, cy = (vp.h - cardSize.h) / 2;
   if (hole) {
-    if (vp.w - hole.r >= cardSize.w + gap + edge) { cx = hole.r + gap; cy = hole.y; }
+    if (vp.w - hole.r >= cardSize.w + gap + edge) { cx = hole.r + gap; cy = hole.y + Math.max(0, (hole.b - hole.y - cardSize.h) / 2); }
     else if (vp.h - hole.b >= cardSize.h + gap + edge) { cx = hole.r - cardSize.w; cy = hole.b + gap; }
     else { cx = hole.r - cardSize.w - edge; cy = hole.b - cardSize.h - edge; }
   }
@@ -111,16 +122,17 @@ export function TourOverlay() {
         <div className="tour-scrim" style={{ left: hole.r, top: hole.y, width: vp.w - hole.r, height: hole.b - hole.y }} />
         <div className="tour-ring" style={{ left: hole.x, top: hole.y, width: hole.r - hole.x, height: hole.b - hole.y }} />
       </> : <div className="tour-scrim" style={{ inset: 0 }} />}
-      <div ref={card} className="coachmark" style={{ left: cx, top: cy }} aria-live="polite">
+      <div ref={card} className="coachmark" tabIndex={-1} style={{ left: cx, top: cy, maxHeight: Math.max(0, vp.h - top - edge) }} aria-live="polite">
         <span className="t-meta muted">{step.label ?? `第 ${i + 1} / ${steps.length} 步`}</span>
         <span className="t-title">{step.title}</span>
-        <span className="t-body muted">{step.body}</span>
+        <span className="t-body muted coachmark-body">{step.body}</span>
         <div className="coachmark-foot">
           <span className="coachmark-dots" aria-hidden>{steps.map((_, k) => <i key={k} className={k <= i ? "on" : ""} />)}</span>
-          <span className="spacer" />
-          {!last && <Button kind="quiet" size="small" onClick={() => finishTour()}>跳过</Button>}
-          {i > 0 && <Button size="small" onClick={() => goTo(i - 1)}>上一步</Button>}
-          <Button kind="primary" size="small" onClick={() => (last ? finishTour() : goTo(i + 1))}>{i === 0 ? "开始" : last ? "开始使用" : "下一步"}</Button>
+          <div className="coachmark-nav">
+            {!last && <Button kind="quiet" size="small" onClick={() => finishTour()}>跳过</Button>}
+            {i > 0 && <Button size="small" onClick={() => goTo(i - 1)}>上一步</Button>}
+            <Button kind="primary" size="small" onClick={() => (last ? finishTour() : goTo(i + 1))}>{i === 0 ? "开始" : last ? "开始使用" : "下一步"}</Button>
+          </div>
         </div>
       </div>
     </div>

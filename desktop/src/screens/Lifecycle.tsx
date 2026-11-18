@@ -92,7 +92,7 @@ export function InboxPane() {
       <span className="row gap6 t-meta muted" title="文字识别、去重和分类建议都在这台电脑上完成，不联网、不上传。无关文件进废纸篓，30 天内可恢复。"><Icon name="lock.circle" size={13} />分好类再进正式档案。识别都在这台电脑上完成，不联网。</span>
       {!items.length && busy && <span className="busy-chip" role="status"><span className="ring" />{busy}</span>}
       {items.length > 0 && <div className="toolbar">
-        <Button icon="square.and.arrow.down" onClick={() => void add()}>加入更多…</Button>
+        <Button icon="square.and.arrow.up" onClick={() => void add()}>加入更多…</Button>
         {busy && <span className="busy-chip" role="status"><span className="ring" />{busy}</span>}
         <span className="spacer" />
         {items.some((i) => i.duplicateOf) && <button className={`v4-toggle ${onlyDup ? "on" : ""}`} onClick={() => setOnlyDup(!onlyDup)}>只看重复 · {items.filter((i) => i.duplicateOf).length}</button>}

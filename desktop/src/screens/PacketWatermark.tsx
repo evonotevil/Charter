@@ -154,14 +154,18 @@ export function WatermarkPreview({ files, index, onIndex, settings }: { files: P
     let raf = requestAnimationFrame(() => { const ctx = c.getContext("2d")!; ctx.clearRect(0, 0, c.width, c.height); void drawWatermark(ctx, dims.w, dims.h, dims.scale, cur.text, settings); });
     return () => cancelAnimationFrame(raf);
   }, [dims, cur?.text, settings]);
-  if (!cur) return <Note>没有要加水印的文件：在上一步把至少一份文件设为“加水印”。</Note>;
-  return <div className="col gap10">
-    <div className="row gap8">
-      <SelectField options={files.map((f, i) => [String(i), f.title] as [string, string])} value={String(index)} onChange={(v) => onIndex(Number(v))} minWidth={240} />
-      <span className="t-meta muted num">{index + 1} / {files.length} 份</span>
-      <span className="grow" />
-      <span className="t-meta muted">在左侧清单点一份文件，也会切换到它</span>
-    </div>
+  return <div className="col gap10 watermark-preview">
+    <section className="col gap8 watermark-preview-control">
+      <span className="t-row">预览文件</span>
+      <div className="row gap8 watermark-preview-picker">
+        <SelectField options={files.map((f, i) => [String(i), f.title] as [string, string])} value={String(index)} onChange={(v) => onIndex(Number(v))}
+          placeholder="没有可预览的文件" minWidth={0} maxWidth={560} disabled={!files.length} ariaLabel="预览文件" />
+        {cur && <span className="t-meta muted num watermark-preview-count">{index + 1} / {files.length} 份</span>}
+        <span className="grow" />
+        <span className="t-meta muted watermark-preview-hint">也可以在第一步的清单里点选</span>
+      </div>
+    </section>
+    {!cur ? <Note>没有要加水印的文件：在第一步把至少一份文件设为“加水印”。</Note> : <>
     <div className="row" style={{ justifyContent: "center", padding: 16, borderRadius: "var(--r-tile)", background: "var(--surface-sunken)" }}>
       {err ? <Note tone="warn">预览失败：{err}</Note> :
         <span className="wm-stage page-fade" key={`${cur.id}-${page}`} style={{ height: 440, aspectRatio: dims ? `${dims.w} / ${dims.h}` : "210 / 297", maxWidth: "100%" }}>
@@ -175,6 +179,7 @@ export function WatermarkPreview({ files, index, onIndex, settings }: { files: P
       <Button size="small" kind="quiet" icon="chevron.right" ariaLabel="下一页" disabled={page >= pages} onClick={() => setPage(page + 1)} />
     </div>
     <span className="t-meta muted selectable" style={{ textAlign: "center" }}>{cur.text || "（水印文字为空）"}</span>
+    </>}
   </div>;
 }
 

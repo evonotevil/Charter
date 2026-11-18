@@ -348,7 +348,7 @@ export class Store {
   }
 
   /** 把这些集合写回文件夹（按顺序排队，不会交错写入）。 */
-  persist(ps: Part[]): Promise<void> {
+  persist(ps: Part[], opts: { inlineRuleSaveID?: string } = {}): Promise<void> {
     if (this.loadFailed) {
       this.setError("数据读取曾失败，已暂停保存以免覆盖原文件。请检查数据文件夹后重新载入。");
       return Promise.resolve();
@@ -368,7 +368,10 @@ export class Store {
           if (folder === this.folder) this.unsaved.delete(p);
         } catch (e) {
           if (folder === this.folder) this.unsaved.add(p);
-          this.setError(`保存失败：${(e instanceof Error ? e.message : String(e))}`);
+          if (p === "library" && opts.inlineRuleSaveID) {
+            this.failedRuleSaves.add(opts.inlineRuleSaveID);
+            this.emit();
+          } else this.setError(`保存失败：${(e instanceof Error ? e.message : String(e))}`);
         }
       }
       this.onSaved?.();
@@ -382,6 +385,9 @@ export class Store {
 
   /** 5.5.5：保存失败、还没写进数据文件夹的集合。导出备份、切换文件夹等依赖磁盘数据的操作前要先处理。 */
   unsaved = new Set<Part>();
+  /** 规则编辑器最近一次等待落盘失败的规则；切换规则后仍保留就地重试入口。 */
+  private failedRuleSaves = new Set<string>();
+  ruleSaveFailed = (id: string) => this.failedRuleSaves.has(id);
   get unsavedLabels(): string[] { return [...this.unsaved].map((p) => partLabel[p] ?? p); }
   /** 等排队的保存写完；有失败的就重试一次。仍失败时报错并返回 false。 */
   async ensureSaved(action: string): Promise<boolean> {
@@ -412,13 +418,13 @@ export class Store {
   }
 
   /** 修改数据。返回改动过的集合。label 不为空时登记一步撤销。 */
-  commit(fn: (d: Draft<Data>) => void, opts: { label?: string; toast?: string; createdFiles?: string[] } = {}): { parts: Part[]; undoID?: string } {
+  commit(fn: (d: Draft<Data>) => void, opts: { label?: string; toast?: string; createdFiles?: string[]; inlineRuleSaveID?: string } = {}): { parts: Part[]; undoID?: string } {
     const before = this.data;
     const after = produce(before, fn);
     const changed = parts.filter((p) => before[p] !== after[p]);
     if (!changed.length) return { parts: [] };
     this.data = after;
-    void this.persist(changed);
+    void this.persist(changed, { inlineRuleSaveID: opts.inlineRuleSaveID });
     let undoID: string | undefined;
     if (opts.label) undoID = this.pushUndo(opts.label, before, changed, opts.createdFiles ?? []);
     this.afterChange();
@@ -714,20 +720,56 @@ export class Store {
     this.showToast(v.status === "confirmed" ? "已记录核对信息。" : "已改回待核对。");
   }
 
-  updateRule(next: RuleTemplate) {
+  private ruleEditorValues(r: RuleTemplate) {
+    return {
+      name: r.name, localName: r.localName, jurisdictions: r.jurisdictions, entityForms: r.entityForms,
+      schedule: r.schedule, adjust: r.adjust, responsibleHint: r.responsibleHint, penalty: r.penalty,
+      notes: r.notes, enabled: r.enabled,
+    };
+  }
+  ruleDraftChanged(next: RuleTemplate) {
+    const current = this.data.library.rules.find((r) => r.id === next.id);
+    return !!current && JSON.stringify(this.ruleEditorValues(current)) !== JSON.stringify(this.ruleEditorValues(next));
+  }
+
+  updateRule(next: RuleTemplate, inlineSave = false) {
     this.commit((d) => {
       const i = d.library.rules.findIndex((r) => r.id === next.id);
       if (i < 0) return;
       const old = d.library.rules[i];
       const changed = JSON.stringify(old.schedule) !== JSON.stringify(next.schedule) || old.adjust !== next.adjust;
       const oldText = this.scheduleText(old.schedule);
-      d.library.rules[i] = next as any;
+      d.library.rules[i] = {
+        ...old,
+        name: next.name,
+        localName: next.localName,
+        jurisdictions: next.jurisdictions,
+        entityForms: next.entityForms,
+        schedule: next.schedule,
+        adjust: next.adjust,
+        responsibleHint: next.responsibleHint,
+        penalty: next.penalty,
+        notes: next.notes,
+        enabled: next.enabled,
+      } as any;
       if (changed) {
         this.appendRevision(d, i, `算法由“${oldText}”改为“${this.scheduleText(next.schedule)}”`);
         const v = d.library.rules[i].verification;
         if (v?.status === "confirmed") { v.status = "draft"; d.library.rules[i].needsReview = true; }
       }
-    });
+    }, { inlineRuleSaveID: inlineSave ? next.id : undefined });
+  }
+
+  /** 设置里的规则编辑器需要等模板库真正落盘，才能显示“已保存”或提供就地重试。 */
+  async saveRuleAndWait(next: RuleTemplate, retry = false): Promise<boolean> {
+    if (this.ruleDraftChanged(next)) this.updateRule(next, true);
+    await this.flushWrites();
+    if (retry && this.unsaved.has("library")) await this.persist(["library"], { inlineRuleSaveID: next.id });
+    const saved = !this.unsaved.has("library");
+    const changed = saved ? this.failedRuleSaves.delete(next.id) : !this.failedRuleSaves.has(next.id);
+    if (!saved) this.failedRuleSaves.add(next.id);
+    if (changed) this.emit();
+    return saved;
   }
 
   private appendRevision(d: Draft<Data>, i: number, summary: string) {

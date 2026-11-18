@@ -16,6 +16,7 @@ import { leftText } from "./InfoCard";
 import { Icon } from "../ui/Icon";
 import { useChildMotion, useTweenNumber } from "../ui/motion";
 import type { Document } from "../domain/models";
+import "./layout557.css";
 
 type Range = 90 | 365 | 0;
 
@@ -77,7 +78,7 @@ export function DueView() {
   };
   const tone = overdue ? "bad" : soon ? "warn" : "ok";
   return (
-    <div className="page"><div className="page-inner" ref={pageRef}>
+    <div className="page due-page"><div className="page-inner due-page-inner" ref={pageRef}>
       <PageHeader title="申报日历" subtitle={`全部公司 · 到期前 ${store.data.settings.reminderDays.join(" / ")} 天提醒`}>
         <Button icon="calendar.badge.plus" onClick={subscribe}>订阅到日历</Button>
         <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" showsChevron={false} entries={[
@@ -92,9 +93,9 @@ export function DueView() {
       {!list.length ? (
         <Card><div className="celebrate"><span className="emblem"><Icon name="checkmark" size={30} strokeWidth={3} /></span><div className="t-headline">{done.length ? "全部完成！" : "这段时间没有申报事项"}</div><p className="muted">事项按公司的法域和成立日期自动排出。新建公司后这里会出现它的年审。</p></div></Card>
       ) : (
-        <div className="two">
-          <Card flush className="tour-due">
-            <div ref={listRef} style={{ position: "relative" }} role="list" aria-label="申报事项">
+        <div className="two due-layout">
+          <Card flush className="tour-due due-list-pane">
+            <div ref={listRef} className="due-list-scroll" role="list" aria-label="申报事项">
               {months.map((m) => (
                 <div key={m.label}>
                   <div className="tl-month"><span>{m.label}</span><span className="row gap10"><span className="num">{m.items.length} 件</span>{m === months[0] && <span className="muted" style={{ fontWeight: 500 }}>做完点右边的圆圈</span>}</span></div>
@@ -157,45 +158,47 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
   const [startStage, stageNode] = useStageFile();
   const left = D.daysBetween(store.today, o.due);
   return (
-    <section className="card appear" aria-label="事项详情" key={o.key}>
-      <div className="col gap6">
+    <section className="card appear due-detail" aria-label="事项详情" key={o.key}>
+      <div className="col gap6 due-detail-head">
         <button className="t-label" style={{ textAlign: "left" }} onClick={() => router.openCompany(o.company.id)}>{store.jurisdictionName(o.company.jurisdiction)} · {o.company.name}</button>
         <div className="t-title">{o.rule.name}</div>
         <div className="muted t-meta">{D.long(o.due)}截止 · {leftText(D.daysBetween(store.today, o.due))}{o.rule.localName ? " · " + o.rule.localName : ""}</div>
       </div>
-      <div className="row gap10 wrap" style={{ padding: "12px 14px", borderRadius: "var(--r-control)", background: "var(--surface-sunken)" }}>
-        <span className="col grow" style={{ minWidth: 0, gap: 2 }}>
-          <span className="row gap6" style={{ fontWeight: 600 }}><Icon name={o.record?.dateConfirmed ? "checkmark.circle" : "info.circle"} size={13} />{o.record?.dateConfirmed ? "日期已确认" : "日期按规则推算"}</span>
-          <span className="t-meta muted">{o.record?.dateConfirmed ? "可随时改。" : `${store.scheduleText(o.rule.schedule)}。和中介核对后确认或修改。`}</span>
-        </span>
-        <DateField value={o.due} onChange={(d) => d && store.confirmDue(o, d)} allowsClear={false} minWidth={150} />
-        {!o.record?.dateConfirmed && <Button size="small" onClick={() => store.confirmDue(o)}>确认</Button>}
-      </div>
-      <div className="col gap10" style={{ padding: 14, borderRadius: "var(--r-control)", background: "var(--surface-sunken)" }}>
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <span className="v4-label">找谁办</span>
-          {own ? <PickChip label="此事项单独指定" title="点按改回公司默认中介" width={220}>{(close) => <>
-            <PopoverRow title={`改回公司默认中介${store.party(o.company.defaultPartyID) ? `（${store.party(o.company.defaultPartyID)!.name}）` : ""}`} icon="arrow.uturn.backward" onClick={() => { close(); store.resetObligationParty(o); }} />
-          </>}</PickChip> : <span className="v4-label">公司默认中介</span>}
+      <div className="due-detail-scroll">
+        <div className="row gap10 wrap" style={{ padding: "12px 14px", borderRadius: "var(--r-control)", background: "var(--surface-sunken)" }}>
+          <span className="col grow" style={{ minWidth: 0, gap: 2 }}>
+            <span className="row gap6" style={{ fontWeight: 600 }}><Icon name={o.record?.dateConfirmed ? "checkmark.circle" : "info.circle"} size={13} />{o.record?.dateConfirmed ? "日期已确认" : "日期按规则推算"}</span>
+            <span className="t-meta muted">{o.record?.dateConfirmed ? "可随时改。" : `${store.scheduleText(o.rule.schedule)}。和中介核对后确认或修改。`}</span>
+          </span>
+          <DateField value={o.due} onChange={(d) => d && store.confirmDue(o, d)} allowsClear={false} minWidth={150} />
+          {!o.record?.dateConfirmed && <Button size="small" onClick={() => store.confirmDue(o)}>确认</Button>}
         </div>
-        <SelectField<string> minWidth={200} placeholder="选择中介" value={party?.id ?? ""} options={parties.map((p) => [p.id, p.name] as [string, string])}
-          onChange={(id) => { store.setObligationParty(o, id); store.showToast("已为这一项指定中介，公司默认中介不变。"); }} />
-        {contacts.map((c) => (
-          <div key={c.id} className="row" style={{ justifyContent: "space-between", gap: 8 }}>
-            <span className="ellipsis"><b style={{ fontWeight: 600 }}>{c.name}</b>{c.role ? " · " + c.role : ""}</span>
-            <button className="link t-meta muted" title="复制邮箱" onClick={() => { void platform().copyText(c.email); store.showToast("邮箱已复制。"); }}>{c.email}</button>
+        <div className="col gap10" style={{ padding: 14, borderRadius: "var(--r-control)", background: "var(--surface-sunken)" }}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <span className="v4-label">找谁办</span>
+            {own ? <PickChip label="此事项单独指定" title="点按改回公司默认中介" width={220}>{(close) => <>
+              <PopoverRow title={`改回公司默认中介${store.party(o.company.defaultPartyID) ? `（${store.party(o.company.defaultPartyID)!.name}）` : ""}`} icon="arrow.uturn.backward" onClick={() => { close(); store.resetObligationParty(o); }} />
+            </>}</PickChip> : <span className="v4-label">公司默认中介</span>}
           </div>
-        ))}
-        {party && !contacts.length && <button className="link t-meta" style={{ textAlign: "left" }} onClick={() => router.openAgent(party.id)}>这家中介还没有对接人，去添加…</button>}
-        {party && (() => { const all = store.openForParty(party.id).filter((x) => x.key !== o.key); const late = all.filter((x) => x.due < store.today).length;
-          return all.length > 0 && <button className="row gap8 agent-load" onClick={() => router.openAgent(party.id)} title="打开这家中介">
-            <b className="t-figure" style={{ fontSize: 23 }}>{all.length}</b><span className="t-meta">这家中介手上还有 {all.length} 件{late ? `，其中 ${late} 件已逾期` : ""}，可以一封邮件一起问</span></button>; })()}
+          <SelectField<string> minWidth={200} placeholder="选择中介" value={party?.id ?? ""} options={parties.map((p) => [p.id, p.name] as [string, string])}
+            onChange={(id) => { store.setObligationParty(o, id); store.showToast("已为这一项指定中介，公司默认中介不变。"); }} />
+          {contacts.map((c) => (
+            <div key={c.id} className="row" style={{ justifyContent: "space-between", gap: 8 }}>
+              <span className="ellipsis"><b style={{ fontWeight: 600 }}>{c.name}</b>{c.role ? " · " + c.role : ""}</span>
+              <button className="link t-meta muted" title="复制邮箱" onClick={() => { void platform().copyText(c.email); store.showToast("邮箱已复制。"); }}>{c.email}</button>
+            </div>
+          ))}
+          {party && !contacts.length && <button className="link t-meta" style={{ textAlign: "left" }} onClick={() => router.openAgent(party.id)}>这家中介还没有对接人，去添加…</button>}
+          {party && (() => { const all = store.openForParty(party.id).filter((x) => x.key !== o.key); const late = all.filter((x) => x.due < store.today).length;
+            return all.length > 0 && <button className="row gap8 agent-load" onClick={() => router.openAgent(party.id)} title="打开这家中介">
+              <b className="t-figure" style={{ fontSize: 23 }}>{all.length}</b><span className="t-meta">这家中介手上还有 {all.length} 件{late ? `，其中 ${late} 件已逾期` : ""}，可以一封邮件一起问</span></button>; })()}
+        </div>
+        <div className="col gap6">
+          <span className="v4-label">邮件草稿（可改）</span>
+          <TextField multiline rows={7} ariaLabel="邮件草稿" value={mail} onChange={setMail} />
+        </div>
       </div>
-      <div className="col gap6">
-        <span className="v4-label">邮件草稿（可改）</span>
-        <TextField multiline rows={7} ariaLabel="邮件草稿" value={mail} onChange={setMail} />
-      </div>
-      <div className="row gap8">
+      <div className="row gap8 due-detail-actions">
         <Button kind="primary" style={{ flex: 1 }} icon="doc.on.doc" onClick={() => {
           void platform().copyText(mail);
           store.showToast(contacts[0] ? `已复制，粘贴到邮箱发给 ${contacts[0].name}。` : "邮件已复制。");

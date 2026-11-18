@@ -2,7 +2,7 @@
 // 关闭 = 把同步盘里的档案复制到这台电脑并改用副本（原文件夹保留）；开启 = 复制到同步盘，或改用同步盘里已有的档案。
 // 设计稿：Figma · 5.5.6 · 多台电脑共用（S1 / S3 / D1 / D1′ / D2 / D3 / E1，含 Windows 文案版）。
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useApp } from "../state/hooks";
 import { localCalendarName } from "../state/store";
 import { cloudName, platform, type CloudKind, type TreeInfo } from "../platform/platform";
@@ -12,7 +12,7 @@ const fmtBytes = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 
 const finderName = () => (platform().os === "windows" ? "资源管理器" : "访达");
 
 /** 设备与同步页里的开关卡片。 */
-export function ShareCard() {
+export function ShareCard({ children }: { children?: ReactNode }) {
   const { store } = useApp();
   const [sheet, setSheet] = useState<"leave" | "join" | null>(null);
   const supported = !!platform().copyTree;
@@ -27,8 +27,9 @@ export function ShareCard() {
             ? `档案在 ${where} 里，其他电脑选同一个文件夹即可共用。Charter 会检查同步状态，并自动载入其他电脑的修改。只影响这台电脑。`
             : "档案只在这台电脑上，到期提醒由这台电脑发出。开启后把档案放进 iCloud 云盘或 OneDrive，其他电脑就能共用。"}</span>
         </span>
-        <Switch checked={on} disabled={!supported || store.isLoading} onChange={(v) => setSheet(v ? "join" : "leave")} />
+        <Switch ariaLabel="多台电脑共用这套档案" checked={on} disabled={!supported || store.isLoading} onChange={(v) => setSheet(v ? "join" : "leave")} />
       </div>
+      {children && <><div className="hairline" />{children}</>}
       {sheet === "leave" && <Modal onClose={() => setSheet(null)} dismissOnEscape={false}><LeaveSharedSheet onClose={() => setSheet(null)} /></Modal>}
       {sheet === "join" && <Modal onClose={() => setSheet(null)} dismissOnEscape={false}><JoinSharedSheet onClose={() => setSheet(null)} /></Modal>}
     </Card>

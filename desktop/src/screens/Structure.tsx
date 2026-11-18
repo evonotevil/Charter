@@ -22,6 +22,7 @@ import { tok } from "../ui/lighttokens";
 import { CompanyChips } from "./PropChips";
 import { GroupFilter } from "./Companies";
 import { leftText } from "./InfoCard";
+import "./layout557.css";
 
 // MARK: - 股东核对的展示
 
@@ -148,7 +149,7 @@ export function StructureView() {
         ]} />
       </div>
       {showHistory && stops.length > 1 && <Segmented ariaLabel="历史年份" className="seg-scroll" value={asOf} onChange={(d) => setStopIndex(stops.indexOf(d))} options={stops.map((d) => [d, <span className="num">{d === store.today ? "今天" : D.year(d)}</span>])} />}
-      <div className="row grow" style={{ gap: 16, alignItems: "stretch", minHeight: 0 }}>
+      <div className="row grow structure-workspace">
         {view === "chart"
           ? <Chart layout={layout} snapshotKey={`${group ?? "all"}|${centerKey ?? ""}|${asOf}`} chain={chain} selectedKey={selectedKey} select={select} open={open} toggleFold={toggleFold}
               matches={new Set(matches)} checkOn={checkOn && isToday} asOf={asOf} totals={snapshot.totalsByCompany} api={chartApi} isToday={isToday} />
@@ -447,12 +448,14 @@ function Summary({ k, asOf, isToday, centered, onCenter, onClose, open }: { k: s
     const owned = portfolio(n, store.data.companies, store.data.holdings, asOf);
     const roles = store.data.appointments.filter((a) => a.personID === n.id && isActiveOn(a, asOf));
     return (
-      <Card>
+      <Card className="chart-summary">
         <div className="row start gap12"><Avatar name={p?.name ?? "?"} size={44} /><span className="col grow" style={{ minWidth: 0 }}><span className="t-title">{p?.name}</span><span className="t-meta muted">个人</span></span>{close}</div>
         {actions}
-        <div className="col gap6"><span className="t-label">穿透后持有</span>
-          {owned.length ? owned.map((x) => <div key={x.company.id} className="row gap8"><span className="ellipsis grow">{x.company.name}</span>{x.viaNominee && <Pill text="含代持" kind="warn" />}<span className="pct">{percentLabel(x.percent)}</span></div>) : <span className="muted">没有持股</span>}</div>
-        {roles.length > 0 && <div className="col gap6"><span className="t-label">任职</span>{roles.map((a) => <div key={a.id} className="row gap8"><span className="ellipsis grow">{store.company(a.companyID)?.name}</span><span className="t-meta muted">{a.title}</span></div>)}</div>}
+        <div className="chart-summary-scroll">
+          <div className="col gap6"><span className="t-label">穿透后持有</span>
+            {owned.length ? owned.map((x) => <div key={x.company.id} className="row gap8"><span className="ellipsis grow">{x.company.name}</span>{x.viaNominee && <Pill text="含代持" kind="warn" />}<span className="pct">{percentLabel(x.percent)}</span></div>) : <span className="muted">没有持股</span>}</div>
+          {roles.length > 0 && <div className="col gap6"><span className="t-label">任职</span>{roles.map((a) => <div key={a.id} className="row gap8"><span className="ellipsis grow">{store.company(a.companyID)?.name}</span><span className="t-meta muted">{a.title}</span></div>)}</div>}
+        </div>
       </Card>
     );
   }
@@ -466,33 +469,35 @@ function Summary({ k, asOf, isToday, centered, onCenter, onClose, open }: { k: s
   const next = isToday ? store.openObligations.find((o) => o.company.id === c.id) : undefined;
   const left = next ? D.daysBetween(store.today, next.due) : 0;
   return (
-    <Card>
+    <Card className="chart-summary">
       <div className="row start gap12">
         <JurisdictionBadge code={c.jurisdiction} size={44} tint={companyTint(store, c.id)} />
         <span className="col grow" style={{ minWidth: 0, gap: 6 }}><span className="t-card name-2">{c.name}</span><span className="row gap6 wrap"><CompanyChips c={c} /></span></span>
         {close}
       </div>
       {actions}
-      {next && <Note tone={left < 0 ? "bad" : left <= 30 ? "warn" : "neutral"} icon="clock" action={<button className="link t-row note-action" onClick={() => router.openDue(next.key)}>查看</button>}><span className="row gap8"><b className="grow ellipsis">{next.rule.name}</b><span className="t-meta">{leftText(left)}</span></span></Note>}
-      <div className="col gap6"><span className="t-label">直接股东</span>
-        {holders.length ? holders.map((h) => (
-          <div key={h.id} className="row gap8">
-            <button className="ellipsis grow" style={{ textAlign: "left", fontWeight: 600 }} onClick={() => h.holder.kind === "company" ? router.update((r) => { r.selectedCompanyID = h.holder.id; }) : router.openPerson(h.holder.id)}>{store.nameOf(h.holder)}</button>
-            {!h.verified && <Pill text="待核实" kind="warn" />}{h.isNominee && <Pill text="代持" kind="warn" />}
-            <span className="pct">{percentLabel(h.percent)}</span>
-          </div>)) : <span className="muted">未录入</span>}
+      <div className="chart-summary-scroll">
+        {next && <Note tone={left < 0 ? "bad" : left <= 30 ? "warn" : "neutral"} icon="clock" action={<button className="link t-row note-action" onClick={() => router.openDue(next.key)}>查看</button>}><span className="row gap8"><b className="grow ellipsis">{next.rule.name}</b><span className="t-meta">{leftText(left)}</span></span></Note>}
+        <div className="col gap6"><span className="t-label">直接股东</span>
+          {holders.length ? holders.map((h) => (
+            <div key={h.id} className="row gap8">
+              <button className="ellipsis grow" style={{ textAlign: "left", fontWeight: 600 }} onClick={() => h.holder.kind === "company" ? router.update((r) => { r.selectedCompanyID = h.holder.id; }) : router.openPerson(h.holder.id)}>{store.nameOf(h.holder)}</button>
+              {!h.verified && <Pill text="待核实" kind="warn" />}{h.isNominee && <Pill text="代持" kind="warn" />}
+              <span className="pct">{percentLabel(h.percent)}</span>
+            </div>)) : <span className="muted">未录入</span>}
+        </div>
+        {b.owners.length > 0 && <div className="col gap6"><span className="t-label">最终受益（穿透）</span>
+          {b.owners.slice(0, 6).map((u) => <div key={refKey(u.owner)} className="row gap8"><span className="ellipsis grow">{store.nameOf(u.owner)}</span>{u.viaNominee && <Pill text="含代持" kind="warn" />}<span className="pct">{percentLabel(u.percent)}</span></div>)}
+          {b.unknown > 0.005 && <div className="row gap8 amber-text"><span className="grow">未识别</span><span className="pct">{percentLabel(b.unknown)}</span></div>}
+        </div>}
+        <div className="col gap6"><span className="t-label">下属公司</span>
+          {subs.length ? <span className="row gap6 wrap">{subs.map((h) => <button key={h.id} className="v4-chip btnlike jchip" onClick={() => router.update((r) => { r.selectedCompanyID = h.companyID; })}><span className="v4-code" style={companyTint(store, h.companyID)} aria-hidden>{store.company(h.companyID)?.jurisdiction}</span>{store.company(h.companyID)?.name}<span className="muted num">{percentLabel(h.percent)}</span></button>)}</span> : <span className="muted">没有</span>}
+        </div>
+        {people.length > 0 && <div className="col gap6"><span className="t-label">董事和高管</span>
+          {people.map((pid) => <div key={pid} className="row gap8"><button className="ellipsis grow" style={{ textAlign: "left", fontWeight: 600 }} onClick={() => router.openPerson(pid)}>{store.person(pid)?.name}</button><span className="t-meta muted">{officers.filter((a) => a.personID === pid).map((a) => a.title).join("、")}</span></div>)}
+        </div>}
       </div>
-      {b.owners.length > 0 && <div className="col gap6"><span className="t-label">最终受益（穿透）</span>
-        {b.owners.slice(0, 6).map((u) => <div key={refKey(u.owner)} className="row gap8"><span className="ellipsis grow">{store.nameOf(u.owner)}</span>{u.viaNominee && <Pill text="含代持" kind="warn" />}<span className="pct">{percentLabel(u.percent)}</span></div>)}
-        {b.unknown > 0.005 && <div className="row gap8 amber-text"><span className="grow">未识别</span><span className="pct">{percentLabel(b.unknown)}</span></div>}
-      </div>}
-      <div className="col gap6"><span className="t-label">下属公司</span>
-        {subs.length ? <span className="row gap6 wrap">{subs.map((h) => <button key={h.id} className="v4-chip btnlike jchip" onClick={() => router.update((r) => { r.selectedCompanyID = h.companyID; })}><span className="v4-code" style={companyTint(store, h.companyID)} aria-hidden>{store.company(h.companyID)?.jurisdiction}</span>{store.company(h.companyID)?.name}<span className="muted num">{percentLabel(h.percent)}</span></button>)}</span> : <span className="muted">没有</span>}
-      </div>
-      {people.length > 0 && <div className="col gap6"><span className="t-label">董事和高管</span>
-        {people.map((pid) => <div key={pid} className="row gap8"><button className="ellipsis grow" style={{ textAlign: "left", fontWeight: 600 }} onClick={() => router.openPerson(pid)}>{store.person(pid)?.name}</button><span className="t-meta muted">{officers.filter((a) => a.personID === pid).map((a) => a.title).join("、")}</span></div>)}
-      </div>}
-      <div className="row gap8 wrap">
+      <div className="row gap8 wrap chart-summary-actions">
         <Button size="small" onClick={() => router.open({ kind: "addRelation", companyID: c.id, upward: true })}>添加上级…</Button>
         <Button size="small" onClick={() => router.open({ kind: "addRelation", companyID: c.id, upward: false })}>添加下级…</Button>
         <Button size="small" kind="quiet" icon="doc.on.doc" onClick={() => { void platform().copyText(store.companySummary(c, asOf)); store.showToast("公司资料摘要已复制。"); }}>复制摘要</Button>

@@ -11,6 +11,7 @@ import { Avatar, Button, Card, CountBadge, EmptyStateView, FieldRow, FormGroup, 
 import { AgentsView } from "./Agents";
 import { PersonFiles } from "./PersonFiles";
 import { ChangeRowMenu } from "./Companies";
+import "./people557.css";
 
 export function PeopleView() {
   const { store, router } = useApp();
@@ -38,25 +39,25 @@ export function PeopleView() {
   const selected = store.person(router.selectedPersonID);
   const agents = router.section === "agents" || router.section === "parties";
   return (
-    <div className="page"><div className="page-inner">
+    <div className="page people-page-shell"><div className="page-inner people-page">
       <PageHeader title="人员与中介" subtitle="谁在哪家公司任职、持股多少；哪家中介负责什么。">
         {!agents && <Button kind="primary" icon="plus" onClick={() => setCreating(true)}>新建人员</Button>}
       </PageHeader>
       <Tabs<"p" | "a"> value={agents ? "a" : "p"} onChange={(v) => router.go(v === "a" ? "agents" : "people")}
         tabs={[["p", "人员", store.data.people.length], ["a", "中介", store.data.parties.length]]} />
       {agents ? <AgentsView /> : (
-        <div className="row" style={{ gap: 20, alignItems: "flex-start" }}>
-          <Card flush style={{ width: 300, flex: "none", position: "sticky", top: 0 }}>
-            <div style={{ padding: 12 }}>
+        <div className="people-split">
+          <Card flush className="people-list-card">
+            <div className="people-list-head">
               <label className="search" title="搜索人员（Ctrl/⌘ F）"><Icon name="magnifyingglass" size={14} />
                 <input ref={search} className="field" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索姓名或别名" /></label>
             </div>
-            <div className="col scroll" style={{ gap: 2, padding: "0 8px 8px", maxHeight: "calc(100vh - 300px)" }}>
+            <div className="col scroll people-list-scroll">
               {list.map((p) => <PersonRow key={p.id} p={p} />)}
               {!list.length && <span className="muted" style={{ padding: 16, textAlign: "center" }}>{q ? `没有找到“${query}”` : "还没有人员"}</span>}
             </div>
           </Card>
-          <div className="col grow" style={{ minWidth: 0 }}>
+          <div className="col people-detail-scroll">
             {selected ? <PersonDetail key={selected.id} person={selected} /> : (
               <Card><EmptyStateView symbol="person.crop.rectangle.stack" title="选择人员" message="查看此人的任职、持股、代持情况和个人文件。" /></Card>
             )}

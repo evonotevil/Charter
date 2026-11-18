@@ -121,7 +121,7 @@ function Overview() {
     <div className="page"><div className="page-inner">
       <PageHeader crumb={store.filterName(f)} title="公司总览" subtitle={`范围：${store.filterName(f)} · ${active.length} 家公司`}>
         <Button icon="checklist" onClick={() => router.open({ kind: "scope", ownerKind: "company", owners: rows.map((r) => r.c.id) })}>设置材料范围</Button>
-        <Button icon="square.and.arrow.down" onClick={() => void router.chooseFiles(group ? { kind: "group", id: group.id } : null)}>上传材料</Button>
+        <Button icon="square.and.arrow.up" onClick={() => void router.chooseFiles(group ? { kind: "group", id: group.id } : null)}>上传材料</Button>
         <Button kind="primary" icon="plus" onClick={() => router.open(group ? { kind: "newCompanyInGroup", group: group.id } : { kind: "newCompany" })}>新建公司</Button>
       </PageHeader>
       {store.data.groups.length > 0 && <GroupFilter />}

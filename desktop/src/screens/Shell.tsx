@@ -96,7 +96,7 @@ function Sidebar() {
             item("新建公司", "building.2", () => router.open({ kind: "newCompany" }), { shortcut: shortcutLabel("N", true) }),
             item("新建集团", "square.stack.3d.up", () => router.openSettings("groups", "new")),
             divider,
-            item("上传材料…", "square.and.arrow.down", () => void router.chooseFiles(router.currentImportContext(groupExists)), { shortcut: shortcutLabel("I") }),
+            item("上传材料…", "square.and.arrow.up", () => void router.chooseFiles(router.currentImportContext(groupExists)), { shortcut: shortcutLabel("I") }),
           ]} /></>}
         </div>
         <button className="side-search" onClick={() => router.open({ kind: "quickSearch" })} aria-label={`搜索公司或人（${shortcutLabel("K")}）`} title={rail ? `搜索（${shortcutLabel("K")}）` : undefined}>

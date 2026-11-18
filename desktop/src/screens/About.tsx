@@ -49,7 +49,7 @@ export function AboutSettings() {
     {st.kind === "noURL" && <Note>这个版本没有配置更新来源，暂时无法检查更新。</Note>}
     <SGroup>
       <SRow title="自动检查更新" detail="打开 Charter 时检查，每天最多一次。只读取版本号和发布说明，不上传任何档案数据。">
-        <Switch checked={auto} onChange={setAutoCheck} />
+        <Switch ariaLabel="自动检查更新" checked={auto} onChange={setAutoCheck} />
       </SRow>
       <SRow title="入门教程" detail="用一套虚构的示例档案演示界面和常用操作，约 2 分钟。演示中的修改不会保存。">
         <Button size="small" disabled={isDemo()} onClick={() => requestTour(platform())}>重新看教程</Button>

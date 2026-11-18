@@ -3,7 +3,7 @@
 
 import { SendRecords } from "./SendRecords";
 import { TicketStub } from "../ui/TicketStub";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
 import { type Appointment, type ArchiveItem, type Company, type NodeRef, archiveItemName, companyStatusLabel, companyStatuses, completeness, contactsOf, hasFile, inView, ref } from "../domain/models";
 import { percentLabel } from "../domain/engine";
@@ -17,6 +17,7 @@ import { InlineText } from "./Agents";
 import { GroupAdjustSheet, ShareChangeSheet } from "./HoldingEdit";
 import { Note } from "../ui/kit";
 import { leftText } from "./InfoCard";
+import "./layout557.css";
 import { RecognizingChip, useStageFile } from "./common";
 import { useListMotion } from "../ui/motion";
 import { EntrySheet, ProvenanceLine, VerifyChip } from "./Trust";
@@ -35,6 +36,16 @@ export function CompanyPage({ company: c }: { company: Company }) {
   const unv = store.unverified.filter((x) => x.item.companyID === c.id).length;
   const [busy, setBusy] = useState(false);
   const tab = Math.min(router.companyTab, tabNames.length - 1);
+  useEffect(() => {
+    const focus = router.evidenceRecordFocus;
+    if (tab !== 1 || !focus) return;
+    const frame = requestAnimationFrame(() => {
+      const row = document.querySelector<HTMLElement>(`[data-evidence-record="${focus.target}:${CSS.escape(focus.id)}"]`);
+      row?.scrollIntoView({ behavior: "smooth", block: "center" });
+      row?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [tab, router.evidenceRecordFocus?.target, router.evidenceRecordFocus?.id]);
   const cnt = store.companyCounts(c);
   const dues = store.openObligations.filter((o) => o.company.id === c.id);
   const people = new Set(store.officers(c.id).map((a) => a.personID)).size + store.directShareholders(c.id).length;
@@ -57,7 +68,7 @@ export function CompanyPage({ company: c }: { company: Company }) {
             <InlineText wrap value={c.name} label="公司名称" onCommit={(v) => v.trim() && store.editCompanyField(c, "name", v.trim(), "公司名称")} style={{ font: "inherit" }} /></span>}
           subtitle={<span className="row gap6 wrap"><CompanyChips c={c} />{unv > 0 && <button className="v4-chip btnlike chip-pending" onClick={() => router.go("verify")}>{unv} 条待核实 ›</button>}</span>}>
           {busy && <RecognizingChip />}
-          <Button icon="square.and.arrow.down" onClick={() => upload()}>上传材料</Button>
+          <Button icon="square.and.arrow.up" onClick={() => upload()}>上传材料</Button>
           <Button kind="primary" icon="shippingbox" onClick={() => router.open({ kind: "packet", companyID: c.id })}>准备文件包</Button>
           <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" showsChevron={false} entries={[
             item("复制公司摘要", "doc.on.doc", () => { void platform().copyText(store.companySummary(c)); store.showToast("公司资料摘要已复制。"); }),
@@ -71,9 +82,12 @@ export function CompanyPage({ company: c }: { company: Company }) {
         <Snapshot c={c} />
         <Tabs<number> value={tab} onChange={(v) => router.set("companyTab", v)} tabs={[[0, "概览"], [1, "人员与持股", people], [2, "文件", cnt.files], [3, "申报", dues.length], [4, "变更历史", history]]} />
         <div className="swap-in" key={tab}>
-          {tab === 0 && <div className="two">
-            <div className="col gap24"><Basics c={c} /><PeopleSummary c={c} /><ArchiveSummary c={c} /></div>
-            <div className="col gap24"><NextUp c={c} /><Agent c={c} /></div>
+          {tab === 0 && <div className="company-overview-grid">
+            <Basics c={c} />
+            <NextUp c={c} />
+            <PeopleSummary c={c} />
+            <ArchiveSummary c={c} />
+            <Agent c={c} />
           </div>}
           {tab === 1 && <div className="col gap24"><Shareholders c={c} /><Officers c={c} /><EvidenceList target="company" id={c.id} title="其他文件里的证据" /></div>}
           {tab === 2 && <div className="col gap24"><Archive c={c} onUpload={(typeID) => upload(typeID)} /><SendRecords c={c} /></div>}
@@ -135,20 +149,20 @@ function NextUp({ c }: { c: Company }) {
   const list = store.openObligations.filter((o) => o.company.id === c.id).sort((a, b) => (a.due < b.due ? -1 : 1));
   const next = list[0];
   if (!next) return (
-    <KitCard tone="green-card"><span className="row gap10"><span className="doc-ic"><Icon name="checkmark" size={16} strokeWidth={3} /></span><span className="col"><span className="t-subtitle">没有待办</span><span className="t-meta muted">这家公司暂时没有要申报的事。</span></span></span></KitCard>
+    <KitCard tone="green-card" className="overview-next"><span className="row gap10"><span className="doc-ic"><Icon name="checkmark" size={16} strokeWidth={3} /></span><span className="col"><span className="t-subtitle">没有待办</span><span className="t-meta muted">这家公司暂时没有要申报的事。</span></span></span></KitCard>
   );
   const left = D.daysBetween(store.today, next.due);
   const party = store.responsibleParty(next);
   return (
     <>
-      <KitCard tone={left < 0 ? "red" : left <= 30 ? "amber" : undefined} className="nextup">
+      <KitCard tone={left < 0 ? "red" : left <= 30 ? "amber" : undefined} className="nextup overview-next">
         <span className="cue"><Icon name={left < 0 ? "exclamationmark.circle.fill" : "clock"} size={14} />下一件事</span>
         <div className="t-headline">{next.rule.name}</div>
         <p className="why">{D.long(next.due)}截止 · {leftText(left)}{next.record?.dateConfirmed ? "" : " · 日期按规则推算"}</p>
         <span className="t-meta why">{party ? `交给 ${party.name}` : "还没有指定中介"}</span>
         <div className="row gap8"><Button onClick={() => router.openDue(next.key)}>去处理</Button>{!next.record?.dateConfirmed && <Button onClick={() => store.confirmDue(next)}>确认日期</Button>}</div>
       </KitCard>
-      {list.length > 1 && <KitCard title="接下来">
+      {list.length > 1 && <KitCard title="接下来" className="overview-horizon">
         <div className="horizon">{list.slice(1, 6).map((o) => (
           <button key={o.key} onClick={() => router.openDue(o.key)}><span className="d">{D.short(o.due)}</span><span style={{ fontWeight: 600 }}>{o.rule.name}</span></button>
         ))}</div>
@@ -177,7 +191,7 @@ function PeopleSummary({ c }: { c: Company }) {
   const os = store.officers(c.id);
   const pids = [...new Set(os.map((a) => a.personID))];
   return (
-    <KitCard title="公司背后的人" action={<button className="link t-meta" onClick={() => router.set("companyTab", 1)}>编辑</button>}>
+    <KitCard title="公司背后的人" className="overview-people" action={<button className="link t-meta" onClick={() => router.set("companyTab", 1)}>编辑</button>}>
       <HolderGapNote c={c} />
       {hs.length || pids.length ? <div className="people-grid" role="table" aria-label="股东和董事">
         {hs.map((h) => (
@@ -214,7 +228,7 @@ function ArchiveSummary({ c }: { c: Company }) {
   const list = [...missing, ...attention];
   const title = !cnt.configured ? "材料范围还没设置" : !list.length ? "样样都在" : missing.length ? "我负责的还差几样" : "有文件需要处理";
   return (
-    <KitCard title={title} action={<button className="link t-meta" onClick={() => router.set("companyTab", 2)}>全部文件</button>}>
+    <KitCard title={title} className="overview-archive" action={<button className="link t-meta" onClick={() => router.set("companyTab", 2)}>全部文件</button>}>
       <ScopeSummary counts={cnt} onConfigure={() => router.open({ kind: "scope", ownerKind: "company", owners: [c.id] })} />
       {!cnt.configured && <span className="t-meta muted">Charter 不再按法域清单猜你缺什么。先定哪些材料由你保管，完整度只算这些。</span>}
       {list.slice(0, 5).map((i) => (
@@ -243,7 +257,7 @@ function Basics({ c }: { c: Company }) {
   const { store } = useApp();
   const forms = store.jurisdiction(c.jurisdiction)?.entityForms ?? [];
   return (
-    <Card title="基本信息" aside={<span className="t-meta muted">点击直接改，改动记入历史</span>}>
+    <Card title="基本信息" className="overview-basics" aside={<span className="t-meta muted">点击直接改，改动记入历史</span>}>
       <KV k="注册编号"><InlineText value={c.registrationNumber} label="注册编号" placeholder="未填写" className="mono" style={{ textAlign: "right" }} onCommit={(v) => store.editCompanyField(c, "registrationNumber", v.trim(), "注册编号")} /></KV>
       <KV k="成立日期"><DateField value={c.incorporationDate} onChange={(d) => store.editCompanyField(c, "incorporationDate", d, "成立日期")} placeholder="未填写" minWidth={150} /></KV>
       <KV k="注册地址"><InlineText value={c.registeredAddress} label="注册地址" placeholder="未填写" style={{ textAlign: "right" }} onCommit={(v) => store.editCompanyField(c, "registeredAddress", v.trim(), "注册地址")} /></KV>
@@ -268,7 +282,8 @@ function Shareholders({ c }: { c: Company }) {
       {hs.map((h) => {
         const role = roleByID(h.roleID);
         return (
-          <div key={h.id} ref={rowRef(h.id)} className={`cp-row2 ${isNew(h.id) ? "cp-new" : ""}`}>
+          <div key={h.id} ref={rowRef(h.id)} tabIndex={-1} data-evidence-record={`holding:${h.id}`}
+            className={`cp-row2 ${isNew(h.id) ? "cp-new" : ""} ${router.evidenceRecordFocus?.target === "holding" && router.evidenceRecordFocus.id === h.id ? "evidence-record-focus" : ""}`}>
             <div className="cp-line">
               {h.holder.kind === "person" ? <Avatar name={store.nameOf(h.holder)} size={30} /> : <span className="v4-code" style={companyTint(store, h.holder.id)}>{store.company(h.holder.id)?.jurisdiction}</span>}
               <button className="v4-link ellipsis grow" style={{ textAlign: "left" }} onClick={() => h.holder.kind === "company" ? router.openCompany(h.holder.id) : router.openPerson(h.holder.id)}>{store.nameOf(h.holder)}{h.isNominee ? <span className="muted" style={{ fontWeight: 400 }}>（名义）</span> : null}</button>
@@ -312,7 +327,8 @@ function Officers({ c }: { c: Company }) {
             {mine.map((a) => {
               const role = roleByID(a.roleID);
               return (
-                <div key={a.id} className="col role-line">
+                <div key={a.id} tabIndex={-1} data-evidence-record={`appointment:${a.id}`}
+                  className={`col role-line ${router.evidenceRecordFocus?.target === "appointment" && router.evidenceRecordFocus.id === a.id ? "evidence-record-focus" : ""}`}>
                   <div className="row gap8">
                     <RoleChip a={a} c={c} />
                     {role && <span className="t-meta muted" style={{ whiteSpace: "nowrap" }}>{roleCategoryLabel[role.category]}</span>}
@@ -454,7 +470,7 @@ function Agent({ c }: { c: Company }) {
   const p = store.party(c.defaultPartyID);
   const contact = p ? contactsOf(p)[0] : undefined;
   return (
-    <Card title="默认中介" aside={p && <button className="link t-meta" onClick={() => router.openAgent(p.id)}>查看中介</button>}>
+    <Card title="默认中介" className="overview-agent" aside={p && <button className="link t-meta" onClick={() => router.openAgent(p.id)}>查看中介</button>}>
       <div className="cp-line">
         <SelectField options={[["", "未指定"] as [string, string], ...store.data.parties.map((x) => [x.id, x.name] as [string, string])]} value={c.defaultPartyID ?? ""}
           onChange={(v) => store.upsertCompany({ ...c, defaultPartyID: v || undefined })} minWidth={240} />

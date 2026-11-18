@@ -15,6 +15,7 @@ import { Icon } from "../ui/Icon";
 import { ActionMenu, Button, Checkbox, type Fate, FileFate, Note, OptionCard, ProgressBar, StepBar, Tabs, useNarrow, ConfirmSheet, CopyTextSheet, DateField, FieldRow, FormGroup, Modal, Pill, Segmented, SelectField, SheetScaffold, Switch, TextField, divider, item } from "../ui/kit";
 import { defaultPacketWatermark, inked, eligibilityPill, type PreviewFile, useEligibility, WatermarkPreview, WatermarkSettingsPanel, SignedConfirm } from "./PacketWatermark";
 import { estimateSize, kindOf, resolveText, sizeLabel } from "../services/watermark";
+import "./layout557.css";
 import { ReissueRequestSheet, freshnessPill, statePill, useStageFile, refInfo, companyInfo } from "./common";
 
 const lastPurposeKey = (cid: string) => `packet.lastPurpose.${cid}`;
@@ -225,9 +226,9 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   </div>;
 
   // ---------- ② 水印 ----------
-  const watermarkStep = <div className="row start" style={{ gap: 36 }}>
-    <div style={{ width: 380, flex: "none" }}><WatermarkSettingsPanel wm={wm} onChange={setWm} recipient={recipient} onRecipient={setRecipient} focusRecipient={focusRecipient} onFocused={() => setFocusRecipient(false)} /></div>
-    <div className="col grow gap12" style={{ minWidth: 0 }}>
+  const watermarkStep = <div className="packet-watermark-layout">
+    <div className="packet-watermark-settings"><WatermarkSettingsPanel wm={wm} onChange={setWm} recipient={recipient} onRecipient={setRecipient} focusRecipient={focusRecipient} onFocused={() => setFocusRecipient(false)} /></div>
+    <div className="col grow gap12 packet-watermark-preview">
       <WatermarkPreview files={previewFiles} index={Math.min(previewIndex, Math.max(0, previewFiles.length - 1))} onIndex={setPreviewIndex} settings={inked(wm.settings)} />
       {included.some((i) => kindOf(store.fileURL(i.document!)) === "other") && <Note>Word、Excel 等文件无法加水印，会原样放入，并在目录里注明。</Note>}
     </div>

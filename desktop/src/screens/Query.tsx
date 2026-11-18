@@ -57,7 +57,7 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
         if (v === "packet") {
           if (!p.purposes.length) out.push({ act: { kind: "packet", companyID: c.id }, title: `为 ${c.name} 准备文件包`, symbol: "shippingbox" });
           else for (const t of p.purposes) out.push({ act: { kind: "packet", companyID: c.id, purposeID: t.id }, title: `为 ${c.name} 准备${latinPad(t.name)}文件包`, symbol: "shippingbox" });
-        } else if (v === "upload") out.push({ act: { kind: "upload", companyID: c.id }, title: `上传材料到 ${c.name}`, symbol: "tray.and.arrow.down" });
+        } else if (v === "upload") out.push({ act: { kind: "upload", companyID: c.id }, title: `上传材料到 ${c.name}`, symbol: "square.and.arrow.up" });
         else if (v === "reissue" && false) { const gaps = gapTypeIDs(c); if (gaps.length) out.push({ act: { kind: "reissue", companyID: c.id, typeIDs: gaps }, title: `请 ${store.party(c.defaultPartyID)?.name ?? "中介"} 补发 ${c.name} 缺少的文件`, symbol: "envelope" }); }
         else if (v === "change") out.push({ act: { kind: "change", companyID: c.id }, title: `修改 ${c.name} 的资料`, symbol: "arrow.triangle.2.circlepath" });
         else out.push({ act: { kind: "structure", companyID: c.id }, title: `在结构图里看 ${c.name}`, symbol: "point.3.connected.trianglepath.dotted" });
@@ -69,7 +69,7 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
     const all: Action[] = [
       { act: { kind: "newCompany" }, title: "新建公司", symbol: "plus.square" },
       { act: { kind: "newGroup" }, title: "新建集团", symbol: "square.stack.3d.up" },
-      { act: { kind: "uploadAny" }, title: "上传材料", symbol: "tray.and.arrow.down" },
+      { act: { kind: "uploadAny" }, title: "上传材料", symbol: "square.and.arrow.up" },
       { act: { kind: "calendar" } as Act, title: "查看全部到期", symbol: "calendar" },
       { act: { kind: "settings", pane: "reminders" }, title: "设置", symbol: "gearshape" },
     ];

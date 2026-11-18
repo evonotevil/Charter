@@ -13,7 +13,7 @@ import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { InboxPane, TrashPane } from "./Lifecycle";
 import { addToInbox } from "../state/lifecycle";
-import { Tabs, Avatar, Button, EmptyStateView, JurisdictionBadge, type MenuEntry, Pill, Segmented, SelectField, divider, header, item, useContextMenu, PageHeader } from "../ui/kit";
+import { Tabs, Avatar, Button, Checkbox, EmptyStateView, JurisdictionBadge, type MenuEntry, Pill, Segmented, SelectField, divider, header, item, useContextMenu, PageHeader } from "../ui/kit";
 import { DropTarget } from "../ui/drop";
 import { FileThumb, batchOpen, clearThumbCache, openEntries, ReissueRequestSheet, freshnessPill, useStageFile } from "./common";
 import { ExtraTags, StatusTag, statusOfFreshness } from "./Status";
@@ -218,7 +218,7 @@ function DocumentsView() {
               { label: "需处理", value: attention, unit: "份", tone: attention ? "warn" : undefined, onClick: attention ? () => router.set("filesFilter", 2) : undefined },
               ...(ownerKind !== "person" ? [{ label: "缺件", value: store.missingSummary(router.groupFilter).items, unit: "项", tone: store.missingSummary(router.groupFilter).items ? "warn" as const : undefined }] : []),
             ]} subtitle={(docs.length === scoped.length ? `${scoped.length} 份现行文件` : `显示 ${docs.length} / ${scoped.length} 份`) + (attention ? `，${attention} 份需处理（${[expiredN ? `${expiredN} 份已过期` : "", undated ? `${undated} 份日期待补` : "", attention - expiredN - undated ? `${attention - expiredN - undated} 份快到期或需更新` : ""].filter(Boolean).join("、")}）` : "，都在有效期内") + "。把 PDF、照片或文件夹拖进窗口即可导入。"}>
-              <Button kind="primary" icon="square.and.arrow.down" title="选择 PDF、照片或文件夹；也可以直接拖进窗口" onClick={() => void router.chooseFiles(null)}>加入待整理</Button>
+              <Button kind="primary" icon="square.and.arrow.up" title="选择 PDF、照片或文件夹；也可以直接拖进窗口" onClick={() => void router.chooseFiles(null)}>加入待整理</Button>
             </PageHeader>
             <FilesTabs />
             <div className="row gap10 wrap">
@@ -329,7 +329,7 @@ function FileTableRow({ d, showOwner, selected, extraMenu, onSelect, onToggle }:
   return (
     <tr className={selected ? "sel" : ""} tabIndex={0} onClick={onSelect} onContextMenu={(e) => ctx.open(e, menu())} aria-selected={selected}
       onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) router.open({ kind: "document", id: d.id }); if (e.key === " " && e.target === e.currentTarget) { e.preventDefault(); onToggle(); } }}>
-      <td onClick={(e) => { e.stopPropagation(); onToggle(); }}><span className={`mark sq ${selected ? "on" : ""}`} role="checkbox" aria-checked={selected} aria-label={`选择 ${fileName}`}>{selected && <Icon name="checkmark" size={10} strokeWidth={3.5} />}</span></td>
+      <td onClick={(e) => { e.stopPropagation(); onToggle(); }}><Checkbox checked={selected} onChange={onToggle} ariaLabel={`选择 ${fileName}`} /></td>
       <td><div className="col" style={{ minWidth: 0, gap: 1 }}><span className="fname name-1" title={d.originalFileName}>{fileName}</span><span className="t-meta muted name-1" title={subTitle}>{sub}</span></div></td>
       {showOwner && <td className="owner"><span className="row gap6" style={{ minWidth: 0 }}>{c && <span className="v4-code" style={{ width: 24, height: 20, fontSize: 9.5, borderRadius: 6, ...companyTint(store, c.id) }}>{c.jurisdiction}</span>}<span className="name-1" title={store.nameOf(d.owner)}>{store.nameOf(d.owner)}</span></span></td>}
       <td className="date num">{d.issueDate ?? <span className="missing-val">未填日期</span>}</td>

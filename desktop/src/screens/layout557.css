@@ -1,0 +1,194 @@
+/* 5.5.7 · Figma 评审稿中的双栏边界、独立滚动和卡片对齐。 */
+
+/* 申报日历：两栏共用同一高度，各自滚动，右侧操作始终留在底部。 */
+.due-page {
+  overflow: hidden;
+}
+
+.due-page-inner {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.due-layout {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.due-list-pane,
+.due-layout > .detail-pane,
+.due-layout .due-detail {
+  height: 100%;
+  min-height: 0;
+}
+
+.due-list-scroll {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.due-layout > .detail-pane {
+  position: relative;
+  top: auto;
+}
+
+.due-detail {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.due-detail-head {
+  flex: none;
+  padding: 22px 22px 14px;
+}
+
+.due-detail-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 22px 22px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.due-detail-actions {
+  flex: none;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+/* 股权结构：画布与详情齐顶齐底，详情正文滚动，关系操作固定。 */
+.structure-workspace {
+  gap: 16px;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.structure-workspace > .chart-wrap,
+.structure-workspace > .chart-side {
+  align-self: stretch;
+}
+
+.chart-summary {
+  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chart-summary-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.chart-summary-actions {
+  flex: none;
+  margin: 0 -22px -22px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+/* 单家公司概览：成对的左右卡片共用行高，内容多少不会打乱下方边界。 */
+.company-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr);
+  grid-template-areas:
+    "basics next"
+    "people horizon"
+    "archive agent";
+  gap: 24px;
+  align-items: stretch;
+}
+
+.company-overview-grid > .card { height: 100%; }
+.overview-basics { grid-area: basics; }
+.overview-next { grid-area: next; }
+.overview-people { grid-area: people; }
+.overview-horizon { grid-area: horizon; }
+.overview-archive { grid-area: archive; }
+.overview-agent { grid-area: agent; }
+
+/* 准备文件包第 2 步：编辑器与文件预览从同一条顶边开始。 */
+.packet-watermark-layout {
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 36px;
+  align-items: start;
+}
+
+.packet-watermark-settings,
+.packet-watermark-preview {
+  min-width: 0;
+  align-self: start;
+}
+
+.watermark-preview-control {
+  min-width: 0;
+}
+
+.watermark-preview-picker {
+  min-width: 0;
+  min-height: var(--input-h);
+  align-items: center;
+}
+
+.watermark-preview-picker > .select {
+  flex: 1 1 320px;
+  min-width: 0 !important;
+}
+
+.watermark-preview-count,
+.watermark-preview-hint {
+  flex: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .watermark-preview-picker {
+    flex-wrap: wrap;
+  }
+
+  .watermark-preview-hint {
+    width: 100%;
+  }
+}
+
+@container (max-width: 719px) {
+  .company-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "basics"
+      "next"
+      "people"
+      "horizon"
+      "archive"
+      "agent";
+  }
+}
+
+@media (max-width: 900px) {
+  .packet-watermark-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+}
+
+html[data-density="compact"] .due-detail-head { padding: 16px 16px 10px; }
+html[data-density="compact"] .due-detail-scroll { padding: 0 16px 16px; gap: 10px; }
+html[data-density="compact"] .due-detail-actions { padding: 12px 16px; }
+html[data-density="compact"] .chart-summary-actions { margin: 0 -16px -16px; padding: 12px 16px; }
