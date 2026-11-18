@@ -10,7 +10,8 @@ export function syncTitle(s: SyncState): string {
     case "conflict": return "有冲突需要处理";
     case "failed": return "无法同步";
     case "signedOut": return "未登录 iCloud";
-    case "local": return "仅保存在本机";
+    case "local": return "仅本机使用";
+    case "cloud": return `在 ${s.provider} 中`;
     case "unknown": return "同步状态未知";
   }
 }
@@ -21,6 +22,7 @@ export function syncSymbol(s: SyncState): string {
     case "conflict": return "exclamationmark.icloud";
     case "failed": case "signedOut": return "xmark.icloud";
     case "local": return "internaldrive";
+    case "cloud": return "icloud";
     case "unknown": return "exclamationmark.icloud";
   }
 }
@@ -34,7 +36,8 @@ export function syncDetail(s: SyncState): string {
     case "failed": return `${s.message} 请检查网络和云盘空间。`;
     case "signedOut": return "数据文件夹在 iCloud 云盘里，但这台电脑没有登录 iCloud，修改不会同步。";
     case "unknown": return `无法确认 iCloud 或 OneDrive 是否已上传完成（${s.reason}）。确认前不要在另一台电脑上同时修改。`;
-    case "local": return "数据文件夹不在同步盘（iCloud 云盘、OneDrive 等）中，修改只保存在这台电脑上。要在多台电脑之间同步，请把数据文件夹换到同步盘里。";
+    case "local": return "数据文件夹在这台电脑上，修改只保存在这里。要和其他电脑共用，打开下面的“多台电脑共用”。";
+    case "cloud": return `数据文件夹在 ${s.provider} 里，由 ${s.provider} 负责同步。Charter 读不到这里的上传进度，请在 ${s.provider} 里确认已上传完成。`;
   }
 }
 
@@ -52,6 +55,13 @@ export class SyncMonitor {
     if (this.root !== root) { this.root = root; this.state = { kind: "checking" }; this.emit(); }
     void this.refresh();
     if (!this.timer) this.timer = setInterval(() => void this.refresh(), 15000);
+  }
+
+  /** 5.5.6：关闭多台电脑共用时停止检查。 */
+  stop() {
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this.root = null;
+    if (this.state.kind !== "local") { this.state = { kind: "local" }; this.emit(); }
   }
 
   refreshSoon() {

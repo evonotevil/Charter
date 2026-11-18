@@ -93,7 +93,7 @@ export function DueView() {
         <Card><div className="celebrate"><span className="emblem"><Icon name="checkmark" size={30} strokeWidth={3} /></span><div className="t-headline">{done.length ? "全部完成！" : "这段时间没有申报事项"}</div><p className="muted">事项按公司的法域和成立日期自动排出。新建公司后这里会出现它的年审。</p></div></Card>
       ) : (
         <div className="two">
-          <Card flush>
+          <Card flush className="tour-due">
             <div ref={listRef} style={{ position: "relative" }} role="list" aria-label="申报事项">
               {months.map((m) => (
                 <div key={m.label}>

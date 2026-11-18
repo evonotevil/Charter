@@ -13,6 +13,7 @@ import { syncDetail, syncNeedsAttention, syncTitle } from "../state/sync";
 import { type ConfigBundle, applyConfig, configImportDiff, exportConfig, readConfig } from "../state/actions";
 import { type OpenedBackup, exportBackup, readBackup, restoreBackup } from "../services/backup";
 import { installSampleData } from "../state/sample";
+import { ShareCard } from "./Share";
 import { nonArchiveTypeIDs } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
@@ -78,9 +79,10 @@ export function SyncView() {
     <div className="page"><div className="page-inner">
       <PageHeader crumb="工作区" title="设备与同步" subtitle="这台电脑是不是最新的，档案存在哪里。" />
       <Banner tone={warn ? "warn" : "ok"} icon={cloud ? "icloud" : "desktopcomputer"} title={cloud ? syncTitle(s) : "档案只保存在这台电脑上"}
-        actions={<Button onClick={() => void sync.refresh()}>立即检查</Button>}>{syncDetail(s)}</Banner>
+        actions={cloud ? <Button onClick={() => void sync.refresh()}>立即检查</Button> : undefined}>{syncDetail(s)}</Banner>
       <div className="two">
         <div className="col gap24">
+          <ShareCard />
           <Card title="数据文件夹">
             <div className="device">
               <span className="ic"><Icon name="folder" size={22} /></span>
@@ -112,7 +114,6 @@ export function SyncView() {
             <div className="pref"><span className="col grow"><span className="t-row">深浅色</span><span className="t-meta muted">默认跟随系统。</span></span>
               <Segmented options={[["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]]} value={th} onChange={setTheme} /></div>
           </Card>
-          <div className="info-note"><Icon name="info.circle" size={18} /><p>把数据文件夹放进 iCloud 云盘或 OneDrive，Mac 和 Windows 电脑就能共用同一套档案。</p></div>
         </div>
       </div>
       {confirmFolder && <ConfirmSheet title="更换数据文件夹？" message="Charter 会改用新文件夹里的档案；当前文件夹的内容原样保留，不会移动或删除。" confirmTitle="选择文件夹…" onClose={() => setConfirmFolder(false)} onConfirm={() => void chooseFolder()} />}
@@ -124,7 +125,7 @@ export function SyncView() {
 
 export function PaneHeader({ title, detail, children }: { title: string; detail?: string; children?: ReactNode }) {
   return (
-    <div className="row start gap12" style={{ paddingRight: 36 }}>
+    <div className="row start gap12">
       <div className="col grow" style={{ gap: 4, minWidth: 0 }}>
         <h2 className="t-title ellipsis">{title}</h2>
         {detail && <span className="t-meta muted">{detail}</span>}
@@ -235,8 +236,8 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
           <SRow title="提醒时间" detail="系统通知和日历提醒都在这个时间。">
             <SelectField options={Array.from({ length: 16 }, (_, i) => [i + 6, `${String(i + 6).padStart(2, "0")}:00`] as [number, string])} value={settings.notificationHour} onChange={(h) => store.saveSettings((x) => { x.notificationHour = h; })} minWidth={110} />
           </SRow>
-          <SRow title="由这台电脑发通知" detail={store.isPrimaryDevice ? "多台电脑共用一个数据文件夹时，只让一台发，避免重复。" : `现在由“${settings.primaryDeviceName ?? "另一台电脑"}”发通知。`}>
-            <Switch checked={store.isPrimaryDevice} onChange={(v) => store.saveSettings((x) => { if (v) { x.primaryDeviceID = store.deviceID; x.primaryDeviceName = store.deviceName; } else { x.primaryDeviceID = "none"; x.primaryDeviceName = undefined; } })} />
+          <SRow title="由这台电脑发通知" detail={!store.shared ? "只在这台电脑使用时，提醒总由这台电脑发出。" : store.isPrimaryDevice ? "多台电脑共用一个数据文件夹时，只让一台发，避免重复。" : `现在由“${settings.primaryDeviceName ?? "另一台电脑"}”发通知。`}>
+            <Switch checked={store.isPrimaryDevice} disabled={!store.shared} onChange={(v) => store.saveSettings((x) => { if (v) { x.primaryDeviceID = store.deviceID; x.primaryDeviceName = store.deviceName; } else { x.primaryDeviceID = "none"; x.primaryDeviceName = undefined; } })} />
           </SRow>
         </SGroup>
         <CalendarAutoSync />

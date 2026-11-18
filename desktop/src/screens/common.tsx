@@ -2,7 +2,7 @@
 
 import { TicketStub } from "../ui/TicketStub";
 import { companyTint } from "../ui/uistyle";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import * as D from "../domain/day";
 import type { Day } from "../domain/day";
 import {
@@ -16,7 +16,7 @@ import { useApp } from "../state/hooks";
 import type { Store } from "../state/store";
 import { type StagedFile, commitStaged, discardStaged, stage } from "../state/actions";
 import { copyMessage, copyHandoff, packetItems, packetMissing, packetItemTitle, packetReason } from "../services/packets";
-import { thumbnail } from "../services/extract";
+import { getOcrStatus, subscribeOcrStatus, thumbnail } from "../services/extract";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import {
@@ -647,4 +647,12 @@ export function batchOpen(store: Store, list: Document[], reveal = false) {
   const ok = list.filter((d) => !store.fileMissing(d)), skipped = list.length - ok.length;
   ok.forEach((d) => void (reveal ? store.revealDocument(d) : store.openDocument(d)));
   if (skipped) store.showToast(`${skipped} 份源文件不可用，已跳过；在文件详情里可以重新定位。`);
+}
+
+
+/** 5.5.6：识别中的状态标签；扫描件多页时显示“正在识别第 2/4 页”。 */
+export function useOcrStatus() { return useSyncExternalStore(subscribeOcrStatus, getOcrStatus); }
+export function RecognizingChip() {
+  const s = useOcrStatus();
+  return <span className="busy-chip" role="status"><span className="ring" />{s ?? "正在识别"}…</span>;
 }

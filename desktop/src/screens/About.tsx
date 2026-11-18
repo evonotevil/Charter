@@ -1,5 +1,6 @@
 // 5.5.5：设置 → 关于与更新。设计稿：Figma「5.5.5 · 流程修正」U1–U6。
 import { useState, useSyncExternalStore } from "react";
+import { isDemo, requestTour } from "../state/demo";
 import { platform } from "../platform/platform";
 import { Button, Note, Pill, Switch } from "../ui/kit";
 import { autoCheckOn, checkForUpdate, currentVersion, lastCheck, remindLater, setAutoCheck, skipVersion, subscribeUpdate, updateState } from "../services/update";
@@ -49,6 +50,9 @@ export function AboutSettings() {
     <SGroup>
       <SRow title="自动检查更新" detail="打开 Charter 时检查，每天最多一次。只读取版本号和发布说明，不上传任何档案数据。">
         <Switch checked={auto} onChange={setAutoCheck} />
+      </SRow>
+      <SRow title="入门教程" detail="用一套虚构的示例档案演示界面和常用操作，约 2 分钟。演示中的修改不会保存。">
+        <Button size="small" disabled={isDemo()} onClick={() => requestTour(platform())}>重新看教程</Button>
       </SRow>
     </SGroup>
   </div></Scroll>;

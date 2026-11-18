@@ -155,7 +155,7 @@ export class Router {
     this.emit();
   }
   openPerson(id: string) { this.selectedPersonID = id; this.showCalendar = false; this.section = "people"; this.emit(); }
-  openCompany(id: string) { this.selectedCompanyID = id; this.companyOpen = true; this.companiesMode = "list"; this.showCalendar = false; this.section = "companies"; this.emit(); }
+  openCompany(id: string, tab = this.companyTab) { this.selectedCompanyID = id; this.companyTab = tab; this.companyOpen = true; this.companiesMode = "list"; this.showCalendar = false; this.section = "companies"; this.emit(); }
   openDue(key?: string) { if (key) this.selectedObligationKey = key; this.showCalendar = false; this.section = "due"; this.emit(); }
   openAgent(id: string) { this.selectedAgentID = id; this.showCalendar = false; this.section = "agents"; this.emit(); }
   openSettings(pane: SettingsPane = "reminders", groupID?: string | null) {

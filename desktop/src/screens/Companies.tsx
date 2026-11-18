@@ -143,7 +143,7 @@ function Overview() {
             : { label: "我负责的材料齐全度", value: pct, unit: "%", tone: pct < 100 ? "warn" : undefined, icon: pct === 100 ? "checkmark.circle.fill" : "doc.on.doc", onClick: () => router.go("files") },
         { label: "待核实", value: unv, unit: "条", tone: "warn", icon: "checkmark.shield", onClick: () => router.go("verify") },
       ]} />
-      <Card flush>
+      <Card flush className="tour-companies">
         <div className="card-head pad">
           <h2 className="t-card">公司</h2>
           <div className="toolbar">

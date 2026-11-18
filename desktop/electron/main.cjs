@@ -10,6 +10,7 @@ const { execFile } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
 const { SYNC_SCRIPT, OCR_SCRIPT } = require("./jxa.cjs");
 const { MAC_SCRIPT: CAL_MAC, WIN_SCRIPT: CAL_WIN } = require("./calendar.cjs");
+const share = require("./share.cjs");
 
 const isMac = process.platform === "darwin";
 const isWin = process.platform === "win32";
@@ -80,6 +81,14 @@ handle("log", (level, msg) => log(level === "error" ? "renderer-error" : "render
 handle("log_path", () => (logFile || path.join(app.getPath("logs"), "main.log")));
 handle("platform_name", () => (isMac ? "mac" : isWin ? "windows" : "linux"));
 handle("default_root", () => defaultRoot());
+// 5.5.6 多台电脑共用
+handle("cloud_kind", (p) => share.cloudKind(p));
+handle("local_root", () => share.localRoot(app));
+handle("cloud_suggestions", () => share.cloudSuggestions());
+handle("tree_info", (p) => share.treeInfo(p));
+handle("free_space", (p) => share.freeSpace(p));
+handle("copy_tree", (src, dst) => share.copyTree(src, dst, (p) => win()?.webContents.send("charter:copy-progress", p)));
+handle("copy_cancel", () => share.cancelCopy());
 handle("read_text", (p) => fsp.readFile(p, "utf8"));
 handle("read_bytes", async (p) => new Uint8Array(await fsp.readFile(p)));
 handle("write_text", (p, text) => writeAtomic(p, Buffer.from(text, "utf8")));
@@ -165,7 +174,7 @@ handle("device_name", () => os.hostname() || "这台电脑");
 handle("bundled_templates", () => fsp.readFile(resourcePath("charter-templates.json"), "utf8"));
 handle("cjk_font", async () => { const p = cjkFontPath(); if (!p) throw new Error("没有找到中文字体"); return new Uint8Array(await fsp.readFile(p)); });
 handle("sync_status", (root) => syncStatus(root));
-handle("ocr", (png) => ocr(Buffer.from(png)));
+handle("ocr", (input) => ocr(input));
 
 // 对话框、打开、通知
 handle("pick_files", async ({ multiple, extensions, title }) => {
@@ -207,18 +216,8 @@ handle("watch", (root) => {
 // MARK: - 各平台
 
 const home = os.homedir();
-function defaultRoot() {
-  if (isMac) {
-    const icloud = path.join(home, "Library/Mobile Documents/com~apple~CloudDocs");
-    return fs.existsSync(icloud) ? path.join(icloud, "Charter") : path.join(home, "Documents/Charter");
-  }
-  if (isWin) {
-    for (const v of ["OneDriveConsumer", "OneDrive", "OneDriveCommercial"]) if (process.env[v] && fs.existsSync(process.env[v])) return path.join(process.env[v], "Charter");
-    const icloud = path.join(home, "iCloudDrive");
-    if (fs.existsSync(icloud)) return path.join(icloud, "Charter");
-  }
-  return path.join(app.getPath("documents"), "Charter");
-}
+// 5.5.6：新安装放在这台电脑上；老用户沿用旧默认位置（同步盘里的 Charter）里已有的档案
+function defaultRoot() { return share.defaultRoot(app); }
 
 /** 数据文件夹里的档案文件：data/*.json 和根目录的 templates.json（结构见 src/domain/folder.ts）。 */
 function dataFiles(root) {
@@ -235,6 +234,8 @@ function run(cmd, args, opts = {}) {
 }
 
 async function syncStatus(root) {
+  // 5.5.6：Mac 上的 OneDrive（~/Library/CloudStorage/OneDrive-…）读不到上传状态，只说明在 OneDrive 里
+  if (isMac && share.oneDriveRoots().some((r) => root.toLowerCase().startsWith(r.toLowerCase()))) return { kind: "cloud", provider: "OneDrive" };
   if (isMac) {
     const out = await run("/usr/bin/osascript", ["-l", "JavaScript", "-e", SYNC_SCRIPT, root, ...dataFiles(root)]);
     // 5.5.5：检测失败时不再假定“已同步”
@@ -263,13 +264,20 @@ function Await($op, [Type]$t) { $task = $asTask.MakeGenericMethod($t).Invoke($nu
 $null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
 $null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
 $null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime]
-$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($args[0])) ([Windows.Storage.StorageFile])
-$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
-$decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
-$bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
 $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
-$result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
-$result.Lines | ForEach-Object { $_.Text }
+$pages = foreach ($p in $args) {
+  try {
+    $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($p)) ([Windows.Storage.StorageFile])
+    $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+    $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+    $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+    $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+    $stream.Dispose()
+    ($result.Lines | ForEach-Object { $_.Text }) -join [Environment]::NewLine
+  } catch { "" }
+  [Console]::Error.WriteLine("PAGE")
+}
+@($pages) -join [string][char]30
 `;
 
 // 5.4：同步到系统日历（Mac：EventKit；Windows：桌面版 Outlook）。数据经临时 JSON 文件传入，结束后删除。
@@ -292,20 +300,45 @@ async function calendarSync(input) {
   } finally { await fsp.rm(dir, { recursive: true, force: true }); }
 }
 
-async function ocr(png) {
+// 像 run，但把 stderr 逐行交给 onLine（OCR 每识别完一页打一行 PAGE，用来显示进度）
+function runStreaming(cmd, args, onLine, opts = {}) {
+  return new Promise((resolve) => {
+    const child = execFile(cmd, args, { timeout: 60000, maxBuffer: 32 * 1024 * 1024, windowsHide: true, ...opts }, (err, stdout) => resolve(err ? null : String(stdout).trim()));
+    let buf = "";
+    child.stderr?.on("data", (d) => { buf += String(d); const lines = buf.split(/\r?\n/); buf = lines.pop() ?? ""; for (const l of lines) onLine(l.trim()); });
+  });
+}
+
+// 5.5.6：一次传入多张图（数组）时只启动一次识别进程，按顺序返回每张的文字，并逐页发送进度；传单张时返回字符串（兼容旧调用）。
+async function ocr(input) {
+  const many = Array.isArray(input);
+  const list = (many ? input : [input]).map((b) => Buffer.from(b));
+  if (!list.length) return [];
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "charter-ocr-"));
-  const img = path.join(dir, "page.png");
+  const t0 = Date.now();
   try {
-    await fsp.writeFile(img, png);
-    let out = null;
-    if (isMac) out = await run("/usr/bin/osascript", ["-l", "JavaScript", "-e", OCR_SCRIPT, img]);
-    else if (isWin) {
-      const script = path.join(dir, "ocr.ps1");
-      await fsp.writeFile(script, "\uFEFF" + WIN_OCR, "utf8");
-      out = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, img]);
-    } else out = await run("tesseract", [img, "-", "-l", "chi_sim+eng"]);
-    if (out === null) throw new Error(isMac || isWin ? "文字识别失败" : "这台电脑没有安装文字识别组件");
-    return out;
+    const imgs = [];
+    for (let i = 0; i < list.length; i++) { const f = path.join(dir, `page-${i + 1}.img`); await fsp.writeFile(f, list[i]); imgs.push(f); }
+    const timeout = Math.min(180000, 45000 + 30000 * imgs.length);
+    let done = 0;
+    const progress = (l) => { if (l === "PAGE") { done++; win()?.webContents.send("charter:ocr-progress", { done, total: imgs.length }); } };
+    let pages = null;
+    if (isMac || isWin) {
+      let out;
+      if (isMac) out = await runStreaming("/usr/bin/osascript", ["-l", "JavaScript", "-e", OCR_SCRIPT, ...imgs], progress, { timeout });
+      else {
+        const script = path.join(dir, "ocr.ps1");
+        await fsp.writeFile(script, "\uFEFF" + WIN_OCR, "utf8");
+        out = await runStreaming("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, ...imgs], progress, { timeout });
+      }
+      if (out !== null) { pages = out.split("\x1e").map((s) => s.trim()); while (pages.length < imgs.length) pages.push(""); }
+    } else {
+      pages = [];
+      for (const f of imgs) { const o = await run("tesseract", [f, "-", "-l", "chi_sim+eng"]); if (o === null) { pages = null; break; } pages.push(o); progress("PAGE"); }
+    }
+    if (pages === null) throw new Error(isMac || isWin ? "文字识别失败" : "这台电脑没有安装文字识别组件");
+    log("info", "文字识别", JSON.stringify({ pages: imgs.length, bytes: list.reduce((n, b) => n + b.length, 0), ms: Date.now() - t0 }));
+    return many ? pages : pages[0];
   } finally { await fsp.rm(dir, { recursive: true, force: true }); }
 }
 

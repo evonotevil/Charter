@@ -179,8 +179,10 @@ describe("exports", () => {
 
   it("partial packet is marked partial", async () => {
     const { p, s } = await fresh();
-    const c = company(s, "Yuanlan Group Ltd.");
     const t = s.data.library.packets.find((x) => x.name === "银行开户")!;
+    // 5.5.6：内置配置统一了类别名，部分示例公司已经齐全；挑一家缺件但至少有一份的公司
+    const c = s.data.companies.find((x) => { const it = packetItems(t, x, s); return it.some((i) => !i.document) && it.filter((i) => i.document).length > 1; })!;
+    expect(c).toBeTruthy();
     const zip = (await buildPacket(packetItems(t, c, s), t, c, s)).path;
     expect(zip).toMatch(/_部分_/);
     expect((await zipNames(p, zip)).length).toBeGreaterThan(1);

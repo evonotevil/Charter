@@ -31,7 +31,7 @@ export function simplePDF(title: string, subtitle: string, lines: string[]): Uin
   return new TextEncoder().encode(out);
 }
 
-export async function installSampleData(s: Store) {
+export async function installSampleData(s: Store, opts: { quiet?: boolean } = {}) {
   const d0 = s.data;
   if (d0.companies.length || d0.documents.length || d0.people.length) await s.snapshotBeforeChange("载入示例数据前");
   s.undoStack = []; s.redoStack = [];
@@ -182,5 +182,5 @@ export async function installSampleData(s: Store) {
   try { await s.archiveBatch(reqs); } catch (e) { s.setError(`示例文件没有全部生成：${(e instanceof Error ? e.message : String(e))}`); }
   try { await p.removeDir(tmp); } catch { /* 忽略 */ }
   s.onDataCleared?.();
-  s.showToast("示例数据已载入：17 家公司、4 个人、10 家中介。");
+  if (!opts.quiet) s.showToast("示例数据已载入：17 家公司、4 个人、10 家中介。");
 }

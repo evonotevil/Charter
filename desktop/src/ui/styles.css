@@ -832,3 +832,15 @@ html.overlay-open :is(.brand, .page-head, .toolbar) { -webkit-app-region: no-dra
 .release-notes { padding: 12px 14px; white-space: pre-wrap; }
 .result-badge { width: 64px; height: 64px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--green-soft); color: var(--green-text); }
 .result-badge.warn { background: var(--amber-soft); color: var(--amber-text); }
+
+/* 5.5.6 入门教程：聚光遮罩 + 说明卡（Figma · Feedback / Coachmark） */
+.tour { position: fixed; inset: 0; z-index: 1000; }
+.tour-scrim { position: fixed; background: var(--scrim); }
+.tour-ring { position: fixed; border: 2px solid var(--green); border-radius: var(--radius-card); pointer-events: none; }
+.coachmark { position: fixed; width: 340px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-5); background: var(--surface); border-radius: var(--radius-card); box-shadow: var(--overlay); animation: fade var(--standard) var(--ease); }
+.coachmark .t-title { font-size: var(--fs-title); line-height: 1.4; }
+.coachmark-foot { display: flex; align-items: center; gap: var(--space-2); padding-top: var(--space-2); }
+.coachmark-dots { display: flex; gap: var(--space-1); }
+.coachmark-dots i { width: 8px; height: 6px; border-radius: var(--radius-full); background: var(--line); }
+.coachmark-dots i.on { background: var(--green); }
+.demo-banner { padding: 8px var(--page-edge) 0; max-width: 1360px; margin: 0 auto; width: 100%; }

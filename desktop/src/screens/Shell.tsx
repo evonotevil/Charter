@@ -1,6 +1,8 @@
 // 主窗口外壳：侧栏（集团切换、五个页面、同步状态与设置）、页面区、弹窗、提示条。移植自 RootView。
 
 import { showUpdateBadge, subscribeUpdate } from "../services/update";
+import { DemoBanner, TourOverlay } from "./Tour";
+import { isDemo } from "../state/demo";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useApp } from "../state/hooks";
 import { sections, workspaceSections, type Section } from "../state/router";
@@ -139,14 +141,17 @@ function Page() {
 export function Shell() {
   const { store, router } = useApp();
   useTrashJanitor();
+  const demo = isDemo();
   const blocked = store.isLoading || store.isImporting || store.loadFailed;
   return (
     <div className="app">
       <Sidebar />
       <main className="main" {...(blocked && !store.isImporting ? { inert: "" } as any : {})}>
         <div className="titlebar drag-region" />
-        <div className="col grow page-in" key={pageKey(router)} style={{ minHeight: 0 }}><Page /></div>
+        <DemoBanner />
+        <div className={demo ? "col grow" : "col grow page-in"} key={pageKey(router)} style={{ minHeight: 0 }}><Page /></div>
       </main>
+      {demo && <TourOverlay />}
       <SheetHost />
       {store.toast && (
         <div className={`toast ${store.toast.action ? "with-action" : ""} ${store.toast.leaving ? "out" : ""}`} key={store.toast.id} role="status"

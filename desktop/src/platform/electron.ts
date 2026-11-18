@@ -1,10 +1,12 @@
 // 桌面端（Electron）实现。系统能力由 electron/main.cjs 提供，经 preload 暴露为 window.charter。
 
-import type { CalendarSyncResult, DirEntry, FileStat, Platform, SyncState } from "./platform";
+import type { CalendarSyncResult, CloudKind, DirEntry, FileStat, Platform, SyncState, TreeInfo } from "./platform";
 
 interface Bridge {
   invoke(cmd: string, ...args: unknown[]): Promise<{ ok: true; value: any } | { ok: false; error: string; raw: string }>;
   onFolderChanged(cb: () => void): () => void;
+  onOcrProgress?(cb: (p: { done: number; total: number }) => void): () => void;
+  onCopyProgress?(cb: (p: { done: number; total: number }) => void): () => void;
   pathForFile(file: File): string;
   platform: string;
 }
@@ -41,6 +43,16 @@ export async function createElectronPlatform(): Promise<Platform> {
     removeDir: (path) => call("remove_dir", path),
     tempDir: () => call<string>("temp_dir"),
     syncStatus: (root) => call<SyncState>("sync_status", root),
+    cloudKind: (p) => call<CloudKind>("cloud_kind", p),
+    localRoot: () => call<string>("local_root"),
+    cloudSuggestions: () => call<{ kind: "icloud" | "onedrive"; path: string }[]>("cloud_suggestions"),
+    treeInfo: (p) => call<TreeInfo>("tree_info", p),
+    freeSpace: (p) => call<number | null>("free_space", p),
+    copyTree: async (from, to, onProgress) => {
+      const off = onProgress && b.onCopyProgress ? b.onCopyProgress((p) => onProgress(p.done, p.total)) : undefined;
+      try { return await call<{ files: number }>("copy_tree", from, to); } finally { off?.(); }
+    },
+    cancelCopy: () => call<void>("copy_cancel"),
     reveal: (path) => call("reveal", path),
     openPath: (path) => call("open_path", path),
     openURL: (url) => call("open_url", url),
@@ -53,6 +65,10 @@ export async function createElectronPlatform(): Promise<Platform> {
     fileURL: (path) => "charter-file://local/" + encodeURIComponent(path.replace(/\\/g, "/")),
     watch: async (path, onChange) => { const un = b.onFolderChanged(onChange); await call("watch", path); return un; },
     ocr: (png) => call<string>("ocr", png),
+    ocrBatch: async (images, onPage) => {
+      const off = onPage && b.onOcrProgress ? b.onOcrProgress((p) => onPage(p.done, p.total)) : undefined;
+      try { return await call<string[]>("ocr", images); } finally { off?.(); }
+    },
     cjkFont: async () => { try { return new Uint8Array(await call<Uint8Array>("cjk_font")); } catch { return null; } },
     bundledTemplates: () => call<string>("bundled_templates"),
     prefGet: (k) => { try { return localStorage.getItem("charter." + k); } catch { return null; } },

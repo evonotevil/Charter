@@ -10,9 +10,17 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerURL;
 
 export interface Extracted { pages: string[]; usedOCR: boolean }
 
-async function pageToPNG(page: pdfjs.PDFPageProxy): Promise<Uint8Array> {
+// 5.5.6：识别进度（“正在识别第 2/4 页”），界面用 useOcrStatus 订阅
+let ocrStatus: string | null = null;
+const statusListeners = new Set<() => void>();
+function setOcrStatus(s: string | null) { if (s === ocrStatus) return; ocrStatus = s; statusListeners.forEach((l) => l()); }
+export const subscribeOcrStatus = (l: () => void) => { statusListeners.add(l); return () => { statusListeners.delete(l); }; };
+export const getOcrStatus = () => ocrStatus;
+
+// 5.5.6：OCR 用 JPEG（编码比 PNG 快得多、文件小），长边 1800px 对证照类文字已经足够
+async function pageToImage(page: pdfjs.PDFPageProxy): Promise<Uint8Array> {
   const base = page.getViewport({ scale: 1 });
-  const scale = Math.min(3, 2200 / Math.max(base.width, base.height));
+  const scale = Math.min(2.5, 1800 / Math.max(base.width, base.height));
   const vp = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(vp.width);
@@ -21,8 +29,24 @@ async function pageToPNG(page: pdfjs.PDFPageProxy): Promise<Uint8Array> {
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   await page.render({ canvasContext: ctx, viewport: vp }).promise;
-  const blob: Blob = await new Promise((res) => canvas.toBlob((b) => res(b!), "image/png"));
+  const blob: Blob = await new Promise((res) => canvas.toBlob((b) => res(b!), "image/jpeg", 0.9));
+  canvas.width = canvas.height = 0;
   return new Uint8Array(await blob.arrayBuffer());
+}
+
+/** 多张图一次识别并报告逐页进度；平台不支持批量时逐张识别。单张失败记为空文字。 */
+export async function ocrMany(images: Uint8Array[]): Promise<string[]> {
+  const p = platform();
+  if (!images.length) return [];
+  const total = images.length;
+  const label = (done: number) => (total > 1 ? `正在识别第 ${Math.min(done + 1, total)}/${total} 页` : "正在识别");
+  setOcrStatus(label(0));
+  try {
+    if (p.ocrBatch) { try { return await p.ocrBatch(images, (done) => setOcrStatus(label(done))); } catch { /* 回落逐张 */ } }
+    const out: string[] = [];
+    for (const [i, img] of images.entries()) { setOcrStatus(label(i)); try { out.push(await p.ocr(img)); } catch { out.push(""); } }
+    return out;
+  } finally { setOcrStatus(null); }
 }
 
 export async function extract(path: string): Promise<Extracted> {
@@ -33,21 +57,23 @@ export async function extract(path: string): Promise<Extracted> {
     try {
       const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
       const pages: string[] = [];
-      let usedOCR = false;
+      const need: { index: number; image: Uint8Array }[] = [];
+      // 先读文字层；文字太少的页先全部渲染好，再一次交给系统 OCR（5.5.6：原来每页单独启动一次识别进程）
       for (let i = 1; i <= Math.min(doc.numPages, 4); i++) {
         const page = await doc.getPage(i);
         const tc = await page.getTextContent();
         let s = "";
         for (const it of tc.items as { str?: string; hasEOL?: boolean }[]) { s += it.str ?? ""; if (it.hasEOL) s += "\n"; }
         s = s.trim();
-        if ([...s].length > 40) { pages.push(s); continue; }
-        try {
-          const text = await p.ocr(await pageToPNG(page));
-          pages.push(text || s);
-          usedOCR = usedOCR || !!text;
-        } catch { pages.push(s); }
+        pages.push(s);
+        if ([...s].length > 40) continue;
+        try { need.push({ index: pages.length - 1, image: await pageToImage(page) }); } catch { /* 留文字层 */ }
+        page.cleanup();
       }
       await doc.destroy();
+      let usedOCR = false;
+      const texts = await ocrMany(need.map((x) => x.image));
+      need.forEach((x, k) => { const t = texts[k]?.trim(); if (t) { pages[x.index] = t; usedOCR = true; } });
       return { pages, usedOCR };
     } catch {
       return { pages: [""], usedOCR: false };
@@ -55,8 +81,9 @@ export async function extract(path: string): Promise<Extracted> {
   }
   if (["png", "jpg", "jpeg", "heic", "tif", "tiff", "bmp", "gif", "webp"].includes(ext)) {
     try {
-      const png = ext === "png" ? bytes : await toPNG(bytes, ext);
-      return { pages: [await p.ocr(png)], usedOCR: true };
+      // PNG / JPEG 系统 OCR 能直接读，不再先转码（5.5.6）
+      const img = ["png", "jpg", "jpeg"].includes(ext) ? bytes : await toPNG(bytes, ext);
+      return { pages: [(await ocrMany([img]))[0] ?? ""], usedOCR: true };
     } catch { return { pages: [""], usedOCR: true }; }
   }
   try { return { pages: [new TextDecoder().decode(bytes)], usedOCR: false }; } catch { return { pages: [""], usedOCR: false }; }

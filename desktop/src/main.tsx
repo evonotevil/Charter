@@ -19,6 +19,7 @@ import { Shell } from "./screens/Shell";
 import { startReminderLoop, syncCalendarFile } from "./services/packets";
 import { scheduleCalendarSync } from "./services/calendarSync";
 import { installSampleData } from "./state/sample";
+import { DemoPlatform, enterDemo, setRealPlatform, shouldStartTour } from "./state/demo";
 import { dragEnd, dragOver } from "./ui/drop";
 
 async function boot() {
@@ -36,9 +37,12 @@ async function boot() {
     const templates = (await import("./assets/charter-templates.json?raw")).default;
     setPlatform(new MemoryPlatform(templates));
   }
-  const p = platform();
+  let p = platform();
   document.documentElement.dataset.os = p.os;
-  const root = p.prefGet("dataRoot") ?? (await p.defaultRoot());
+  let root = p.prefGet("dataRoot") ?? (await p.defaultRoot());
+  // 5.5.6：第一次打开（数据文件夹是空的）先进入演示和入门教程；示例档案只在内存里
+  const tour = await shouldStartTour(p, root);
+  if (tour) { setRealPlatform(p); setPlatform(new DemoPlatform(p, await p.bundledTemplates())); enterDemo(); p = platform(); root = "/Charter"; }
   const store = new Store(root);
   const router = new Router();
   const sync = new SyncMonitor();
@@ -49,11 +53,11 @@ async function boot() {
     scheduleCalendarSync(s);
   };
   await store.load();
+  if (tour) await installSampleData(store, { quiet: true });
   if (!inTauri && !inElectron && store.data.companies.length === 0 && new URLSearchParams(location.search).has("sample")) {
     await installSampleData(store);
     if (new URLSearchParams(location.search).has("stress")) await (await import("./state/stress")).installStressData(store);
   }
-  sync.start(store.folder.root);
   autoCheckOnLaunch();
   // 5.4：回到窗口时重新检查源文件（可能刚同步下来，或在外部被移动、删除）
   window.addEventListener("focus", () => void store.checkFiles(true));
@@ -70,15 +74,18 @@ async function boot() {
 
 function App() {
   const { store, router, sync } = useApp();
-  // 文件夹变化（其他设备同步过来）、回到前台时重新检查
+  // 文件夹变化（其他设备同步过来）、回到前台时重新检查。5.5.6：只在多台电脑共用时做
+  const shared = store.shared;
   useEffect(() => {
+    if (!shared) { sync.stop(); return; }
     let un: (() => void) | undefined;
-    void platform().watch(store.folder.root, () => void store.reloadIfChangedElsewhere()).then((f) => { un = f; });
+    let cancelled = false;
+    void platform().watch(store.folder.root, () => void store.reloadIfChangedElsewhere()).then((f) => { if (cancelled) f(); else un = f; });
     const focus = () => void store.reloadIfChangedElsewhere();
     window.addEventListener("focus", focus);
     sync.start(store.folder.root);
-    return () => { un?.(); window.removeEventListener("focus", focus); };
-  }, [store.folder.root]);
+    return () => { cancelled = true; un?.(); window.removeEventListener("focus", focus); };
+  }, [store.folder.root, shared]);
   useEffect(() => startReminderLoop(store), [store]);
   // 拖入文件：落到当前公司或当前集团
   useEffect(() => {

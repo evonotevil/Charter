@@ -23,7 +23,7 @@ import {
 import {
   normAppointment, normChange, normCompany, normDocument, normGroup, normHolding, normParty, normPerson, normRecord, normRequest, normSettings,
 } from "../domain/normalize";
-import { platform } from "../platform/platform";
+import { platform, type CloudKind } from "../platform/platform";
 import { sha256File } from "../services/hash";
 import { roleByID } from "../domain/roles";
 
@@ -97,6 +97,9 @@ export type ShareholderStatus =
 
 // MARK: - Store
 
+/** 5.5.6：关闭共用后这台电脑使用的日历名，避免和其他电脑的“Charter”日历互相覆盖。 */
+export const localCalendarName = "Charter（本机）";
+
 export class Store {
   data: Data = emptyData();
   folder: FolderStore;
@@ -110,6 +113,9 @@ export class Store {
   redoStack: UndoEntry[] = [];
   snapshots: DataSnapshot[] = [];
   deviceName = "这台电脑";
+  /** 5.5.6：数据文件夹所在的同步盘；null = 只在这台电脑上（多台电脑共用关闭）。 */
+  cloud: CloudKind = null;
+  get shared() { return this.cloud !== null; }
   /** 每次变化递增，界面据此重新渲染。 */
   version = 0;
   private listeners = new Set<() => void>();
@@ -175,7 +181,8 @@ export class Store {
     if (!id) { id = uuid(); p.prefSet("deviceID", id); }
     return id;
   }
-  get isPrimaryDevice() { return !this.data.settings.primaryDeviceID || this.data.settings.primaryDeviceID === this.deviceID; }
+  /** 只在这台电脑使用时，提醒总由这台电脑发出（5.5.6）。 */
+  get isPrimaryDevice() { return !this.shared || !this.data.settings.primaryDeviceID || this.data.settings.primaryDeviceID === this.deviceID; }
   /** Charter 4：到期永远开着。 */
   get complianceOn() { return true; }
 
@@ -190,6 +197,54 @@ export class Store {
     await this.load();
   }
 
+  // MARK: 多台电脑共用（5.5.6）
+
+  /**
+   * 关闭共用：把同步盘里的数据文件夹复制到这台电脑并改用副本，原文件夹原样保留。
+   * 先写完待保存的修改；这台电脑原来负责发提醒的，先在同步盘那份里清掉，让其他电脑接手；本机改用“Charter（本机）”日历。
+   */
+  async leaveShared(dest: string, onProgress?: (done: number, total: number) => void) {
+    const p = platform();
+    if (!p.copyTree) throw new Error("这个版本不支持复制数据文件夹。");
+    if (this.isImporting) throw new Error("文件正在归档，请完成后再关闭共用。");
+    if ((await p.cloudKind?.(dest)) ?? null) throw new Error("这个位置也在同步盘里，复制过去仍会同步。请选择这台电脑上的其他位置。");
+    if (!(await this.ensureSaved("关闭多台电脑共用"))) throw new Error("还有修改没能保存，暂时不能关闭共用。");
+    const src = this.folder.root;
+    const wasPrimary = this.data.settings.primaryDeviceID === this.deviceID;
+    if (wasPrimary) {
+      this.saveSettings((s) => { s.primaryDeviceID = undefined; s.primaryDeviceName = undefined; });
+      if (!(await this.ensureSaved("交接提醒"))) throw new Error("没能把提醒交给其他电脑，暂时不能关闭共用。");
+    }
+    try { await p.copyTree(src, dest, onProgress); }
+    catch (e) {
+      if (wasPrimary) { this.saveSettings((s) => { s.primaryDeviceID = this.deviceID; s.primaryDeviceName = this.deviceName; }); await this.flushWrites(); }
+      throw e;
+    }
+    p.prefSet("calendarAutoSyncId", null);
+    await this.changeDataRoot(dest);
+    if (this.loadFailed) throw new Error("复制完成，但读取新文件夹失败。原来的档案没有改动。");
+    this.saveSettings((s) => { s.calendarName = localCalendarName; s.primaryDeviceID = this.deviceID; s.primaryDeviceName = this.deviceName; });
+    await this.flushWrites();
+  }
+
+  /** 开启共用：copy = 把这台电脑的档案复制到同步盘；existing = 改用同步盘里已有的 Charter 文件夹（这台电脑的修改不会带过去）。 */
+  async joinShared(mode: "copy" | "existing", dest: string, onProgress?: (done: number, total: number) => void) {
+    const p = platform();
+    if (this.isImporting) throw new Error("文件正在归档，请完成后再开启共用。");
+    if (!((await p.cloudKind?.(dest)) ?? null)) throw new Error("这个位置不在 iCloud 云盘或 OneDrive 里，其他电脑用不到。请选择同步盘里的位置。");
+    if (mode === "existing") {
+      if (!(await p.stat(p.join(dest, "charter.json"))).exists) throw new Error("这个文件夹里没有 Charter 档案。请选择另一台电脑正在使用的 Charter 文件夹。");
+    } else {
+      if (!p.copyTree) throw new Error("这个版本不支持复制数据文件夹。");
+      if (!(await this.ensureSaved("开启多台电脑共用"))) throw new Error("还有修改没能保存，暂时不能开启共用。");
+      await p.copyTree(this.folder.root, dest, onProgress);
+    }
+    p.prefSet("calendarAutoSyncId", null);
+    await this.changeDataRoot(dest);
+    if (this.loadFailed) throw new Error("读取同步盘里的档案失败。这台电脑上的档案没有改动，可以在“更换文件夹…”里换回去。");
+    if (mode === "copy" && this.data.settings.calendarName === localCalendarName) { this.saveSettings((s) => { s.calendarName = "Charter"; }); await this.flushWrites(); }
+  }
+
   async load() {
     const gen = ++this.loadGeneration;
     this.isLoading = true;
@@ -198,6 +253,7 @@ export class Store {
     try {
       this.deviceName = await platform().deviceName();
       const f = this.folder;
+      try { this.cloud = (await platform().cloudKind?.(f.root)) ?? null; } catch { this.cloud = null; }
       await f.checkFormat();
       await f.prepare();
       const library = await f.loadTemplates();

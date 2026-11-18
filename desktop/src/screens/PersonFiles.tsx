@@ -6,7 +6,7 @@ import { useApp } from "../state/hooks";
 import { Icon } from "../ui/Icon";
 import { Button, Card, Note } from "../ui/kit";
 import { DropTarget } from "../ui/drop";
-import { useStageFile } from "./common";
+import { RecognizingChip, useStageFile } from "./common";
 import { StatusTag, statusOfFreshness } from "./Status";
 import { CustodyChip, FileViewToggle, ScopeSummary, ScopedItems, itemStatus, useFileView } from "./Scope";
 import { EvidenceList, EvidenceSheet, LinkChips } from "./Evidence";
@@ -69,7 +69,7 @@ export function PersonFiles({ person }: { person: Person }) {
     <DropTarget message={`松开即可归档到 ${person.name} 的个人文件`} onDrop={onDrop}>
       <Card title={<span className="col gap6"><h2 className="t-card">个人文件</h2>
         <ScopeSummary counts={cnt} onConfigure={() => router.open({ kind: "scope", ownerKind: "person", owners: [person.id] })} /></span>}
-        action={<span className="row gap8">{busy && <span className="busy-chip" role="status"><span className="ring" />正在识别…</span>}<FileViewToggle /><Button size="small" kind="primary" icon="square.and.arrow.down" onClick={() => upload()}>上传</Button></span>}>
+        action={<span className="row gap8">{busy && <RecognizingChip />}<FileViewToggle /><Button size="small" kind="primary" icon="square.and.arrow.down" onClick={() => upload()}>上传</Button></span>}>
         {alerts.length > 0 && <Note tone={alerts.some((a) => a.state.kind === "expired") ? "bad" : "warn"} icon="clock">
           <b>{alerts.map((a) => `${archiveItemName(a)}${a.state.kind === "expired" ? "已过期" : "快到期"}`).join("，")}。</b><span>到期前会和公司文件一样提醒。</span>
         </Note>}

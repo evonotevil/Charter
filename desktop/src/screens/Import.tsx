@@ -10,6 +10,7 @@ import { type ArchiveRequest, type CompanyDraft, type ImportItem, type PendingIm
 import type { ImportContext } from "../state/router";
 import { recognitionContext } from "../state/actions";
 import { recognizeFile, thumbnail } from "../services/extract";
+import { useOcrStatus } from "./common";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Button, Checkbox, DateField, FormGroup, Modal, Pill, SelectField, SheetScaffold, Spinner, TextField } from "../ui/kit";
@@ -54,6 +55,7 @@ function PathThumb({ path }: { path: string }) {
 interface Result { count: number; companyIDs: string[]; newCompanyCount: number }
 
 export function ImportView({ paths, resume, context, onClose }: { paths: string[]; resume: boolean; context: ImportContext | null; onClose: () => void }) {
+  const ocrStatus = useOcrStatus();
   const { store, router } = useApp();
   const [items, setItems] = useState<ImportItem[]>([]);
   const [drafts, setDrafts] = useState<CompanyDraft[]>([]);
@@ -283,7 +285,7 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
     );
   }
 
-  const title = committing ? `正在归档 ${readyCount} 份文件` : working ? `正在识别 ${progress} / ${items.length} 份文件` : pending > 0 ? `识别完成，请确认 ${pending} 处` : "都确认好了，可以归档";
+  const title = committing ? `正在归档 ${readyCount} 份文件` : working ? `正在识别 ${Math.min(progress + 1, items.length)} / ${items.length} 份文件${ocrStatus && ocrStatus !== "正在识别" ? ` · ${ocrStatus.replace("正在识别", "")}` : ""}` : pending > 0 ? `识别完成，请确认 ${pending} 处` : "都确认好了，可以归档";
   const base = committing ? "正在复制文件并一次写入档案，请保持窗口打开。" : working ? "逐份读取首页，找出公司名称、注册编号、文件类型和签发日期。全部在这台电脑上完成，不会上传。" : "把握高的已自动归位。琥珀色的需要你看一眼，改好或点“确认”后一起归档。";
   const subtitle = (contextCompany ? `归档到 ${contextCompany.name}。` : contextGroup ? `优先在${latinPad(contextGroup.name)}的公司中匹配，新公司会归入这个集团。` : "") + base;
   const shown = working ? items.filter((i) => i.recognized) : items;

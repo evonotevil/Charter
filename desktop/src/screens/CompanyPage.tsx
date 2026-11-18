@@ -17,7 +17,7 @@ import { InlineText } from "./Agents";
 import { GroupAdjustSheet, ShareChangeSheet } from "./HoldingEdit";
 import { Note } from "../ui/kit";
 import { leftText } from "./InfoCard";
-import { useStageFile } from "./common";
+import { RecognizingChip, useStageFile } from "./common";
 import { useListMotion } from "../ui/motion";
 import { EntrySheet, ProvenanceLine, VerifyChip } from "./Trust";
 import { CompanyChips } from "./PropChips";
@@ -56,7 +56,7 @@ export function CompanyPage({ company: c }: { company: Company }) {
           title={<span className="row gap14" style={{ minWidth: 0 }}><span aria-hidden="true" style={{ display: "inline-flex" }}><JurisdictionBadge code={c.jurisdiction} size={44} tint={companyTint(store, c.id)} /></span>
             <InlineText wrap value={c.name} label="公司名称" onCommit={(v) => v.trim() && store.editCompanyField(c, "name", v.trim(), "公司名称")} style={{ font: "inherit" }} /></span>}
           subtitle={<span className="row gap6 wrap"><CompanyChips c={c} />{unv > 0 && <button className="v4-chip btnlike chip-pending" onClick={() => router.go("verify")}>{unv} 条待核实 ›</button>}</span>}>
-          {busy && <span className="busy-chip" role="status"><span className="ring" />正在识别…</span>}
+          {busy && <RecognizingChip />}
           <Button icon="square.and.arrow.down" onClick={() => upload()}>上传材料</Button>
           <Button kind="primary" icon="shippingbox" onClick={() => router.open({ kind: "packet", companyID: c.id })}>准备文件包</Button>
           <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" showsChevron={false} entries={[
@@ -231,8 +231,8 @@ function ArchiveSummary({ c }: { c: Company }) {
   );
 }
 
-function Card({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
-  return <KitCard title={title} action={aside}><div className="col">{children}</div></KitCard>;
+function Card({ title, aside, children, className }: { title: string; aside?: ReactNode; children: ReactNode; className?: string }) {
+  return <KitCard title={title} action={aside} className={className}><div className="col">{children}</div></KitCard>;
 }
 
 function KV({ k, children }: { k: string; children: ReactNode }) {
@@ -435,7 +435,7 @@ function Archive({ c, onUpload }: { c: Company; onUpload: (typeID: string) => vo
   };
   const hidden = items.filter((i) => !inView(i.custody)).length;
   return (
-    <Card title={view === "held" ? "已有材料" : "完整性审阅"} aside={<span className="row gap10"><FileViewToggle /></span>}>
+    <Card className="tour-files" title={view === "held" ? "已有材料" : "完整性审阅"} aside={<span className="row gap10"><FileViewToggle /></span>}>
       <div className="row gap10 wrap" style={{ paddingBottom: 8 }}>
         <ScopeSummary counts={cnt} onConfigure={() => router.open({ kind: "scope", ownerKind: "company", owners: [c.id] })} />
         <span className="spacer" />

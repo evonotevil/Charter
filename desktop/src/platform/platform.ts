@@ -9,15 +9,33 @@ export type SyncState =
   | { kind: "signedOut" }
   | { kind: "local" }
   /** 5.5.5：无法确认同步盘是否已上传完成（检测脚本失败等）。 */
-  | { kind: "unknown"; reason: string };
+  | { kind: "unknown"; reason: string }
+  /** 5.5.6：在同步盘里，但读不到上传状态（Mac 上的 OneDrive）。 */
+  | { kind: "cloud"; provider: string };
+
+/** 5.5.6：数据文件夹所在的同步盘；null = 只在这台电脑上。 */
+export type CloudKind = "icloud" | "onedrive" | null;
+export const cloudName = (k: CloudKind, os: string) => (k === "onedrive" ? "OneDrive" : k === "icloud" ? (os === "windows" ? "iCloud Drive" : "iCloud 云盘") : "这台电脑");
+export interface TreeInfo { files: number; bytes: number; cloudOnly: number }
 
 export interface FileStat { exists: boolean; isDir: boolean; mtime: number | null; size: number; /** 5.5.5：读不到（权限、读写错误等），不等于不存在。 */ error?: string }
 export interface DirEntry { name: string; isDir: boolean; mtime: number | null; size: number }
 
 export interface Platform {
   readonly os: "mac" | "windows" | "linux" | "web";
-  /** 默认数据文件夹（Mac 为 iCloud 云盘/Charter，Windows 优先 OneDrive/Charter）。 */
+  /** 默认数据文件夹。5.5.6 起新安装在这台电脑上；旧默认位置（同步盘里的 Charter）已有档案时沿用它。 */
   defaultRoot(): Promise<string>;
+  /** 5.5.6 多台电脑共用：路径在哪个同步盘里（只认 iCloud 云盘、OneDrive）。 */
+  cloudKind?(path: string): Promise<CloudKind>;
+  /** 这台电脑上的程序数据位置（Mac ~/Library/Application Support/Charter/Data，Windows %LOCALAPPDATA%\Charter\Data）。 */
+  localRoot?(): Promise<string>;
+  /** 同步盘里建议的位置。 */
+  cloudSuggestions?(): Promise<{ kind: Exclude<CloudKind, null>; path: string }[]>;
+  treeInfo?(path: string): Promise<TreeInfo>;
+  freeSpace?(path: string): Promise<number | null>;
+  /** 整份复制文件夹：先下载只在云端的文件；复制期间有改动的再补一次；失败或取消时删除已复制的部分。 */
+  copyTree?(from: string, to: string, onProgress?: (done: number, total: number) => void): Promise<{ files: number }>;
+  cancelCopy?(): Promise<void>;
   join(...parts: string[]): string;
   readText(path: string): Promise<string>;
   readBytes(path: string): Promise<Uint8Array>;
@@ -55,6 +73,8 @@ export interface Platform {
   watch(path: string, onChange: () => void): Promise<() => void>;
   /** 系统自带的文字识别（Mac：Vision；Windows：Windows.Media.Ocr）。传入 PNG 图像。 */
   ocr(png: Uint8Array): Promise<string>;
+  /** 5.5.6：一次识别多张图（PNG / JPEG），按顺序返回；onPage 在每识别完一页时回调。没有实现时逐张调用 ocr。 */
+  ocrBatch?(images: Uint8Array[], onPage?: (done: number, total: number) => void): Promise<string[]>;
   /** 系统里可嵌入 PDF 的中文字体（单个 TTF/OTF 文件）；找不到时为 null。 */
   cjkFont(): Promise<Uint8Array | null>;
   /** 应用自带的资源（内置模板）。 */

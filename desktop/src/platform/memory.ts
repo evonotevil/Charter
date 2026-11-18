@@ -1,9 +1,9 @@
 // 内存实现：浏览器预览与单元测试使用，不碰真实文件。
 
-import type { DirEntry, FileStat, Platform, SyncState } from "./platform";
+import type { CloudKind, DirEntry, FileStat, Platform, SyncState, TreeInfo } from "./platform";
 
 export class MemoryPlatform implements Platform {
-  readonly os = "web" as const;
+  readonly os: Platform["os"] = "web";
   files = new Map<string, { data: Uint8Array; mtime: number }>();
   dirs = new Set<string>(["/"]);
   prefs = new Map<string, string>();
@@ -61,6 +61,21 @@ export class MemoryPlatform implements Platform {
   }
   async tempDir() { await this.mkdirs("/tmp"); return "/tmp"; }
   async syncStatus(): Promise<SyncState> { return { kind: "local" }; }
+  // 5.5.6：测试里把 /Cloud 开头的路径当作同步盘
+  async cloudKind(p: string): Promise<CloudKind> { return this.norm(p).startsWith("/Cloud") ? "icloud" : null; }
+  async localRoot() { return "/Local/Charter"; }
+  async cloudSuggestions() { return [{ kind: "icloud" as const, path: "/Cloud/Charter" }]; }
+  async treeInfo(p: string): Promise<TreeInfo> { const root = this.norm(p) + "/"; let files = 0, bytes = 0; for (const [k, f] of this.files) if (k.startsWith(root)) { files++; bytes += f.data.length; } return { files, bytes, cloudOnly: 0 }; }
+  async freeSpace() { return 1e12; }
+  async copyTree(from: string, to: string, onProgress?: (done: number, total: number) => void) {
+    const src = this.norm(from) + "/", dst = this.norm(to);
+    if ([...this.files.keys()].some((k) => k.startsWith(dst + "/"))) throw new Error("目标文件夹不是空的，请换一个位置。");
+    const list = [...this.files.entries()].filter(([k]) => k.startsWith(src));
+    let done = 0;
+    for (const [k, f] of list) { await this.writeBytes(dst + "/" + k.slice(src.length), f.data.slice()); onProgress?.(++done, list.length); }
+    return { files: list.length };
+  }
+  async cancelCopy() { /* 内存实现瞬间完成 */ }
   async reveal() {}
   async openPath() {}
   async openURL() {}
@@ -96,7 +111,8 @@ export class MemoryPlatform implements Platform {
     return URL.createObjectURL(new Blob([f.data as BlobPart], { type }));
   }
   async watch() { return () => {}; }
-  async ocr() { return ""; }
+  async ocr(_png?: Uint8Array) { return ""; }
+  ocrBatch?: (images: Uint8Array[], onPage?: (done: number, total: number) => void) => Promise<string[]>;
   async cjkFont() { return null; }
   async bundledTemplates() { return this.templates; }
   prefGet(k: string) { return this.prefs.get(k) ?? null; }
