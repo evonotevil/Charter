@@ -4,7 +4,8 @@
 // 顶部显示“共 N 页 · 第 x 页”和“打开原件”，避免误以为缺页。
 
 import { useEffect, useRef, useState } from "react";
-import { pdfjs } from "../services/extract";
+import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
+import { loadPdfReader } from "../services/extract";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Button } from "../ui/kit";
@@ -14,7 +15,6 @@ const MAX_PIXELS = 4_000_000;
 /** 预渲染范围：可见页上下各约一屏。 */
 const MARGIN = "100% 0px";
 
-type PdfDoc = Awaited<ReturnType<typeof pdfjs.getDocument>["promise"]>;
 type RenderTask = { cancel: () => void; promise: Promise<unknown> };
 
 /** 释放画布占用的内存并移出页面。 */
@@ -31,18 +31,20 @@ export function FilePreview({ path, onOpenOriginal, onRelocate, onReissue }: { p
   const [pages, setPages] = useState(0);
   const [aspect, setAspect] = useState(1.414);
   const [current, setCurrent] = useState(1);
-  const docRef = useRef<PdfDoc | null>(null);
+  const docRef = useRef<PDFDocumentProxy | null>(null);
 
   // 1. 加载文档（只读一次，不渲染）
   useEffect(() => {
     let cancelled = false;
-    let task: ReturnType<typeof pdfjs.getDocument> | null = null;
+    let task: PDFDocumentLoadingTask | null = null;
     setState("loading"); setPages(0); setCurrent(1);
     (async () => {
       try {
         const bytes = await platform().readBytes(path);
         if (cancelled) return;
         if (!pdf) { setState("ok"); return; }
+        const pdfjs = await loadPdfReader();
+        if (cancelled) return;
         task = pdfjs.getDocument({ data: bytes });
         const doc = await task.promise;
         if (cancelled) { await doc.destroy(); return; }
@@ -100,7 +102,7 @@ export function FilePreview({ path, onOpenOriginal, onRelocate, onReissue }: { p
 }
 
 /** 一页：进入可见范围才渲染；离开就取消渲染并释放画布。 */
-function PdfPage({ index, docRef, aspect, root, onFail }: { index: number; docRef: React.MutableRefObject<PdfDoc | null>; aspect: number; root: React.RefObject<HTMLDivElement>; onFail: () => void }) {
+function PdfPage({ index, docRef, aspect, root, onFail }: { index: number; docRef: React.MutableRefObject<PDFDocumentProxy | null>; aspect: number; root: React.RefObject<HTMLDivElement>; onFail: () => void }) {
   const box = useRef<HTMLDivElement>(null);
   const [near, setNear] = useState(false);
   useEffect(() => {
@@ -114,7 +116,7 @@ function PdfPage({ index, docRef, aspect, root, onFail }: { index: number; docRe
     let cancelled = false;
     let task: RenderTask | null = null;
     let canvas: HTMLCanvasElement | null = null;
-    let page: Awaited<ReturnType<PdfDoc["getPage"]>> | null = null;
+    let page: PDFPageProxy | null = null;
     (async () => {
       try {
         page = await doc.getPage(index);

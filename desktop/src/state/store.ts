@@ -143,23 +143,50 @@ export class Store {
   /** 5.4：现行文件中，数据文件夹里找不到原文件的（文档 id）。变化时换新对象，供缓存失效。 */
   missingFiles: Set<string> = new Set();
   private fileCheckDocs: unknown = null;
-  /** 逐个检查现行文件是否存在。数据没变时跳过；force 用于窗口重新获得焦点（文件可能在外部被移动或同步下来）。 */
+  private fileCheckRun?: Promise<void>;
+  private pendingFileCheck?: { force: boolean };
+
+  /** 回到前台时再检查外部变化。多个请求共享工作队列，后来的刷新取代未完成的旧检查。 */
   async checkFiles(force = false) {
-    const docs = this.data.documents;
-    if (!force && docs === this.fileCheckDocs) return;
-    this.fileCheckDocs = docs;
+    if (!force && this.data.documents === this.fileCheckDocs) return this.fileCheckRun;
+    this.fileCheckDocs = this.data.documents;
+    this.pendingFileCheck = { force };
+    this.fileCheckRun ??= this.drainFileChecks();
+    return this.fileCheckRun;
+  }
+
+  private async drainFileChecks() {
+    try {
+      while (this.pendingFileCheck) {
+        const { force } = this.pendingFileCheck;
+        this.pendingFileCheck = undefined;
+        await this.scanFiles(force);
+      }
+    } finally {
+      this.fileCheckRun = undefined;
+    }
+  }
+
+  private async scanFiles(force: boolean) {
+    const docs = this.data.documents, folder = this.folder;
+    const current = () => !this.pendingFileCheck && docs === this.data.documents && folder === this.folder;
     const p = platform();
     const miss = new Set<string>();
-    let unreadable = 0, why = "";
-    await Promise.all(docs.filter((d) => !d.supersededBy && d.filePath).map(async (d) => {
-      try {
-        const st = await p.stat(this.fileURL(d));
-        // 5.5.5：读不到（权限、读写错误）不算缺文件，单独提示原因
-        if (st.error) { unreadable++; why = st.error; } else if (!st.exists) miss.add(d.id);
-      } catch { miss.add(d.id); }
-    }));
-    if (unreadable && docs === this.data.documents && force) this.setError(`有 ${unreadable} 份文件读不到（${why}），可能是权限或磁盘问题，不是文件丢失。请检查数据文件夹的访问权限。`);
-    if (docs !== this.data.documents) return;
+    let next = 0, unreadable = 0, why = "";
+    const worker = async () => {
+      while (current() && next < docs.length) {
+        const d = docs[next++];
+        if (d.supersededBy || !d.filePath) continue;
+        try {
+          const st = await p.stat(folder.abs(d.filePath));
+          if (st.error) { unreadable++; why = st.error; } else if (!st.exists) miss.add(d.id);
+        } catch { miss.add(d.id); }
+      }
+    };
+    // 限制同时发给桌面进程的 stat 数量，避免大档案或慢速同步盘占满 IPC。
+    await Promise.all(Array.from({ length: Math.min(8, docs.length) }, worker));
+    if (!current()) return;
+    if (unreadable && force) this.setError(`有 ${unreadable} 份文件读不到（${why}），可能是权限或磁盘问题，不是文件丢失。请检查数据文件夹的访问权限。`);
     const same = miss.size === this.missingFiles.size && [...miss].every((x) => this.missingFiles.has(x));
     if (!same) { this.missingFiles = miss; this.emit(); }
   }

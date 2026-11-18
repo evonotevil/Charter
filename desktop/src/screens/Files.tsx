@@ -157,15 +157,12 @@ function DocumentsView() {
       store.setError(`导出 ZIP 失败：${(e instanceof Error ? e.message : String(e))}。请换一个保存位置再试。`);
     } finally { setExporting(false); }
   };
-  const batchMenu = (id: string): MenuEntry[] | undefined => {
-    if (!selected.has(id) || selected.size < 2) return undefined;
-    const list = ordered.filter((d) => selected.has(d.id));
-    const usable = list.filter((d) => !store.fileMissing(d)).length;
-    return [header(`已选 ${list.length} 份`), ...(usable ? [item(`打开 ${usable} 份`, "arrow.up.forward.app", () => batchOpen(store, list)),
-      item(`${revealLabel} ${usable} 份`, "folder", () => batchOpen(store, list, true))] : []),
-      item("导出为 ZIP…", "archivebox", () => void exportZIP(list)), item(`移到废纸篓 ${list.length} 份…`, "trash", () => void removeSelected(list))];
+  const makeBatchMenu = (): MenuEntry[] => {
+    const usable = selectedDocs.filter((d) => !store.fileMissing(d)).length;
+    return [header(`已选 ${selectedDocs.length} 份`), ...(usable ? [item(`打开 ${usable} 份`, "arrow.up.forward.app", () => batchOpen(store, selectedDocs)),
+      item(`${revealLabel} ${usable} 份`, "folder", () => batchOpen(store, selectedDocs, true))] : []),
+      item("导出为 ZIP…", "archivebox", () => void exportZIP(selectedDocs)), item(`移到废纸篓 ${selectedDocs.length} 份…`, "trash", () => void removeSelected(selectedDocs)), divider];
   };
-
   const pending = store.pendingImport;
   const section = (title: string, owner: NodeRef | null, raw: Document[]) => {
     const list = sortDocs(raw);
@@ -185,7 +182,7 @@ function DocumentsView() {
         </div>
         {grid ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 200px))", gap: 16 }}>
-            {list.map((d) => <FileCard key={d.id} d={d} showOwner={!owner} selected={selected.has(d.id)} extraMenu={batchMenu(d.id)} onClick={(e) => click(e, d.id)} />)}
+            {list.map((d) => <FileCard key={d.id} d={d} showOwner={!owner} selected={selected.has(d.id)} extraMenu={selected.size > 1 && selected.has(d.id) ? makeBatchMenu : undefined} onClick={(e) => click(e, d.id)} />)}
           </div>
         ) : (
           <div className="card flush" style={{ overflowX: "auto" }}>
@@ -193,7 +190,7 @@ function DocumentsView() {
               {/* 5.3.2：各分组共用同一套列宽，跨分组竖向对齐 */}
               <colgroup><col style={{ width: 52 }} /><col />{!owner && <col style={{ width: 220 }} />}<col style={{ width: 132 }} /><col style={{ width: 132 }} /><col style={{ width: 168 }} /><col style={{ width: 132 }} /></colgroup>
               <thead><tr><th><span className="sr-only">选择</span></th>{th("type", "文件")}{!owner && <th>归属</th>}{th("issue", "签发")}{th("expiry", "到期")}{th("status", "状态")}<th><span className="sr-only">操作</span></th></tr></thead>
-              <tbody>{list.map((d) => <FileTableRow key={d.id} d={d} showOwner={!owner} selected={selected.has(d.id)} extraMenu={batchMenu(d.id)} onSelect={(e) => click(e, d.id)}
+              <tbody>{list.map((d) => <FileTableRow key={d.id} d={d} showOwner={!owner} selected={selected.has(d.id)} extraMenu={selected.size > 1 && selected.has(d.id) ? makeBatchMenu : undefined} onSelect={(e) => click(e, d.id)}
                 onToggle={() => { const s2 = new Set(selected); if (s2.has(d.id)) s2.delete(d.id); else s2.add(d.id); setSelected(s2); setAnchor(d.id); }} />)}</tbody>
             </table>
           </div>
@@ -273,21 +270,21 @@ function DocumentsView() {
   );
 }
 
-function FileCard({ d, showOwner, selected, extraMenu, onClick }: { d: Document; showOwner: boolean; selected: boolean; extraMenu?: MenuEntry[]; onClick: (e: React.MouseEvent) => void }) {
+function FileCard({ d, showOwner, selected, extraMenu, onClick }: { d: Document; showOwner: boolean; selected: boolean; extraMenu?: () => MenuEntry[]; onClick: (e: React.MouseEvent) => void }) {
   const { store, router } = useApp();
   const ctx = useContextMenu();
   const [startStage, stageNode] = useStageFile();
   const [reissue, setReissue] = useState(false);
   const f = store.freshness(d);
-  const menu: MenuEntry[] = [
-    ...(extraMenu ? [...extraMenu, divider] : []),
+  const menu = (): MenuEntry[] => [
+    ...(extraMenu?.() ?? []),
     ...openEntries(store, d),
     item("归档新版…", "square.and.arrow.up", () => void startStage({ typeID: d.typeID, owner: d.owner, replaces: d, form: d.form, onArchived: (n) => router.open({ kind: "document", id: n.id }) })),
     divider,
     item("移到废纸篓…", "trash", () => router.open({ kind: "trashDocs", ids: [d.id] }), { destructive: true }),
   ];
   return (
-    <button className="col gap12 file-card" onClick={onClick} onContextMenu={(e) => ctx.open(e, menu)} title={d.originalFileName} aria-label={`${store.docType(d.typeID)?.name ?? "文件"}，${freshnessLabel(f)}`} aria-pressed={selected}
+    <button className="col gap12 file-card" onClick={onClick} onContextMenu={(e) => ctx.open(e, menu())} title={d.originalFileName} aria-label={`${store.docType(d.typeID)?.name ?? "文件"}，${freshnessLabel(f)}`} aria-pressed={selected}
       style={{ padding: 12, borderRadius: "var(--r-tile)", background: "var(--surface)", textAlign: "left", position: "relative", borderColor: selected ? "var(--green)" : undefined }}>
       <span className="thumb" style={{ height: 172, borderRadius: "var(--r-control)", background: "var(--surface-sunken)", display: "grid", placeItems: "center", width: "100%" }}>
         <FileThumb doc={d} alert={freshnessPill(f) === "bad"} width={120} height={150} />
@@ -305,7 +302,7 @@ function FileCard({ d, showOwner, selected, extraMenu, onClick }: { d: Document;
 }
 
 /** 文件表的一行：具体文件名优先；类型、同类第几份在第二行；来源路径和校验值放在详情里。 */
-function FileTableRow({ d, showOwner, selected, extraMenu, onSelect, onToggle }: { d: Document; showOwner: boolean; selected: boolean; extraMenu?: MenuEntry[]; onSelect: (e: React.MouseEvent) => void; onToggle: () => void }) {
+function FileTableRow({ d, showOwner, selected, extraMenu, onSelect, onToggle }: { d: Document; showOwner: boolean; selected: boolean; extraMenu?: () => MenuEntry[]; onSelect: (e: React.MouseEvent) => void; onToggle: () => void }) {
   const { store, router } = useApp();
   const ctx = useContextMenu();
   const [startStage, stageNode] = useStageFile();
@@ -321,8 +318,8 @@ function FileTableRow({ d, showOwner, selected, extraMenu, onSelect, onToggle }:
   const sub = t?.name ?? "未知类型";
   const subTitle = [sub, same.length > 1 ? `同类 ${same.indexOf(d) + 1}/${same.length} 份` : "", older ? `替代了 ${older} 个旧版` : "", d.notes].filter(Boolean).join("\n");
   const upload = () => void startStage({ typeID: d.typeID, owner: d.owner, replaces: d, form: d.form, onArchived: (n) => router.open({ kind: "document", id: n.id }) });
-  const menu: MenuEntry[] = [
-    ...(extraMenu ? [...extraMenu, divider] : []),
+  const menu = (): MenuEntry[] => [
+    ...(extraMenu?.() ?? []),
     ...(f.kind === "fileMissing" ? [item("重新定位…", "folder", () => void store.relocateDocument(d))] : [item("打开", "arrow.up.forward.app", () => void store.openDocument(d)),
       item(platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示", "folder", () => void store.revealDocument(d))]),
     item("归档新版…", "square.and.arrow.up", upload),
@@ -330,7 +327,7 @@ function FileTableRow({ d, showOwner, selected, extraMenu, onSelect, onToggle }:
     item("移到废纸篓…", "trash", () => router.open({ kind: "trashDocs", ids: [d.id] }), { destructive: true }),
   ];
   return (
-    <tr className={selected ? "sel" : ""} tabIndex={0} onClick={onSelect} onContextMenu={(e) => ctx.open(e, menu)} aria-selected={selected}
+    <tr className={selected ? "sel" : ""} tabIndex={0} onClick={onSelect} onContextMenu={(e) => ctx.open(e, menu())} aria-selected={selected}
       onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) router.open({ kind: "document", id: d.id }); if (e.key === " " && e.target === e.currentTarget) { e.preventDefault(); onToggle(); } }}>
       <td onClick={(e) => { e.stopPropagation(); onToggle(); }}><span className={`mark sq ${selected ? "on" : ""}`} role="checkbox" aria-checked={selected} aria-label={`选择 ${fileName}`}>{selected && <Icon name="checkmark" size={10} strokeWidth={3.5} />}</span></td>
       <td><div className="col" style={{ minWidth: 0, gap: 1 }}><span className="fname name-1" title={d.originalFileName}>{fileName}</span><span className="t-meta muted name-1" title={subTitle}>{sub}</span></div></td>

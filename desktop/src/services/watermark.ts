@@ -6,8 +6,8 @@
 // - Word、Excel 等其他格式无法加水印，原样放入并在目录里注明。
 // 带电子签名的 PDF 加水印会使签名失效，加密的 PDF 无法修改；这两类由界面提示。
 
-import { PDFDict, PDFDocument, PDFName, PDFRef, PDFStream, degrees, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import fontkit from "@pdf-lib/fontkit";
+import type { PDFDocument, PDFName as PDFNameType, PDFFont, PDFPage } from "pdf-lib";
+import { loadPdfReader } from "./extract";
 import { platform } from "../platform/platform";
 import { brandFont, brandFontSubset } from "./brandfont";
 
@@ -127,6 +127,7 @@ async function fontFor(text: string): Promise<Uint8Array | null> {
   return subsetCache.get(key)!;
 }
 async function embed(doc: PDFDocument, text: string): Promise<PDFFont> {
+  const { default: fontkit } = await import("@pdf-lib/fontkit");
   doc.registerFontkit(fontkit);
   const sub = await fontFor(text);
   if (sub) return doc.embedFont(sub, { subset: false });
@@ -148,11 +149,12 @@ function pageFrame(page: PDFPage) {
   return { W, H, r, map };
 }
 
-export function stripMetadata(doc: PDFDocument) {
+async function stripMetadata(doc: PDFDocument) {
+  const { PDFDict, PDFName, PDFRef, PDFStream } = await import("pdf-lib");
   doc.setTitle(""); doc.setAuthor(""); doc.setSubject(""); doc.setKeywords([]); doc.setCreator("Charter"); doc.setProducer("Charter");
   // 5.5.5：不只解除引用，还要把 XMP 对象本身删掉，否则保存后仍留在文件里。页面、字体等对象上的 Metadata 一并处理。
   const M = PDFName.of("Metadata");
-  const drop = (dict: { get(k: PDFName): unknown; delete(k: PDFName): void }) => {
+  const drop = (dict: { get(k: PDFNameType): unknown; delete(k: PDFNameType): void }) => {
     const v = dict.get(M);
     if (!v) return;
     dict.delete(M);
@@ -169,6 +171,7 @@ export function stripMetadata(doc: PDFDocument) {
 
 /** 给 PDF 每页叠文字水印。text 为空时只清除元数据。 */
 export async function watermarkPDF(bytes: Uint8Array, text: string, s: WatermarkSettings | null, o: ApplyOptions): Promise<Uint8Array> {
+  const { PDFDocument, degrees, rgb } = await import("pdf-lib");
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
   if (s && text) {
     const font = await embed(doc, text);
@@ -187,7 +190,7 @@ export async function watermarkPDF(bytes: Uint8Array, text: string, s: Watermark
       o.onPage?.(i + 1, pages.length);
     });
   }
-  if (o.stripMeta) stripMetadata(doc);
+  if (o.stripMeta) await stripMetadata(doc);
   return doc.save();
 }
 
@@ -252,7 +255,7 @@ export async function watermarkImage(bytes: Uint8Array, ext: string, text: strin
 
 /** 压平：每页渲染成 150 dpi 图片并合成水印，重组为新 PDF（没有文字层，也不保留元数据）。 */
 export async function flattenPDF(bytes: Uint8Array, text: string, s: WatermarkSettings, o: ApplyOptions): Promise<Uint8Array> {
-  const { pdfjs } = await import("./extract");
+  const [pdfjs, { PDFDocument }] = await Promise.all([loadPdfReader(), import("pdf-lib")]);
   const src = await pdfjs.getDocument({ data: bytes.slice() }).promise;
   const out = await PDFDocument.create();
   try {
@@ -272,7 +275,7 @@ export async function flattenPDF(bytes: Uint8Array, text: string, s: WatermarkSe
       o.onPage?.(i, src.numPages);
     }
   } finally { await src.destroy(); }
-  stripMetadata(out);
+  await stripMetadata(out);
   return out.save();
 }
 

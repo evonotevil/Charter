@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PacketTemplate, PacketWatermark } from "../domain/models";
+import { loadPdfReader } from "../services/extract";
 import { type PacketItem, type WMEligibility, packetIncluded, packetItemID, packetItemTitle, wmContext, wmEligibility } from "../services/packets";
 import { type WMPart, type WMStyle, type WatermarkSettings, WM_TAGS, defaultWatermark, drawWatermark, kindOf, resolveText, tagLabel } from "../services/watermark";
 import type { Company } from "../domain/models";
@@ -111,7 +112,7 @@ function renderPage(url: string, kind: "pdf" | "image", page: number, maxW: numb
     pageCache.set(key, (async () => {
       const bytes = await platform().readBytes(url);
       if (kind === "image") { const bmp = await createImageBitmap(new Blob([bytes as BlobPart])); return { bmp, w: bmp.width, h: bmp.height, pages: 1 }; }
-      const { pdfjs } = await import("../services/extract");
+      const pdfjs = await loadPdfReader();
       const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
       const pg = await doc.getPage(Math.min(page, doc.numPages));
       const vp1 = pg.getViewport({ scale: 1 }); const vp = pg.getViewport({ scale: maxW / vp1.width });

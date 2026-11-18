@@ -1,12 +1,16 @@
 // 文字提取：PDF 先读文字层；文字太少的页面渲染成图片，交给系统 OCR。图片直接 OCR。
 
-import * as pdfjs from "pdfjs-dist";
+import type { PDFPageProxy } from "pdfjs-dist";
 import workerURL from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { extname, platform } from "../platform/platform";
 import type { RecognitionContext, Recognition } from "../domain/recognize";
 import { recognizeText } from "../domain/recognize";
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerURL;
+export async function loadPdfReader() {
+  const reader = await import("pdfjs-dist");
+  reader.GlobalWorkerOptions.workerSrc = workerURL;
+  return reader;
+}
 
 export interface Extracted { pages: string[]; usedOCR: boolean }
 
@@ -18,7 +22,7 @@ export const subscribeOcrStatus = (l: () => void) => { statusListeners.add(l); r
 export const getOcrStatus = () => ocrStatus;
 
 // 5.5.6：OCR 用 JPEG（编码比 PNG 快得多、文件小），长边 1800px 对证照类文字已经足够
-async function pageToImage(page: pdfjs.PDFPageProxy): Promise<Uint8Array> {
+async function pageToImage(page: PDFPageProxy): Promise<Uint8Array> {
   const base = page.getViewport({ scale: 1 });
   const scale = Math.min(2.5, 1800 / Math.max(base.width, base.height));
   const vp = page.getViewport({ scale });
@@ -55,6 +59,7 @@ export async function extract(path: string): Promise<Extracted> {
   const bytes = await p.readBytes(path);
   if (ext === "pdf") {
     try {
+      const pdfjs = await loadPdfReader();
       const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
       const pages: string[] = [];
       const need: { index: number; image: Uint8Array }[] = [];
@@ -126,6 +131,8 @@ export async function thumbnail(path: string, width = 240, signal?: { cancelled:
       const url = c.toDataURL("image/jpeg", 0.8); c.width = c.height = 0;
       return url;
     }
+    const pdfjs = await loadPdfReader();
+    if (signal?.cancelled) return null;
     const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
     try {
       const page = await doc.getPage(1);
@@ -141,5 +148,3 @@ export async function thumbnail(path: string, width = 240, signal?: { cancelled:
     } finally { await doc.destroy(); }
   } catch { return null; } finally { thumbDone(); }
 }
-
-export { pdfjs };

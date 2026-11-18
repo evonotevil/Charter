@@ -1,7 +1,7 @@
 // 档案备份：把整个数据文件夹（档案记录、模板库、归档文件、集团图标）打成一个 ZIP，
 // 可以存到别处，或在另一台电脑、另一个数据文件夹里恢复。和“配置”不同，备份包含公司、集团、人员和文件。
 
-import JSZip from "jszip";
+import type JSZip from "jszip";
 import { platform } from "../platform/platform";
 import { writeZip } from "./files";
 import { type DataSnapshot, FORMAT_VERSION, makeSnapshot, restoreSnapshot } from "../domain/folder";
@@ -106,7 +106,8 @@ export interface OpenedBackup { info: BackupInfo; zip: JSZip }
 /** 读取并检查备份文件。 */
 export async function readBackup(path: string): Promise<OpenedBackup> {
   let zip: JSZip;
-  try { zip = await JSZip.loadAsync(await platform().readBytes(path)); }
+  const { default: Zip } = await import("jszip");
+  try { zip = await Zip.loadAsync(await platform().readBytes(path)); }
   catch { throw new Error("这个文件不是 Charter 备份，或者已经损坏。请选择用“导出备份…”生成的 ZIP 文件。"); }
   const m = zip.file(MANIFEST);
   if (!m) {

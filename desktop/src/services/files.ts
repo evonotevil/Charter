@@ -1,8 +1,6 @@
 // 生成目录 PDF、ZIP 和 XLSX。PDF 使用系统里的中文字体（子集嵌入），找不到时退回只显示英文的字体。
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
-import fontkit from "@pdf-lib/fontkit";
-import JSZip from "jszip";
+import type { PDFFont } from "pdf-lib";
 import { platform } from "../platform/platform";
 import { brandFontSubset } from "./brandfont";
 
@@ -16,15 +14,15 @@ async function cjk(): Promise<Uint8Array | null> {
   return fontCache;
 }
 
-// 5.5：目录 PDF 的强调色改用 Charter 设计系统的 green-text（#2F7A00）与 ink（#25352C），不再用旧版的红色
-const accent = rgb(0x2f / 255, 0x7a / 255, 0);
-const ink = rgb(0x25 / 255, 0x35 / 255, 0x2c / 255);
-const muted = rgb(0x5f / 255, 0x6d / 255, 0x66 / 255);
-const amber = rgb(0x93 / 255, 0x61 / 255, 0);
-
 export async function writePDF(title: string, subtitle: string, sections: PDFSection[], footer?: string): Promise<Uint8Array> {
+  const [{ PDFDocument, StandardFonts, rgb }, { default: fontkit }] = await Promise.all([import("pdf-lib"), import("@pdf-lib/fontkit")]);
   const doc = await PDFDocument.create();
   doc.registerFontkit(fontkit);
+  // 5.5：目录 PDF 的强调色改用 Charter 设计系统的 green-text（#2F7A00）与 ink（#25352C），不再用旧版的红色
+  const accent = rgb(0x2f / 255, 0x7a / 255, 0);
+  const ink = rgb(0x25 / 255, 0x35 / 255, 0x2c / 255);
+  const muted = rgb(0x5f / 255, 0x6d / 255, 0x66 / 255);
+  const amber = rgb(0x93 / 255, 0x61 / 255, 0);
   // 5.5：优先用随包附带的思源黑体（取子集），两端效果一致；拿不到时退回系统中文字体
   const allText = [title, subtitle, footer ?? "", ...sections.flatMap((x) => [x.heading, ...x.lines])].join("") + "0123456789/ （）·";
   const brand = await brandFontSubset(allText);
@@ -91,6 +89,7 @@ export async function writePDF(title: string, subtitle: string, sections: PDFSec
 
 /** “仅存储”的 ZIP（PDF 本身已压缩），UTF-8 文件名，Windows 和 Mac 都能正确显示中文。 */
 export async function writeZip(entries: { path: string; data: Uint8Array }[], onProgress?: (done: number, total: number) => void): Promise<Uint8Array> {
+  const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
   entries.forEach((e, i) => { zip.file(e.path, e.data, { binary: true, createFolders: false }); onProgress?.(i + 1, entries.length); });
   return await zip.generateAsync({ type: "uint8array", compression: "STORE", platform: "UNIX" });
@@ -106,6 +105,7 @@ export async function writeXLSX(sheet: string, rows: string[][]): Promise<Uint8A
     xml += "</row>";
   });
   xml += "</sheetData></worksheet>";
+  const { default: JSZip } = await import("jszip");
   const z = new JSZip();
   z.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
   z.file("_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');

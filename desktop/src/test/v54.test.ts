@@ -82,3 +82,37 @@ describe("5.4.1 Mac 日历查询窗口", () => {
     expect(queryChunks([], "2026-11-04")).toEqual([[-800, 295], [295, 450]]);
   });
 });
+
+it("回到窗口时限量检查源文件，连续刷新后显示最新检查结果", async () => {
+  const p = new MemoryPlatform(templates);
+  setPlatform(p);
+  const s = new Store("/Charter");
+  s.data.documents = Array.from({ length: 300 }, (_, i) => ({
+    id: String(i), owner: ref("company", "sample"), typeID: "common.receipt",
+    filePath: String(i), originalFileName: String(i), form: "", needsUpdate: false, addedOn: s.today, notes: "",
+  }));
+  let active = 0, peak = 0, exists = false;
+  let started!: () => void, resume!: () => void;
+  const firstRead = new Promise<void>((resolve) => { started = resolve; });
+  const gate = new Promise<void>((resolve) => { resume = resolve; });
+  p.stat = async () => {
+    active++;
+    peak = Math.max(peak, active);
+    const found = exists;
+    started();
+    await gate;
+    active--;
+    return { exists: found, isDir: false, mtime: null, size: 0 };
+  };
+  const first = s.checkFiles(true);
+  await firstRead;
+  exists = true;
+  const second = s.checkFiles(true);
+  resume();
+  await Promise.all([first, second]);
+  expect(peak).toBeLessThanOrEqual(8);
+  expect(s.missingFiles.size).toBe(0);
+  exists = false;
+  await s.checkFiles(true);
+  expect(s.missingFiles.size).toBe(300);
+});
