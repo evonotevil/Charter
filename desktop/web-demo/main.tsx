@@ -8,7 +8,11 @@ import "./story.css";
 import { Button, Pill } from "../src/ui/kit";
 import { LogoMark } from "../src/ui/Logo";
 import { WorkspaceDemo } from "./WorkspaceDemo";
+import type { SiteDownloads } from "./vite.config";
 
+declare const __SITE_DOWNLOADS__: SiteDownloads;
+const { platforms, releaseUrl, checksums } = __SITE_DOWNLOADS__;
+const version = import.meta.env.VITE_RELEASE_VERSION;
 
 const scenes = [
   { id: "structure", title: "这家公司属于谁？", description: "从集团的股权图看子公司、持股比例和控制关系，再顺着结构找到你要查的公司。", label: "看集团关系", view: "structure", next: "company", action: "接着看公司档案" },
@@ -22,11 +26,6 @@ const views = [
   { label: "管文件", view: "documents", caption: "按公司和文件类型归档，查看现行文件和需要更新的材料。" },
   { label: "备材料", view: "packet", caption: "以银行开户为例，体验材料包流程。水印只处理副本，原件不变。" },
   { label: "查任职", view: "people", caption: "从人员档案查看关联公司与任职情况。" },
-] as const;
-const release = "https://github.com/evonotevil/Charter/releases";
-const packages = [
-  ["Mac", [["Apple 芯片", "Mac-arm64.dmg"], ["Intel 芯片", "Mac-x64.dmg"]]],
-  ["Windows", [["安装版", "Windows-Setup.exe"], ["免安装版", "Windows-x64.zip"]]],
 ] as const;
 
 function Gallery() {
@@ -58,8 +57,9 @@ function Downloads() {
   const [platform, setPlatform] = useState(0);
   const [variant, setVariant] = useState(0);
   const [copyStatus, setCopyStatus] = useState("");
-  const [platformName, variants] = packages[platform];
-  const [label, file] = variants[variant];
+  const { name: platformName, options } = platforms[platform];
+  const selected = options[variant];
+  const isMac = platformName === "Mac";
   const command = "xattr -cr /Applications/Charter.app";
   async function copyCommand() {
     try {
@@ -72,27 +72,27 @@ function Downloads() {
   return <section className="downloads" id="download">
     <div className="download-station">
       <header className="download-heading">
-        <span className="download-version">Charter 5.5.6</span>
+        <span className="download-version">Charter {version}</span>
         <h2>下载 Charter</h2>
         <p>无需账户。选一个文件夹，就能开始整理公司资料。</p>
       </header>
       <div className="download-picker">
         <div className="picker-label">01 / 选择系统</div>
         <div className="platform-switch" role="group" aria-label="操作系统">
-          {packages.map(([name], i) => <button type="button" key={name} aria-pressed={platform === i} onClick={() => { setPlatform(i); setVariant(0); setCopyStatus(""); }}>{name}</button>)}
+          {platforms.map(({ name }, i) => <button type="button" key={name} aria-pressed={platform === i} onClick={() => { setPlatform(i); setVariant(0); setCopyStatus(""); }}>{name}</button>)}
         </div>
         <fieldset className="package-options">
-          <legend className="picker-label">02 / 选择{platform === 0 ? "芯片" : "安装方式"}</legend>
-          {variants.map(([name, filename], i) => <label key={filename}><input type="radio" name="package" checked={variant === i} onChange={() => setVariant(i)} /><span>{name}</span><small>{filename.split(".").at(-1)?.toUpperCase()}</small></label>)}
+          <legend className="picker-label">02 / 选择{isMac ? "芯片" : "安装方式"}</legend>
+          {options.map(({ label, url, format }, i) => <label key={url}><input type="radio" name="package" checked={variant === i} onChange={() => setVariant(i)} /><span>{label}</span><small>{format}</small></label>)}
         </fieldset>
-        <a className="download-primary" href={`${release}/download/v5.5.6/Charter-5.5.6-${file}`}>下载 {platformName} {label}</a>
+        <a className="download-primary" href={selected.url}>下载 {platformName} {selected.label}</a>
       </div>
     </div>
     <div className="install-guide">
       <details className="install-disclosure" key={platform}>
         <summary>首次打开 Charter <span>{platformName}</span></summary>
         <p>如果遇到系统安全提示，请先确认安装包来自官方发布页，并核对 SHA-256 校验值。</p>
-        {platform === 0 ?
+        {isMac ?
         <section>
           <ol>
             <li>打开 DMG，把 Charter 拖到「应用程序」，然后从「应用程序」打开一次。</li>
@@ -109,14 +109,14 @@ function Downloads() {
         :
         <section>
           <ol>
-            <li>安装版：打开下载的 <code>Setup.exe</code>。免安装版：先解压 ZIP，再打开解压目录里的 <code>Charter.exe</code>。</li>
+            <li>{selected.format === "ZIP" ? <>解压 ZIP，然后打开解压目录里的 <code>Charter.exe</code>。</> : <>打开下载的 <code>Charter-{version}-Windows-Setup.exe</code>，按提示安装。</>}</li>
             <li>如果 Microsoft Defender SmartScreen 显示「Windows 已保护你的电脑」，确认来源和校验值后，点「更多信息 → 仍要运行」（如果该选项可用）。</li>
             <li>如果提示检测到威胁，或设备策略不允许继续，请停止安装；公司设备可联系 IT。<a href="https://support.microsoft.com/en-us/windows/security/windows-security/app-browser-control-in-the-windows-security-app">Microsoft 官方说明</a></li>
           </ol>
         </section>
         }
       </details>
-      <p className="download-links"><a href={`${release}/tag/v5.5.6`}>官方发布页</a><a href={`${release}/download/v5.5.6/SHA256SUMS.txt`}>SHA-256 校验值</a></p>
+      <p className="download-links"><a href={releaseUrl}>官方发布页</a><a href={checksums}>SHA-256 校验值</a></p>
     </div>
   </section>;
 }
@@ -247,7 +247,7 @@ function App() {
       </section>
       <Downloads />
     </main>
-    <footer><span>Charter 5.5.6</span><a href="#top">返回顶部</a><a href="https://github.com/evonotevil/Charter">GitHub 源码</a></footer>
+    <footer><span>Charter {version}</span><a href="#top">返回顶部</a><a href="https://github.com/evonotevil/Charter">GitHub 源码</a></footer>
   </div>;
 }
 

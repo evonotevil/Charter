@@ -4,23 +4,23 @@
 
 Charter 是面向海外子公司管理的 Mac / Windows 桌面应用。你可以查看一家公司背后的股东与任职人员，追踪下一次申报，整理材料，并按用途导出带水印的文件包。
 
-**当前版本：5.5.6** · [下载应用](#下载与安装) · [产品网站与交互演示](https://evonotevil.github.io/Charter/) · [更新记录](https://github.com/evonotevil/Charter/releases)
+**当前版本：5.5.7** · [下载应用](#下载与安装) · [产品网站与交互演示](https://evonotevil.github.io/Charter/) · [更新记录](https://github.com/evonotevil/Charter/releases)
 
 ![Charter 公司总览：集中查看集团公司、法域和待办事项](site/assets/screens/03-companies.png)
 
 ## 下载与安装
 
-| 系统 | 安装包 | 其他方式 |
-| --- | --- | --- |
-| macOS 12+ · Apple 芯片（M1 及以后） | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Mac-arm64.dmg) | [ZIP](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Mac-arm64.zip) |
-| macOS 12+ · Intel | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Mac-x64.dmg) | [ZIP](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Mac-x64.zip) |
-| Windows 10 / 11 · x64 | [下载安装版 EXE](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Windows-Setup.exe) | [免安装 ZIP](https://github.com/evonotevil/Charter/releases/download/v5.5.6/Charter-5.5.6-Windows-x64.zip) |
+| 系统 | 安装包 |
+| --- | --- |
+| macOS 12+ · Apple 芯片（M1 及以后） | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.7/Charter-5.5.7-Mac-arm64.dmg) |
+| macOS 12+ · Intel | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.7/Charter-5.5.7-Mac-x64.dmg) |
+| Windows 10 / 11 · x64 | [下载安装版 EXE](https://github.com/evonotevil/Charter/releases/download/v5.5.7/Charter-5.5.7-Windows-Setup.exe) |
 
-Mac 打开 DMG 后，将 Charter 拖入“应用程序”；Windows 运行安装程序，或解压 ZIP 后运行 `Charter.exe`。升级前先退出正在运行的 Charter。
+Mac 打开 DMG 后，将 Charter 拖入“应用程序”；Windows 运行安装程序。升级前先退出正在运行的 Charter。
 
 安装包尚未使用 Apple Developer ID 或 Windows 商业代码签名证书，首次打开可能出现系统提示。Mac 可在访达中右键选择“打开”，或在“系统设置 → 隐私与安全性”中允许打开；Windows SmartScreen 可选择“更多信息 → 仍要运行”。
 
-[完整发布说明](https://github.com/evonotevil/Charter/releases/latest) · [SHA-256 校验值](https://github.com/evonotevil/Charter/releases/download/v5.5.6/SHA256SUMS.txt)
+[完整发布说明](https://github.com/evonotevil/Charter/releases/latest) · [SHA-256 校验值](https://github.com/evonotevil/Charter/releases/download/v5.5.7/SHA256SUMS.txt)
 
 ## 能做什么
 

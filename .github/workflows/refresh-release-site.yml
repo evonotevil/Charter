@@ -1,0 +1,27 @@
+name: Refresh website after a release
+
+on:
+  release:
+    types: [published, edited, deleted]
+  # Releases published by the desktop workflow's GITHUB_TOKEN do not emit a release workflow run.
+  workflow_run:
+    workflows: ["Electron desktop release"]
+    types: [completed]
+
+jobs:
+  refresh:
+    if: >-
+      github.event_name == 'release' ||
+      (github.event.workflow_run.event == 'push' &&
+       startsWith(github.event.workflow_run.head_branch, 'v') &&
+       github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Deploy from the default branch allowed by GitHub Pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: gh workflow run pages.yml --repo "$GH_REPO" --ref "$DEFAULT_BRANCH"

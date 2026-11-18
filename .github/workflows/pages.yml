@@ -35,10 +35,20 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
 
+      - name: Read the latest published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$GH_REPO/releases/latest" \
+            --jq '{tag_name, name, body, html_url, published_at, assets: [.assets[] | select(.state == "uploaded") | {name, browser_download_url}]}' \
+            > "$RUNNER_TEMP/charter-site-release.json"
+
       - name: Build interactive website
         working-directory: desktop
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+          CHARTER_SITE_RELEASE: ${{ runner.temp }}/charter-site-release.json
         run: |
           npm ci
           npm exec -- vite build --config web-demo/vite.config.ts
@@ -51,13 +61,8 @@ jobs:
           test -f "$output/workspace.html"
           test -f "$output/assets/charter-icon.png"
 
-      - name: Generate public update feed
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          gh api "repos/$GH_REPO/releases/latest" --jq '{tag_name, name, body, html_url, published_at}' > desktop/web-demo/dist/update.json
-          node -e "const r = require('./desktop/web-demo/dist/update.json'); if (!r.tag_name || !r.html_url) process.exit(1)"
+      - name: Include the matching desktop update feed
+        run: cp "$RUNNER_TEMP/charter-site-release.json" desktop/web-demo/dist/update.json
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
