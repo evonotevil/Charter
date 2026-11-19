@@ -12,11 +12,13 @@ import { useApp } from "../state/hooks";
 import { type PacketFailure, type PacketItem, type PacketResult, PacketFailuresError, buildPacket, legacyPacketItemID, packetBaseName, wmContext, exportAll, exportPlan, packetIncluded, packetItemID, packetItemTitle, packetItems, packetMissing, packetReason, recencyText } from "../services/packets";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { ActionMenu, Button, Checkbox, type Fate, FileFate, Note, OptionCard, ProgressBar, StepBar, Tabs, useNarrow, ConfirmSheet, CopyTextSheet, DateField, FieldRow, FormGroup, Modal, Pill, Segmented, SelectField, SheetScaffold, Switch, TextField, divider, item } from "../ui/kit";
+import { ActionMenu, Button, Checkbox, type Fate, FileFate, Note, OptionCard, PacketStepBar, ProgressBar, Tabs, useNarrow, ConfirmSheet, CopyTextSheet, DateField, FieldRow, FormGroup, Modal, Pill, Segmented, SelectField, SheetScaffold, Switch, TextField, divider, item } from "../ui/kit";
 import { defaultPacketWatermark, inked, eligibilityPill, type PreviewFile, useEligibility, WatermarkPreview, WatermarkSettingsPanel, SignedConfirm } from "./PacketWatermark";
 import { estimateSize, kindOf, resolveText, sizeLabel } from "../services/watermark";
 import "./layout557.css";
+import "./documentSheet.css";
 import { ReissueRequestSheet, freshnessPill, statePill, useStageFile, refInfo, companyInfo } from "./common";
+import { partialPacketFeedback } from "./fileFeedback";
 
 const lastPurposeKey = (cid: string) => `packet.lastPurpose.${cid}`;
 
@@ -151,6 +153,14 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
       platform().prefSet(lastPurposeKey(company.id), template.id);
       setFailures(null);
       setPhase({ kind: "done", result });
+      if (!result.complete) {
+        const feedback = partialPacketFeedback([
+          ...missing.map((item) => title(item)),
+          ...result.lostTitles,
+          ...result.omittedTitles,
+        ]);
+        if (feedback) store.showToast(feedback, undefined, "", "missing");
+      }
     } catch (e) {
       if (ac.signal.aborted) { setPhase({ kind: "choosing" }); store.showToast("已取消，未生成文件"); }
       else if (e instanceof PacketFailuresError) { setPhase({ kind: "choosing" }); setFailures(e.failures.map((f) => ({ ...f, choice: "omit" as const }))); }
@@ -172,43 +182,51 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   const elapsed = (Date.now() - startedAt) / 1000;
   const remain = progress.done > 0 ? Math.max(1, Math.round((elapsed / progress.done) * (progress.total - progress.done))) : null;
 
-  const toc = <div className="col panel" style={{ padding: 22, gap: 2 }}>
-    <span className="t-label muted">目录预览</span>
-    <span className="t-title" style={{ marginTop: 8 }}>{company?.name ?? "未选公司"}</span>
-    <span className="t-meta muted">{template?.name ?? ""}文件包 · {D.long(store.today)}</span>
-    <span className="t-row" style={{ marginTop: 14 }}>已包含（{included.length} 份）</span>
-    {included.map((it, i) => <div key={packetItemID(it)} className="row gap10" style={{ padding: "3px 0" }}><span className="num faint t-meta">{String(i + 1).padStart(2, "0")}</span><span>{title(it)}</span></div>)}
-    {!included.length && <span className="muted" style={{ padding: "3px 0" }}>还没有放入任何文件。</span>}
-    {missing.length > 0 && <><span className="t-row amber-text" style={{ marginTop: 12 }}>尚缺（{missing.length} 项）</span>
-      {missing.map((it) => <span key={packetItemID(it)} className="amber-text" style={{ padding: "3px 0" }}>— {packetItemTitle(it)}</span>)}</>}
-    {wm.enabled && <><span className="t-row" style={{ marginTop: 12 }}>水印（{wmItems.length} / {included.length} 份）</span>
-      <span className="t-meta muted">目录本身不加水印，这里会注明每份文件的处理方式。</span></>}
+  const toc = <div className="col panel packet-toc">
+    {stage === "export" && <span className="t-label muted">目录预览</span>}
+    <div className="col packet-toc-group">
+      <span className="t-title">{company?.name ?? "未选公司"}</span>
+      <span className="t-meta muted">{template?.name ?? ""}文件包 · {D.long(store.today)}</span>
+    </div>
+    <div className="col packet-toc-group">
+      <span className="t-row">已包含（{included.length} 份）</span>
+      {included.map((it, i) => <div key={packetItemID(it)} className="row gap12 packet-toc-entry"><span className="num faint t-meta">{String(i + 1).padStart(2, "0")}</span><span>{title(it)}</span></div>)}
+      {!included.length && <span className="packet-toc-entry muted">还没有放入任何文件。</span>}
+    </div>
+    {missing.length > 0 && <div className="col packet-toc-group amber-text">
+      <span className="t-row">尚缺（{missing.length} 项）</span>
+      {missing.map((it) => <span key={packetItemID(it)} className="packet-toc-entry">— {packetItemTitle(it)}</span>)}
+    </div>}
+    {(wm.enabled || stage === "files") && <div className="col packet-toc-group packet-toc-watermark" aria-hidden={!wm.enabled}>
+      <span className="t-row">水印（{wmItems.length} / {included.length} 份）</span>
+      <span className="t-meta muted">{stage === "files" ? "目录页不加水印。" : "目录本身不加水印，这里会注明每份文件的处理方式。"}</span>
+    </div>}
   </div>;
 
   // ---------- ① 选文件 ----------
-  const filesStep = <div className="row start gap24">
-    <div className="col grow" style={{ gap: 16, minWidth: 0 }}>
-      {!locked && <div className="row gap12"><span className="t-row grow">公司</span>
-        <SelectField describe={(id) => companyInfo(store, id)} options={store.data.companies.map((c) => [c.id, c.name] as [string, string])} value={companyID} onChange={(v) => { setCompanyID(v); setTemplateID(pickTemplate(v)); }} placeholder="选择公司" minWidth={300} /></div>}
-      <div className="row gap12"><span className="t-row grow">用途</span>
-        {packets.length <= 4 ? <Segmented options={packets.map((p) => [p.id, p.name] as [string, string])} value={templateID} onChange={setTemplateID} />
-          : <SelectField options={packets.map((p) => [p.id, p.name] as [string, string])} value={templateID} onChange={setTemplateID} placeholder="选择用途" minWidth={240} />}
-        <Button kind="quiet" size="small" disabled={!template} title="修改这个用途需要的文件类别和签发时限" onClick={() => setEditing({ id: templateID })}>编辑</Button>
-        <Button kind="quiet" size="small" onClick={() => setEditing({})}>新建</Button>
-      </div>
-      <div className="row gap12">
-        <span className="col grow" style={{ gap: 2 }}><span className="t-row">水印</span><span className="t-meta muted">{wm.enabled ? "下一步设置水印文字和样式，只处理导出的副本。" : "导出的副本不加水印。"}</span></span>
-        <Segmented options={[[false, "不加水印"], [true, "加水印"]]} value={wm.enabled} onChange={(enabled) => setWm({ ...wm, enabled })} />
-      </div>
-      <div className="row baseline" style={{ paddingTop: 4 }}><span className="t-row grow">清单</span>
+  const filesStep = <div className="packet-files-layout">
+    {!locked && <div className="row gap12 wrap packet-company-field"><span className="t-row">公司</span>
+      <SelectField ariaLabel="公司" describe={(id) => companyInfo(store, id)} options={store.data.companies.map((c) => [c.id, c.name] as [string, string])} value={companyID} onChange={(v) => { setCompanyID(v); setTemplateID(pickTemplate(v)); }} placeholder="选择公司" minWidth={300} /></div>}
+    <div className="row gap12 wrap packet-purpose-field"><span className="t-row">用途</span>
+      {packets.length <= 4 ? <Segmented ariaLabel="用途" className="seg-scroll" options={packets.map((p) => [p.id, p.name] as [string, string])} value={templateID} onChange={setTemplateID} />
+        : <SelectField ariaLabel="用途" options={packets.map((p) => [p.id, p.name] as [string, string])} value={templateID} onChange={setTemplateID} placeholder="选择用途" minWidth={240} />}
+      <Button kind="quiet" size="small" disabled={!template} title="修改这个用途需要的文件类别和签发时限" onClick={() => setEditing({ id: templateID })}>编辑</Button>
+      <Button kind="quiet" size="small" onClick={() => setEditing({})}>新建</Button>
+    </div>
+    <div className="row gap12">
+      <span className="col grow" style={{ gap: 2 }}><span className="t-row">水印</span><span className="t-meta muted">{wm.enabled ? "只处理导出的副本。" : "导出的副本不加水印。"}</span></span>
+      <Segmented ariaLabel="水印" options={[[false, "不加水印"], [true, "加水印"]]} value={wm.enabled} onChange={(enabled) => setWm({ ...wm, enabled })} />
+    </div>
+    <section className="packet-files-column" aria-label="清单">
+      <div className="row baseline wrap gap8"><h3 className="t-row grow">清单</h3>
         <span className={`t-meta ${complete ? "muted" : "amber-text"}`} style={{ fontWeight: 600 }}>需要 {items.length} 项 · 放入 {included.length} 份{wm.enabled ? ` · ${wmItems.length} 份加水印` : ""}</span></div>
-      {!items.length ? <span className="muted">{!template ? "请先选择用途。" : !company ? "请先选择公司。" : "这个用途没有要求任何文件。"}</span> :
-        <div className="col panel-soft">
-          {items.map((it, i) => {
+      <div className="col panel-soft packet-checklist">
+        {!items.length ? <p className="muted" style={{ padding: 16 }}>{!template ? "请先选择用途。" : !company ? "请先选择公司。" : "这个用途没有要求任何文件。"}</p> :
+          items.map((it, i) => {
             const id = packetItemID(it), pill = wm.enabled && it.document ? eligibilityPill(elig[id]) : null;
             return <div key={id}>
               {i > 0 && <div className="hairline" style={{ marginLeft: 16 }} />}
-              <div className={`row gap12 ${fateOf(it) === "wm" && wm.enabled ? "pointer" : ""}`} style={{ padding: "9px 14px 9px 16px", minHeight: 52 }}
+              <div className={`row gap12 packet-checklist-row ${fateOf(it) === "wm" && wm.enabled ? "pointer" : ""}`}
                 onClick={() => { const k = wmItems.findIndex((x) => packetItemID(x) === id); if (k >= 0) setPreviewIndex(k); }}>
                 <span className="col grow" style={{ gap: 2, minWidth: 0 }}>
                   <span className="row gap8"><span className={`t-row ellipsis ${it.document ? "" : "muted"}`}>{title(it)}</span>{pill && <Pill text={pill.text} kind={pill.kind} />}</span>
@@ -220,9 +238,12 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
               </div>
             </div>;
           })}
-        </div>}
-    </div>
-    <div style={{ width: 340, flex: "none" }}>{toc}</div>
+      </div>
+    </section>
+    <section className="packet-files-column" aria-label="目录预览">
+      <h3 className="t-row">目录预览</h3>
+      {toc}
+    </section>
   </div>;
 
   // ---------- ② 水印 ----------
@@ -313,7 +334,7 @@ export function PacketView({ companyID: initialCompany, purposeID, recipient: in
   return (
     <Modal onClose={requestClose}>
       <SheetScaffold title="准备文件包" subtitle={company ? `${company.name} · ${template?.name ?? ""}` : "按用途挑选每类文件的最新版本"} width={1120} height={820} fixedHeight onCloseButton={requestClose}
-        headerTrailing={<StepBar steps={steps} current={phase.kind === "done" ? steps.length : Math.min(step, lastStep)} />} leading={leading} trailing={trailing}>
+        headerTrailing={<PacketStepBar watermarkEnabled={wm.enabled} stage={stage} done={phase.kind === "done"} />} leading={leading} trailing={trailing}>
         {phase.kind === "done" ? doneView : <div key={`${stage}`} className={dir === "r" ? "step-in-r" : "step-in-l"}>
           {stage === "files" ? filesStep : stage === "watermark" ? watermarkStep : exportStep}
         </div>}
@@ -347,6 +368,10 @@ export function PurposeEditor({ purposeID, onClose, onSaved, onDeleted }: { purp
   const existing = store.data.library.packets.find((p) => p.id === purposeID);
   const isNew = !existing;
   const [draft, setDraft] = useState<PacketTemplate>(() => existing ? structuredClone(existing) : { id: `custom.${crypto.randomUUID().slice(0, 8).toLowerCase()}`, name: "", categories: [], includeDirectorsPassports: false });
+  const [cats] = useState(() => [...new Set([
+    ...store.data.library.documentTypes.map((t) => t.category).filter(Boolean),
+    ...(existing?.categories ?? []),
+  ])].sort((a, b) => a.localeCompare(b, "zh")));
   const [attempted, setAttempted] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const name = draft.name.trim();
@@ -354,7 +379,13 @@ export function PurposeEditor({ purposeID, onClose, onSaved, onDeleted }: { purp
   const nameError = taken ? "已有同名用途" : attempted && !name ? "请填写名称" : null;
   const contentError = attempted && !draft.categories.length && !draft.includeDirectorsPassports ? "至少选择一个文件类别，或打开“附上现任董事的护照”" : null;
   const canSave = !!name && !taken && (draft.categories.length > 0 || draft.includeDirectorsPassports);
-  const cats = [...new Set([...store.data.library.documentTypes.map((t) => t.category).filter(Boolean), ...draft.categories])].sort((a, b) => a.localeCompare(b, "zh"));
+  const selectedCats = cats.filter((c) => draft.categories.includes(c));
+  const allCatsSelected = cats.length > 0 && selectedCats.length === cats.length;
+  const setCategory = (category: string, selected: boolean) => setDraft({
+    ...draft,
+    categories: selected ? [...new Set([...draft.categories, category])] : draft.categories.filter((c) => c !== category),
+  });
+  const toggleAllCategories = () => setDraft({ ...draft, categories: allCatsSelected ? [] : cats });
   const ages = [...new Set([1, 3, 6, 12, ...(draft.maxAgeMonths ? [draft.maxAgeMonths] : [])])].sort((a, b) => a - b);
   const save = () => {
     setAttempted(true);
@@ -373,14 +404,23 @@ export function PurposeEditor({ purposeID, onClose, onSaved, onDeleted }: { purp
         <div className="col" style={{ gap: 18 }}>
           <FormGroup title="基本信息"><FieldRow label="名称" error={nameError}><TextField value={draft.name} onChange={(v) => setDraft({ ...draft, name: v })} placeholder="例如：银行开户" invalid={taken} autoFocus={isNew} /></FieldRow></FormGroup>
           <div className="col gap6">
-            <FormGroup title={`需要的文件类别（已选 ${draft.categories.length} 类）`}>
-              {!cats.length ? <span className="muted">模板库里还没有文件类别。先在“设置 → 档案清单”里添加条目。</span> : (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 12px" }}>
-                  {cats.map((c) => <Checkbox key={c} checked={draft.categories.includes(c)} onChange={(on) => setDraft({ ...draft, categories: on ? [...draft.categories, c] : draft.categories.filter((x) => x !== c) })}>{c}</Checkbox>)}
+            <div className="purpose-category-group">
+              <FormGroup>
+                <div className="col gap8">
+                  <div className="row" style={{ justifyContent: "space-between", minHeight: 34 }}>
+                    <span className="row gap8"><span className="t-row">需要的文件类别</span><span className="t-meta muted purpose-category-count" aria-live="polite">已选 {selectedCats.length} / {cats.length} 类</span></span>
+                    {cats.length > 0 && <Button className="purpose-category-bulk" kind="quiet" size="small" onClick={toggleAllCategories}>{allCatsSelected ? "取消全选" : "全选"}</Button>}
+                  </div>
+                  {!cats.length ? <span className="muted">模板库里还没有文件类别。先在“设置 → 档案清单”里添加条目。</span> : (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 12px" }}>
+                      {cats.map((c) => <Checkbox key={c} checked={draft.categories.includes(c)} onChange={(on) => setCategory(c, on)}>{c}</Checkbox>)}
+                    </div>
+                  )}
+                  {!contentError && <span className="t-meta muted">类别按条目的“通用类别”划分，跨法域把同类文件放在一起。</span>}
                 </div>
-              )}
-            </FormGroup>
-            {contentError ? <span className="ferror" style={{ paddingLeft: 4 }}>{contentError}</span> : <span className="t-meta muted" style={{ paddingLeft: 4 }}>类别按条目的“通用类别”划分，跨法域把同类文件放在一起。</span>}
+              </FormGroup>
+            </div>
+            {contentError && <span className="ferror" style={{ paddingLeft: 4 }}>{contentError}</span>}
           </div>
           <FormGroup title="其他要求">
             <Switch checked={draft.includeDirectorsPassports} onChange={(v) => setDraft({ ...draft, includeDirectorsPassports: v })}>附上现任董事的护照</Switch>
@@ -487,7 +527,7 @@ export function DocumentSheet({ documentID, onClose }: { documentID: string; onC
   const reveal = platform().os === "windows" ? "在资源管理器中显示" : "在访达中显示";
   return (
     <Modal onClose={onClose}>
-      <SheetScaffold title={t?.name ?? "文件"} subtitle={store.nameOf(doc.owner)} width={960} height={780} onSubmit={() => void save()}
+      <SheetScaffold className="document-sheet" title={t?.name ?? "文件"} subtitle={store.nameOf(doc.owner)} width={1056} height={760} fixedHeight onSubmit={() => void save()}
         leading={<>
           <ActionMenu title="更多" placement="top" entries={[
             ...(store.fileMissing(doc) ? [item("重新定位…", "folder", () => void store.relocateDocument(doc))] : [item("打开", "arrow.up.forward.app", () => void store.openDocument(doc)),
@@ -499,50 +539,65 @@ export function DocumentSheet({ documentID, onClose }: { documentID: string; onC
           {saveError && <span className="row gap6 t-meta amber-text" title={saveError} aria-label={`无法保存：${saveError}`}><Icon name="exclamationmark.triangle.fill" /><span className="ellipsis" style={{ maxWidth: 240 }}>{saveError}</span></span>}
         </>}
         trailing={<><Button onClick={onClose}>取消</Button><Button kind="primary" onClick={() => void save()}>保存</Button></>}>
-        <div className="row start" style={{ gap: 22 }}>
-          <div style={{ width: 380, height: 540, flex: "none", borderRadius: "var(--r-control)", overflow: "hidden", background: "var(--band)", boxShadow: "inset 0 0 0 1px var(--hairline)" }}><FilePreview key={doc.filePath + (store.fileMissing(doc) ? "#missing" : "")} path={store.fileURL(doc)} onOpenOriginal={() => void store.openDocument(doc)}
-            onRelocate={() => void store.relocateDocument(doc)} onReissue={() => void startStage({ typeID: doc.typeID, owner: doc.owner, replaces: doc, form: doc.form, onArchived: (n) => setDoc({ ...n }) })} /></div>
-          <div className="col grow gap16" style={{ minWidth: 0 }}>
-            <div className="row gap8 wrap"><StatusTag s={statusOfFreshness(f)} />{doc.needsUpdate && f.kind !== "needsUpdate" && <StatusTag s={statusOfFreshness({ kind: "needsUpdate" })} />}<ExtraTags d={doc} t={store.docType(doc.typeID)} /></div>
-            <FormGroup title="文件">
-              <FieldRow label="类型"><SelectField options={typeChoices} value={doc.typeID} onChange={(typeID) => set({ typeID })} minWidth={260} /></FieldRow>
-              <FieldRow label="归属"><SelectField describe={(r) => refInfo(store, r)} options={owners.map((r) => [r, store.nameOf(r)] as [NodeRef, string])} value={doc.owner} onChange={(owner) => set({ owner })} minWidth={260} keyOf={(r) => `${r.kind}:${r.id}`} /></FieldRow>
-              <FieldRow label="形态"><SelectField options={formChoices.map((x) => [x, x] as [string, string])} value={doc.form} onChange={(form) => set({ form })} minWidth={260} /></FieldRow>
-            </FormGroup>
-            <FormGroup title="日期">
-              <FieldRow label="签发日期"><DateField value={doc.issueDate} onChange={(issueDate) => set({ issueDate })} /></FieldRow>
+        <div className="document-columns">
+          <h2 className="t-section">文件预览</h2>
+          <h2 className="t-section">文件信息</h2>
+          <div className="document-preview">
+            <FilePreview key={doc.filePath + (store.fileMissing(doc) ? "#missing" : "")} path={store.fileURL(doc)} onOpenOriginal={() => void store.openDocument(doc)}
+              onRelocate={() => void store.relocateDocument(doc)} onReissue={() => void startStage({ typeID: doc.typeID, owner: doc.owner, replaces: doc, form: doc.form, onArchived: (n) => setDoc({ ...n }) })} />
+          </div>
+          <div className="document-info scroll" role="region" aria-label="文件信息">
+            <section>
+              <div className="document-basic-heading">
+                <h3 className="t-row">基本信息</h3>
+                <div className="row gap8 wrap">
+                  <StatusTag s={statusOfFreshness(f)} showIcon={f.kind !== "valid"} />
+                  {doc.needsUpdate && f.kind !== "needsUpdate" && <StatusTag s={statusOfFreshness({ kind: "needsUpdate" })} />}
+                  <ExtraTags d={doc} t={t} />
+                </div>
+              </div>
+              <FieldRow label="类型"><SelectField ariaLabel="类型" indicator="chevron.down" options={typeChoices} value={doc.typeID} onChange={(typeID) => set({ typeID })} minWidth={0} /></FieldRow>
+              <FieldRow label="归属"><SelectField ariaLabel="归属" indicator="chevron.down" describe={(r) => refInfo(store, r)} options={owners.map((r) => [r, store.nameOf(r)] as [NodeRef, string])} value={doc.owner} onChange={(owner) => set({ owner })} minWidth={0} keyOf={(r) => `${r.kind}:${r.id}`} /></FieldRow>
+              <FieldRow label="形态"><SelectField ariaLabel="形态" indicator="chevron.down" options={formChoices.map((x) => [x, x] as [string, string])} value={doc.form} onChange={(form) => set({ form })} minWidth={0} /></FieldRow>
+            </section>
+            <section>
+              <h3 className="t-row">日期</h3>
+              <FieldRow label="签发日期"><DateField ariaLabel="签发日期" value={doc.issueDate} onChange={(issueDate) => set({ issueDate })} /></FieldRow>
               {(() => {
                 // 5.3.2：到期日提示按类型说清楚——留空是否算长期
                 const v = store.docType(doc.typeID)?.validity;
                 const fixed = v === "permanent" || v === "untilChanged";
                 const onDoc = !fixed && !ruleExpiry;
                 return <>
-                  <FieldRow label="到期日期" hint={ruleExpiry ? `留空时按规则算出：${D.long(ruleExpiry)}` : fixed ? "这类文件长期有效，不用填。" : onDoc && !doc.expiryDate && !doc.noExpiry ? "留空会算作“未填日期”，计入需处理。" : undefined}>
-                    <DateField value={doc.expiryDate} onChange={(expiryDate) => set({ expiryDate, ...(expiryDate ? { noExpiry: undefined } : {}) })}
+                  <FieldRow label="到期日期" hint={ruleExpiry ? `留空时按规则算出：${D.long(ruleExpiry)}` : onDoc && !doc.expiryDate && !doc.noExpiry ? "留空会算作“未填日期”，计入需处理。" : undefined}>
+                    <DateField ariaLabel="到期日期" value={doc.expiryDate} onChange={(expiryDate) => set({ expiryDate, ...(expiryDate ? { noExpiry: undefined } : {}) })}
                       placeholder={fixed ? "长期有效，无需填写" : ruleExpiry ? "留空按规则计算" : doc.noExpiry ? "长期有效" : "填写文件上的到期日"} relativeTo={doc.issueDate} />
                   </FieldRow>
                   {onDoc && <Checkbox checked={!!doc.noExpiry && !doc.expiryDate} disabled={!!doc.expiryDate} title={doc.expiryDate ? "已填写到期日" : undefined}
                     onChange={(on) => set({ noExpiry: on || undefined })}>文件上写明长期有效 / 没有到期日</Checkbox>}
                 </>;
               })()}
-            </FormGroup>
-            <FormGroup title="状态与备注">
-              <Switch checked={doc.needsUpdate} onChange={(needsUpdate) => set({ needsUpdate })}>信息有变更，需要重开</Switch>
-              {store.docType(doc.typeID)?.requiresSignature && <FieldRow label="签署日期" hint="这类文件需要签署；留空表示待签署。"><DateField value={doc.signedOn} onChange={(signedOn) => set({ signedOn })} placeholder="待签署" /></FieldRow>}
-              <FieldRow label="核实" hint="与原件（或经认证副本）核对过的日期。"><DateField value={doc.verifiedOn} onChange={(verifiedOn) => set({ verifiedOn })} placeholder="未核实" /></FieldRow>
-              <FieldRow label="备注"><TextField multiline rows={2} value={doc.notes} onChange={(notes) => set({ notes })} placeholder="可选" /></FieldRow>
-            </FormGroup>
-            <FormGroup title="证据关联">
+            </section>
+            <section>
+              <h3 className="t-row">状态与备注</h3>
+              <FieldRow label="需要重开"><Switch ariaLabel="需要重开" checked={doc.needsUpdate} onChange={(needsUpdate) => set({ needsUpdate })}>文件信息有变更时开启</Switch></FieldRow>
+              {t?.requiresSignature && <FieldRow label="签署日期" hint="这类文件需要签署；留空表示待签署。"><DateField ariaLabel="签署日期" value={doc.signedOn} onChange={(signedOn) => set({ signedOn })} placeholder="待签署" /></FieldRow>}
+              <FieldRow label="核实日期" hint="与原件或经认证副本核对的日期。"><DateField ariaLabel="核实日期" value={doc.verifiedOn} onChange={(verifiedOn) => set({ verifiedOn })} placeholder="未核实" /></FieldRow>
+              <FieldRow label="备注"><TextField ariaLabel="备注" multiline rows={3} value={doc.notes} onChange={(notes) => set({ notes })} placeholder="可选" /></FieldRow>
+            </section>
+            <section>
+              <h3 className="t-row">证据关联</h3>
               <div className="row gap8 wrap"><LinkChips doc={doc} onEdit={() => setLinking(true)} /><Button size="small" kind="quiet" onClick={() => setLinking(true)}>编辑关联…</Button></div>
-            </FormGroup>
-            <FormGroup title="记录">
+            </section>
+            <section>
+              <h3 className="t-row">记录</h3>
               <FieldRow label="原始文件名"><span className="ellipsis selectable" title={doc.originalFileName}>{doc.originalFileName || "—"}</span></FieldRow>
               <FieldRow label="归档日期"><span>{D.long(doc.addedOn)}</span></FieldRow>
               <FieldRow label="Charter 副本"><span className="mono selectable t-meta" style={{ overflowWrap: "anywhere" }}>{doc.filePath}</span></FieldRow>
               <FieldRow label="原件位置" hint="导入时的位置，只作记录；Charter 不会改动原件。"><span className="mono selectable t-meta" style={{ overflowWrap: "anywhere" }}>{doc.sourcePath || "未记录（5.3 之前归档）"}</span></FieldRow>
               {(() => { const older = store.data.documents.filter((x) => x.supersededBy === doc.id); const newer = doc.supersededBy ? store.data.documents.find((x) => x.id === doc.supersededBy) : undefined;
                 return <FieldRow label="版本">{newer ? <span>旧版，已被 {newer.issueDate ?? "新版"} 的版本替代</span> : <span>现行{older.length ? `，替代了 ${older.length} 个旧版` : ""}</span>}</FieldRow>; })()}
-            </FormGroup>
+            </section>
           </div>
         </div>
         {stageNode}

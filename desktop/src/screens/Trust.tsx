@@ -6,7 +6,7 @@ import { useApp } from "../state/hooks";
 import type { Store } from "../state/store";
 import * as D from "../domain/day";
 import type { Day } from "../domain/day";
-import { type Appointment, type Company, type Evidence, type Holding, type NodeRef, type Provenance, ref } from "../domain/models";
+import { type Appointment, type Company, type Document, type Evidence, type Holding, type NodeRef, type Provenance, ref, refKey, sameRef } from "../domain/models";
 import { percentLabel } from "../domain/engine";
 import { type RoleCategory, roleByID, roleCategoryLabel, roleLabel, rolesFor } from "../domain/roles";
 import { Button, Checkbox, DateField, EmptyStateView, Modal, PageHeader, Popover, PopoverRow, Segmented, SelectField, SheetScaffold } from "../ui/kit";
@@ -28,11 +28,14 @@ const docLabel = (store: Store, e?: Evidence) => {
   return `${name}${d?.issueDate ? ` ${D.year(d.issueDate)}` : ""}${e.page ? ` · 第 ${e.page} 页` : ""}`;
 };
 
+const evidenceOption = (store: Store, d: Document): [string, string] =>
+  [d.id, `${store.docType(d.typeID)?.name ?? d.originalFileName}${d.issueDate ? ` · ${d.issueDate}` : ""}`];
+
 /** 某家公司（及其股东、董事本人）名下可作依据的文件。 */
 function evidenceOptions(store: Store, companyID: string, extra: NodeRef[] = []) {
   const owners = [ref("company", companyID), ...extra];
   const docs = owners.flatMap((o) => store.ownedDocuments(o));
-  return docs.map((d) => [d.id, `${store.docType(d.typeID)?.name ?? d.originalFileName}${d.issueDate ? ` · ${d.issueDate}` : ""}`] as [string, string]);
+  return docs.map((d) => evidenceOption(store, d));
 }
 
 // MARK: - 核实状态标签（可点）
@@ -258,6 +261,16 @@ export function VerifyView() {
   const { store, router } = useApp();
   const [mode, setMode] = useState<"company" | "missing">("company");
   const all = store.unverified;
+  const evidenceFiles = useMemo(() => {
+    const owners = new Set<string>();
+    const byID = new Map<string, Document>();
+    for (const d of store.data.documents) {
+      if (d.supersededBy) continue;
+      owners.add(refKey(d.owner));
+      byID.set(d.id, d);
+    }
+    return { owners, byID };
+  }, [store.data.documents]);
   const companyOf = (x: (typeof all)[number]) => x.item.companyID;
   const total = store.data.holdings.filter((h) => !h.to).length + store.data.appointments.filter((a) => !a.to).length;
   const migrated = all.filter((x) => x.item.migrated).length;
@@ -292,7 +305,7 @@ export function VerifyView() {
                   {g && <span className="v4-chip"><span className="v4-dot" style={{ background: store.brandColor(g) }} />{g.name}</span>}
                   <span className="spacer" /><span className="t-meta muted">{groups.get(cid)!.length} 条</span>
                 </div>
-                {groups.get(cid)!.map((x) => <VerifyRow key={x.item.id} x={x} company={c} />)}
+                {groups.get(cid)!.map((x) => <VerifyRow key={x.item.id} x={x} company={c} evidenceFiles={evidenceFiles} />)}
               </section>
             );
           })}
@@ -302,21 +315,27 @@ export function VerifyView() {
   );
 }
 
-function VerifyRow({ x, company }: { x: { kind: "holding" | "appointment"; item: Holding | Appointment }; company: Company }) {
+function VerifyRow({ x, company, evidenceFiles }: { x: { kind: "holding" | "appointment"; item: Holding | Appointment }; company: Company; evidenceFiles: { owners: Set<string>; byID: Map<string, Document> } }) {
   const { store } = useApp();
   const isH = x.kind === "holding";
   const h = x.item as Holding, a = x.item as Appointment;
   const role = roleByID(x.item.roleID);
   const who = isH ? store.nameOf(h.holder) : store.person(a.personID)?.name ?? "";
   const what = isH ? `${role ? role.name + " · " : ""}${percentLabel(h.percent)}` : `${role ? roleCategoryLabel[role.category] : a.title}`;
-  const opts = evidenceOptions(store, company.id, isH ? [h.holder] : [ref("person", a.personID)]);
+  const owner = ref("company", company.id);
+  const related = isH ? h.holder : ref("person", a.personID);
+  const hasOptions = evidenceFiles.owners.has(refKey(owner)) || evidenceFiles.owners.has(refKey(related));
+  const prompt: [string, string] = ["", "选择依据文件"];
   const [docID, setDocID] = useState(x.item.evidence?.documentID ?? "");
   const [page, setPage] = useState(x.item.evidence?.page ?? "");
+  const current = evidenceFiles.byID.get(docID);
+  const eligible = current && (sameRef(current.owner, owner) || sameRef(current.owner, related));
   return (
     <div className="row gap12 verify-row">
       <span className="v4-chip" style={{ width: 80, justifyContent: "center", flex: "none" }}>{isH ? (role?.name ?? "股东") : (role?.name ?? a.title)}</span>
       <span className="col" style={{ width: 240, flex: "none", minWidth: 0 }}><b className="ellipsis">{who}</b><span className="t-meta muted ellipsis">{what} · {provenanceText(x.item)}</span></span>
-      {opts.length ? <SelectField options={[["", "选择依据文件"] as [string, string], ...opts]} value={docID} onChange={setDocID} minWidth={260} maxWidth={320} />
+      {hasOptions ? <SelectField options={eligible ? [prompt, evidenceOption(store, current)] : [prompt]}
+        optionsWhenOpen={() => [prompt, ...evidenceOptions(store, company.id, [related])]} value={docID} onChange={setDocID} minWidth={260} maxWidth={320} />
         : <span className="t-meta muted">没有可用文件，先归档</span>}
       {docID && <input className="field" value={page} onChange={(e) => setPage(e.target.value)} placeholder="页码" aria-label="页码" style={{ width: 70 }} />}
       <span className="spacer" />

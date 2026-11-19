@@ -62,8 +62,9 @@ const emptyData = (): Data => ({
   library: { version: 1, jurisdictions: [], documentTypes: [], rules: [], packets: [] }, requests: [], inbox: [], trash: [], sends: [],
 });
 
-export interface Toast { id: string; text: string; action?: () => void; kind: "success" | "failure"; actionTitle: string; leaving?: boolean }
+export interface Toast { id: string; text: string; action?: () => void; kind: "success" | "failure" | "calendar-error" | "overdue" | "missing" | "duplicate"; actionTitle: string; leaving?: boolean }
 export interface UndoEntry { id: string; label: string; before: Data; after: Data; parts: Part[]; createdFiles: string[] }
+export interface CompletionResult { text: string; undo: () => void }
 
 export const ungrouped = "__ungrouped__";
 export const nonArchiveTypeIDs = new Set(["common.receipt", "common.confirmation"]);
@@ -341,10 +342,13 @@ export class Store {
     // 5.5.5：先等本机排队中的保存写完，免得读到写了一半的文件，或载入后又被旧的保存覆盖
     await this.flushWrites();
     if (this.isLoading || this.isImporting) return;
-    this.today = D.today();
     const now = await this.folder.modificationDates();
+    const today = D.today();
+    const dayChanged = today !== this.today;
+    this.today = today;
     const changed = Object.keys(now).some((k) => now[k] !== this.lastLoaded[k]);
-    if (changed) await this.load(); else this.afterChange();
+    if (changed) await this.load();
+    else if (dayChanged) this.afterChange();
   }
 
   /** 把这些集合写回文件夹（按顺序排队，不会交错写入）。 */
@@ -595,7 +599,7 @@ export class Store {
 
   setError(msg: string | null) { this.errorMessage = msg; this.emit(); }
 
-  showToast(text: string, action?: () => void, actionTitle = "撤销", kind: "success" | "failure" = "success") {
+  showToast(text: string, action?: () => void, actionTitle = "撤销", kind: Toast["kind"] = "success") {
     const t: Toast = { id: uuid(), text, action, kind, actionTitle };
     this.toast = t;
     this.toastRemaining = action ? 6000 : 4000;
@@ -803,7 +807,7 @@ export class Store {
     });
   }
 
-  complete(o: Obligation, receipt?: Document) {
+  complete(o: Obligation, receipt?: Document, opts: { toast?: boolean } = {}): CompletionResult {
     const before = o.record;
     this.commit((d) => this.upsertRecord(d, o, (r) => {
       r.status = "done"; r.completedOn = this.today;
@@ -812,7 +816,12 @@ export class Store {
     }));
     const next = this.openObligations.find((x) => x.rule.id === o.rule.id && x.company.id === o.company.id);
     const tail = next ? `下一次截止日 ${D.display(next.due, this.today)} 已排好。` : "";
-    this.showToast((receipt ? "已完成，回执已存档。" : "已完成。") + tail, () => this.restoreRecord(o, before));
+    const result: CompletionResult = {
+      text: (receipt ? "已完成，回执已存档。" : "已完成。") + tail,
+      undo: () => this.restoreRecord(o, before),
+    };
+    if (opts.toast !== false) this.showToast(result.text, result.undo);
+    return result;
   }
 
   attachReceipt(doc: Document, o: Obligation) {

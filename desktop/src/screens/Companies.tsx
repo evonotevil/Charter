@@ -185,7 +185,7 @@ function OverviewRow({ h }: { h: Health }) {
   const statusPill = c.status !== "active" ? <Pill text={companyStatusLabel[c.status]} kind="neutral" />
     : severity === 2 ? <Pill text="需处理" kind="bad" /> : severity === 1 ? <Pill text="留意" kind="warn" /> : <Pill text="正常" kind="valid" />;
   return (
-    <tr className="click" onClick={() => router.openCompany(c.id)} onContextMenu={(e) => ctx.open(e, menu)} title={h.text || c.name}>
+    <tr className="click company-row" onClick={() => router.openCompany(c.id)} onContextMenu={(e) => ctx.open(e, menu)} title={h.text || c.name}>
       <td>
         <span className="row gap12">
           <JurisdictionBadge code={c.jurisdiction} size={34} tint={companyTint(store, c.id)} />
@@ -195,7 +195,7 @@ function OverviewRow({ h }: { h: Health }) {
           </span>
         </span>
       </td>
-      <td>{next && left !== null ? <span className="col"><span className="ellipsis" style={{ maxWidth: 240, fontWeight: 600 }}>{next.rule.name}</span>
+      <td>{next && left !== null ? <span className="col company-deadline"><span className="ellipsis" style={{ maxWidth: 240, fontWeight: 600 }}>{next.rule.name}</span>
         <span className="t-meta num" style={{ color: left < 0 ? "var(--red-text)" : left <= 30 ? "var(--amber-text)" : "var(--muted)", fontWeight: left <= 30 ? 700 : 400 }}>{D.short(next.due)} · {left < 0 ? `逾期 ${-left} 天` : left === 0 ? "今天" : `${left} 天后`}</span></span>
         : <span className="muted">—</span>}</td>
       <td>{h.configured && h.total ? <span className="row gap8"><ProgressTrack value={h.held / h.total} width={64} /><span className="t-meta num muted">{h.held}/{h.total}</span></span>

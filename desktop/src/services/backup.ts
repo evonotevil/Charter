@@ -84,12 +84,17 @@ export async function exportBackup(s: Store, path: string, onProgress?: (done: n
   return info;
 }
 
-/** 5.5.5：备份条目路径必须是相对、无“..”、无反斜杠，并且只能落在这些目录里。 */
+/**
+ * 5.5.5：备份条目路径必须是相对、无“..”，并且只能落在这些目录里。
+ * ZIP 固定用“/”分隔。反斜杠在 Windows 是路径分隔符，必须拒绝；在 macOS/Linux
+ * 是合法的文件名字符，旧版 Charter 也会把这样的本机文件名原样写进备份。
+ */
 const ROOTS = new Set(["data", "files", "group-icons", "inbox", "trash"]);
-export function safeEntryName(name: string): boolean {
-  if (!name || name.includes("\\") || name.includes("\0") || /^[a-zA-Z]:/.test(name) || name.startsWith("/")) return false;
+export function safeEntryName(name: string, os: "mac" | "windows" | "linux" | "web" = "windows"): boolean {
+  const backslashIsLiteral = os === "mac" || os === "linux";
+  if (!name || (!backslashIsLiteral && name.includes("\\")) || name.includes("\0") || /^[a-zA-Z]:/.test(name) || name.startsWith("/")) return false;
   const parts = name.split("/");
-  if (parts.some((x) => x === ".." || x === "." || x.includes(":"))) return false;
+  if (parts.some((x) => !x || x === ".." || x === "." || x.includes(":"))) return false;
   return name === MANIFEST || name === "templates.json" || (parts.length >= 2 && ROOTS.has(parts[0]));
 }
 const ARRAY_FILES = new Set(["companies", "people", "holdings", "appointments", "parties", "documents", "obligations", "changes", "groups", "requests", "inbox", "trash", "sends"]);
@@ -128,7 +133,14 @@ export async function restoreBackup(s: Store, b: OpenedBackup) {
   const p = platform();
   const f = s.folder;
   // 先把备份全部读进内存并校验路径和结构，确认完好后才动数据文件夹。
-  const bad = Object.keys(b.zip.files).filter((n) => !b.zip.files[n].dir && !safeEntryName(n));
+  // JSZip 会把含“..”的名字规范化后放进 name；安全判断必须读取原始名字，不能只检查规范化结果。
+  const bad = Object.values(b.zip.files)
+    .filter((entry) => {
+      if (entry.dir) return false;
+      const original = entry.unsafeOriginalName ?? entry.name;
+      return original !== entry.name || !safeEntryName(original, p.os);
+    })
+    .map((entry) => entry.unsafeOriginalName ?? entry.name);
   if (bad.length) { s.setError(`这份备份含有不安全的文件路径（${bad[0]}${bad.length > 1 ? ` 等 ${bad.length} 个` : ""}），已拒绝恢复。当前数据未改动。`); return; }
   const dataFiles: { name: string; text: string }[] = [];
   for (const e of b.zip.file(/^data\/[^/]+\.json$/)) {
@@ -149,10 +161,10 @@ export async function restoreBackup(s: Store, b: OpenedBackup) {
       snap = await makeSnapshot(f, "恢复备份前");
       // 5.5.5：会被覆盖的归档文件也存进这份快照，从快照恢复时放回
       for (const e of b.zip.file(/^(files|group-icons|inbox|trash)\//)) {
-        const dest = p.join(f.root, ...e.name.split("/"));
+        const parts = e.name.split("/"), dest = p.join(f.root, ...parts);
         if ((await p.stat(dest)).exists) {
-          const keep = p.join(snap.folder, "overwritten", ...e.name.split("/"));
-          await p.mkdirs(keep.slice(0, Math.max(keep.lastIndexOf("/"), keep.lastIndexOf("\\"))));
+          const keep = p.join(snap.folder, "overwritten", ...parts);
+          await p.mkdirs(p.join(snap.folder, "overwritten", ...parts.slice(0, -1)));
           await p.copyFile(dest, keep); overwritten++;
         }
       }

@@ -9,6 +9,7 @@ import { addToInbox, deletionImpact, processInbox, purgeTrash, resolveTarget, re
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Button, Card, Checkbox, ConfirmSheet, EmptyStateView, Modal, Pill, SelectField, SheetScaffold } from "../ui/kit";
+import { inboxResultFeedback } from "./fileFeedback";
 
 const err = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -68,7 +69,11 @@ export function InboxPane() {
     const paths = await platform().pickFiles({ multiple: true, extensions: ["pdf", "png", "jpg", "jpeg", "heic", "tif", "tiff"], title: "加入待整理" });
     if (!paths.length) return;
     setBusy("正在加入…");
-    try { const r = await addToInbox(store, paths, setBusy); store.showToast(`已加入待整理 ${r.added} 份${r.duplicates ? `，其中 ${r.duplicates} 份和已有文件重复` : ""}。`); }
+    try {
+      const r = await addToInbox(store, paths, setBusy);
+      const feedback = inboxResultFeedback(r.added, r.duplicates);
+      store.showToast(feedback.text, undefined, "", feedback.kind);
+    }
     catch (e) { store.setError(`加入待整理失败：${err(e)}`); }
     finally { setBusy(null); }
   };

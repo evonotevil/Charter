@@ -1,0 +1,80 @@
+.document-sheet > .sheet-head {
+  padding: var(--space-4) var(--space-6);
+  flex: none;
+  min-height: 82px;
+}
+.document-sheet .t-sheet + .muted { margin-top: 3px; }
+
+.document-sheet > .sheet-body {
+  display: flex;
+  padding: 0 var(--space-6) 18px;
+  overflow: hidden;
+}
+
+.document-sheet > .sheet-foot {
+  flex: none;
+  min-height: 70px;
+  padding-inline: var(--space-6);
+}
+
+.document-columns {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 534fr) minmax(0, 450fr);
+  grid-template-rows: 32px minmax(0, 1fr);
+  gap: var(--space-2) var(--space-6);
+}
+
+.document-columns > h2 { align-self: center; }
+.document-preview, .document-info {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-tile);
+}
+
+.document-preview { overflow: hidden; background: var(--surface-sunken); }
+.document-info {
+  --label-w: 87px;
+  padding: var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+}
+
+.document-info > section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.document-info > section + section {
+  border-top: 1px solid var(--line);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+}
+.document-basic-heading {
+  display: grid;
+  grid-template-columns: var(--label-w) minmax(0, 1fr);
+  column-gap: var(--space-3);
+  align-items: start;
+  padding-block: 3px;
+}
+.document-basic-heading > h3 { line-height: 22px; }
+.document-info .flabel { font-weight: 400; }
+.document-info .select { min-height: min(36px, var(--input-h)); font-weight: 700; }
+.document-info .date-field { width: 100%; }
+.document-info [role="switch"] {
+  align-self: flex-start;
+  min-height: 36px;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+.document-info [role="switch"] .switch { order: -1; }
+.document-info textarea { min-height: 80px; }
+.document-info > section:last-child .flabel { padding-top: 0; }
+
+@media (max-width: 1152px) {
+  .document-sheet { max-width: min(960px, calc(100vw - 48px)); }
+  .document-columns { grid-template-columns: minmax(0, 466fr) minmax(0, 422fr); }
+}

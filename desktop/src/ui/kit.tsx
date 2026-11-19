@@ -33,8 +33,8 @@ export function Button(p: {
 }
 
 export type PillKind = "neutral" | "valid" | "warn" | "bad" | "strong" | "lime" | "outline";
-export const Pill = ({ text, kind = "neutral", title }: { text: string; kind?: PillKind; title?: string }) =>
-  <span className={`pill ${kind}`} title={title}>{text}</span>;
+export const Pill = ({ text, kind = "neutral", title, icon }: { text: string; kind?: PillKind; title?: string; icon?: string }) =>
+  <span className={`pill ${kind}${icon ? " risk-pill" : ""}`} title={title}>{icon && <Icon name={icon} size={12} />}{text}</span>;
 
 export const CountBadge = ({ count, tone }: { count: number; inverted?: boolean; tone?: "bad" | "neutral" }) =>
   <span className={`badge ${tone ?? ""}`}>{count}</span>;
@@ -189,9 +189,9 @@ export function useContextMenu() {
 export interface OptionInfo { group?: string; lead?: ReactNode; sub?: string }
 
 /** 5.3.3：下拉选择。选项多时带搜索；可按 describe 分组并显示头像或法域徽章；方向键选择、回车确认。 */
-export function SelectField<V>({ options, value, onChange, placeholder = "请选择", minWidth = 180, maxWidth, disabled, keyOf, ariaLabel, describe }: {
-  options: [V, string][]; value: V; onChange: (v: V) => void; placeholder?: string; minWidth?: number; maxWidth?: number; disabled?: boolean; ariaLabel?: string;
-  keyOf?: (v: V) => string; describe?: (v: V) => OptionInfo | undefined;
+export function SelectField<V>({ options, optionsWhenOpen, value, onChange, placeholder = "请选择", minWidth = 180, maxWidth, disabled, keyOf, ariaLabel, describe, indicator = "chevron.up.chevron.down" }: {
+  options: [V, string][]; optionsWhenOpen?: () => [V, string][]; value: V; onChange: (v: V) => void; placeholder?: string; minWidth?: number; maxWidth?: number; disabled?: boolean; ariaLabel?: string;
+  keyOf?: (v: V) => string; describe?: (v: V) => OptionInfo | undefined; indicator?: "chevron.down" | "chevron.up.chevron.down";
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -199,11 +199,12 @@ export function SelectField<V>({ options, value, onChange, placeholder = "请选
   const ref = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const k = keyOf ?? ((v: V) => JSON.stringify(v ?? null));
-  const cur = options.find(([v]) => k(v) === k(value));
+  const menuOptions = useMemo(() => open && optionsWhenOpen ? optionsWhenOpen() : options, [open, optionsWhenOpen, options]);
+  const cur = menuOptions.find(([v]) => k(v) === k(value));
   const current = cur?.[1];
   const norm = (x: string) => x.toLowerCase().replace(/\s+/g, "");
   const nq = norm(q.trim());
-  const filtered = nq ? options.filter(([v, l]) => norm(l).includes(nq) || norm(describe?.(v)?.sub ?? "").includes(nq)) : options;
+  const filtered = !open ? [] : nq ? menuOptions.filter(([v, l]) => norm(l).includes(nq) || norm(describe?.(v)?.sub ?? "").includes(nq)) : menuOptions;
   // 按分组保持出现顺序
   const groups: { title?: string; items: [V, string][] }[] = [];
   for (const o of filtered) { const g = describe?.(o[0])?.group; const hit = groups.find((x) => x.title === g); if (hit) hit.items.push(o); else groups.push({ title: g, items: [o] }); }
@@ -232,12 +233,12 @@ export function SelectField<V>({ options, value, onChange, placeholder = "请选
         style={{ minWidth, maxWidth, width: maxWidth ? "100%" : undefined }}>
         {curInfo?.lead && <span className="sel-lead">{curInfo.lead}</span>}
         <span className={`ellipsis grow ${current ? "" : "muted"}`}>{current ?? placeholder}</span>
-        <Icon name="chevron.up.chevron.down" size={11} className="muted" />
+        <Icon name={indicator} size={indicator === "chevron.down" ? 14 : 11} className="muted" />
       </button>
       <Popover anchor={ref} open={open} onClose={close} minWidth={Math.max(minWidth, 260)}>
         <div className="col gap6" onKeyDown={onKey}>
-          {options.length > 8 && <label className="search sel-search"><Icon name="magnifyingglass" size={13} /><input className="field" autoFocus placeholder="搜索" value={q} onChange={(e) => setQ(e.target.value)} aria-label="搜索选项" /></label>}
-          <div ref={listRef} className="col sel-list" role="listbox" tabIndex={options.length > 8 ? -1 : 0} autoFocus={options.length <= 8}>
+          {menuOptions.length > 8 && <label className="search sel-search"><Icon name="magnifyingglass" size={13} /><input className="field" autoFocus placeholder="搜索" value={q} onChange={(e) => setQ(e.target.value)} aria-label="搜索选项" /></label>}
+          <div ref={listRef} className="col sel-list" role="listbox" tabIndex={menuOptions.length > 8 ? -1 : 0} autoFocus={menuOptions.length <= 8}>
             {groups.map((g, gi) => (
               <div key={gi} className="col" role={g.title ? "group" : undefined} aria-label={g.title}>
                 {g.title && <span className="sel-group">{g.title}<span className="num"> {g.items.length}</span></span>}
@@ -264,8 +265,8 @@ export function SelectField<V>({ options, value, onChange, placeholder = "请选
 
 // MARK: - 日期
 
-export function DateField({ value, onChange, placeholder = "选择日期", relativeTo, relativeLabel = "签发后", allowsClear = true, minWidth = 170 }: {
-  value?: Day; onChange: (d?: Day) => void; placeholder?: string; relativeTo?: Day; relativeLabel?: string; allowsClear?: boolean; minWidth?: number;
+export function DateField({ value, onChange, placeholder = "选择日期", relativeTo, relativeLabel = "签发后", allowsClear = true, minWidth = 170, ariaLabel }: {
+  value?: Day; onChange: (d?: Day) => void; placeholder?: string; relativeTo?: Day; relativeLabel?: string; allowsClear?: boolean; minWidth?: number; ariaLabel?: string;
 }) {
   const [text, setText] = useState(value ?? "");
   const [invalid, setInvalid] = useState(false);
@@ -285,7 +286,7 @@ export function DateField({ value, onChange, placeholder = "选择日期", relat
     <div ref={ref} className={`row gap6 date-field ${focused || open ? "focus" : ""} ${invalid ? "invalid" : ""}`} title={why || undefined} aria-invalid={invalid || undefined}
       style={{ minWidth }}>
       <button onClick={() => setOpen((o) => !o)} title="打开日历" className="muted row" style={{ width: 22, height: 22, justifyContent: "center" }}><Icon name="calendar" size={14} /></button>
-      <input value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onFocus={() => setFocused(true)}
+      <input value={text} aria-label={ariaLabel} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onFocus={() => setFocused(true)}
         onBlur={() => { setFocused(false); commit(); }} onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
         className="num" style={{ border: 0, outline: "none", background: "transparent", font: "inherit", color: "var(--ink)", width: 0, minWidth: 0, flex: 1 }} />
       {allowsClear && value && <button title="清除日期" className="muted" onClick={() => { onChange(undefined); setText(""); }} style={{ opacity: .7 }}><Icon name="xmark.circle.fill" size={14} /></button>}
@@ -557,14 +558,14 @@ export function Modal({ onClose, children, dismissOnEscape = true }: { onClose: 
   );
 }
 
-export function SheetScaffold({ title, subtitle, width = 560, height, children, leading, trailing, onSubmit, headerTrailing, fixedHeight, onCloseButton }: {
-  title: string; subtitle?: ReactNode; width?: number; height?: number; children: ReactNode; leading?: ReactNode; trailing?: ReactNode; onSubmit?: () => void;
+export function SheetScaffold({ title, subtitle, width = 560, height, children, leading, trailing, onSubmit, headerTrailing, fixedHeight, onCloseButton, className }: {
+  title: string; subtitle?: ReactNode; width?: number; height?: number; children: ReactNode; leading?: ReactNode; trailing?: ReactNode; onSubmit?: () => void; className?: string;
   /** 标题栏右侧（例如步骤条）。 */ headerTrailing?: ReactNode; /** 固定高度：分步流程切换时窗口不跳动。 */ fixedHeight?: boolean;
   /** 右上角 ✕ 关闭按钮。 */ onCloseButton?: () => void;
 }) {
-  const h = Math.min(height ?? 720, window.innerHeight - 48);
+  const h = `min(${height ?? 720}px, calc(100vh - 48px))`;
   return (
-    <div className="sheet" style={{ width, maxHeight: h, height: fixedHeight ? h : undefined }}
+    <div className={`sheet ${className ?? ""}`.trimEnd()} style={{ width, maxHeight: h, height: fixedHeight ? h : undefined }}
       onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && onSubmit) { e.preventDefault(); onSubmit(); } }}>
       <div className="sheet-head" style={headerTrailing || onCloseButton ? { display: "flex", flexDirection: "row", alignItems: "center", gap: 24, textAlign: "left" } : undefined}>
         <div style={{ flex: 1, minWidth: 0 }}><div className="t-sheet" title={title}>{title}</div>
@@ -690,7 +691,7 @@ export function Metrics({ stats }: { stats: PageStat[] }) {
           <span className="t-label">{st.label}</span>
         </>;
         return st.onClick
-          ? <button key={st.label} className={`metric ${tone}`} onClick={st.onClick} title={`查看${st.label}`}>{body}</button>
+          ? <button key={st.label} className={`metric ${tone}`} onClick={st.onClick} title={`查看${st.label}`}>{body}<Icon name="chevron.right" className="metric-arrow" size={16} /></button>
           : <div key={st.label} className={`metric ${tone}`}>{body}</div>;
       })}
     </div>
@@ -811,6 +812,36 @@ export function StepBar({ steps, current }: { steps: string[]; current: number }
   </ol>;
 }
 
+/** 文件包步骤条：可选的“水印”步骤淡入淡出，首尾步骤始终留在原位。 */
+export function PacketStepBar({ watermarkEnabled, stage, done = false }: {
+  watermarkEnabled: boolean; stage: "files" | "watermark" | "export"; done?: boolean;
+}) {
+  const labels = { files: "选文件", watermark: "水印", export: "导出" };
+  const steps: (keyof typeof labels)[] = watermarkEnabled ? ["files", "watermark", "export"] : ["files", "export"];
+  const current = done ? steps.length : steps.indexOf(stage);
+  const state = (step: keyof typeof labels) => {
+    const index = steps.indexOf(step);
+    if (index < 0) return "";
+    return index < current ? "done" : index === current ? "cur" : "";
+  };
+  const dot = (step: "files" | "watermark", number: number) => state(step) === "done" ? <Icon name="checkmark" size={12} /> : number;
+  return <div className="packet-stepbar" data-watermark={watermarkEnabled ? "on" : "off"} data-stage={done ? "done" : stage} role="group" aria-label="步骤">
+    <span className="sr-only" role="status">{done ? "全部步骤已完成" : `第 ${current + 1} 步，共 ${steps.length} 步：${labels[stage]}`}</span>
+    <span className="packet-stepbar-line line-a" aria-hidden />
+    <span className="packet-stepbar-line line-bridge" aria-hidden />
+    <span className="packet-stepbar-line line-b" aria-hidden />
+    <span className={`packet-stepbar-item files ${state("files")}`} aria-hidden>
+      <span className="stepbar-dot">{dot("files", 1)}</span><span>选文件</span>
+    </span>
+    <span className={`packet-stepbar-item watermark ${state("watermark")}`} aria-hidden>
+      <span className="stepbar-dot">{dot("watermark", 2)}</span><span>水印</span>
+    </span>
+    <span className={`packet-stepbar-item export ${state("export")}`} aria-hidden>
+      <span className="stepbar-dot">{done ? <Icon name="checkmark" size={12} /> : <><span className="packet-step-number two">2</span><span className="packet-step-number three">3</span></>}</span><span>导出</span>
+    </span>
+  </div>;
+}
+
 /** 带图标和说明的选项卡（复选语义）。 */
 export function OptionCard({ checked, onChange, icon, title, children, disabled }: { checked: boolean; onChange: (v: boolean) => void; icon: string; title: string; children: ReactNode; disabled?: boolean }) {
   return <button className={`option-card ${checked ? "on" : ""}`} role="checkbox" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)}>
@@ -827,8 +858,8 @@ export function SliderRow(p: { label: string; value: number; min: number; max: n
 /** 5.5.5：单选选项卡（圆形单选 + 标题 + 说明），选中时 green-soft 底、品牌绿描边。children 放在说明下方（如生效日）。 */
 export function RadioCard({ selected, onSelect, title, detail, children }: { selected: boolean; onSelect: () => void; title: string; detail: ReactNode; children?: ReactNode }) {
   return <div className={`option-card radio ${selected ? "on" : ""}`} role="radio" aria-checked={selected} tabIndex={0} onClick={onSelect}
-    onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); onSelect(); } }} style={{ flexDirection: "row", gap: 12, cursor: "pointer" }}>
-    <ChoiceMark on={selected} />
+    onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === " " || e.key === "Enter")) { e.preventDefault(); onSelect(); } }} style={{ flexDirection: "row", gap: 12, cursor: "pointer" }}>
+    <span aria-hidden="true" className={`mark radio-dot${selected ? " on" : ""}`} />
     <span className="col grow" style={{ gap: 6, minWidth: 0 }}>
       <span className="t-row">{title}</span><span className="t-meta muted">{detail}</span>
       {selected && children && <span onClick={(e) => e.stopPropagation()}>{children}</span>}

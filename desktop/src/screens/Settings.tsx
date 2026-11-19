@@ -187,13 +187,56 @@ function AppearanceSettings() {
     <PaneHeader title="外观" detail="调整界面的信息密度和深浅色，只影响这台电脑。" />
     <SGroup>
       <SRow title="信息密度" detail="紧凑模式行距更短，一屏显示更多内容。">
-        <Segmented options={[["comfortable", "舒适"], ["compact", "紧凑"]]} value={density} onChange={setDensity} />
+        <AppearanceChoice ariaLabel="信息密度" value={density} onChange={setDensity} options={[
+          ["comfortable", "舒适", <DensityPreview key="comfortable" density="comfortable" />],
+          ["compact", "紧凑", <DensityPreview key="compact" density="compact" />],
+        ]} />
       </SRow>
       <SRow title="深浅色" detail="跟随系统会随电脑的外观设置自动变化。">
-        <Segmented options={[["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]]} value={theme} onChange={setTheme} />
+        <AppearanceChoice ariaLabel="深浅色" value={theme} onChange={setTheme} options={[
+          ["system", "跟随系统", <ThemePreview key="system" theme="system" />],
+          ["light", "浅色", <ThemePreview key="light" theme="light" />],
+          ["dark", "深色", <ThemePreview key="dark" theme="dark" />],
+        ]} />
       </SRow>
     </SGroup>
   </Scroll>;
+}
+
+function AppearanceChoice<V extends string>({ ariaLabel, options, value, onChange }: {
+  ariaLabel: string;
+  options: [V, string, ReactNode][];
+  value: V;
+  onChange: (value: V) => void;
+}) {
+  return (
+    <div className="appearance-choice" role="radiogroup" aria-label={ariaLabel} style={{ "--choice-count": options.length } as React.CSSProperties}>
+      {options.map(([option, label, preview]) => (
+        <button key={option} type="button" className={option === value ? "on" : ""} role="radio" aria-checked={option === value} onClick={() => onChange(option)}>
+          {preview}
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DensityPreview({ density }: { density: "comfortable" | "compact" }) {
+  const count = density === "comfortable" ? 3 : 4;
+  return (
+    <span className={`appearance-preview density-preview ${density}`} aria-hidden>
+      {Array.from({ length: count }, (_, index) => <span key={index}><i /><b /></span>)}
+    </span>
+  );
+}
+
+function ThemePreview({ theme }: { theme: "system" | "light" | "dark" }) {
+  return (
+    <span className={`appearance-preview theme-preview ${theme}`} aria-hidden>
+      <span className="preview-rail" />
+      <span className="preview-card"><i /><b /></span>
+    </span>
+  );
 }
 
 function GeneralSettings({ pane }: { pane: SettingsPane }) {

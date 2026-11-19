@@ -1,0 +1,272 @@
+.files-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 16px;
+  min-width: 0;
+}
+
+.files-toolbar-main,
+.files-toolbar-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.files-toolbar-tools {
+  justify-content: flex-end;
+}
+
+.files-scope-control {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--input-h);
+  border: 2px solid var(--line);
+  border-radius: var(--r-input);
+  background: var(--surface);
+  flex: none;
+  transition: border-color var(--fast) var(--ease);
+}
+
+.files-scope-control:hover,
+.files-scope-control:focus-within {
+  border-color: var(--line-strong);
+}
+
+.files-scope-control:focus-within {
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+
+.files-scope-label {
+  padding-left: 10px;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.files-scope-control .select {
+  min-height: calc(var(--input-h) - 4px);
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: calc(var(--r-input) - 2px);
+  background: transparent;
+}
+
+.files-scope-control .select:hover,
+.files-scope-control .select.open {
+  border: 0;
+  box-shadow: none;
+}
+
+.files-search {
+  width: min(260px, 24vw);
+  min-width: 190px;
+}
+
+.files-search .field {
+  width: 100%;
+}
+
+.files-toolbar.with-horizon {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.files-toolbar.with-horizon .files-toolbar-tools {
+  justify-content: space-between;
+}
+
+@media (max-width: 1120px) {
+  .files-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .files-toolbar-tools {
+    justify-content: space-between;
+  }
+
+  .files-toolbar.with-horizon .files-toolbar-main {
+    flex-wrap: wrap;
+  }
+
+  .files-search {
+    width: min(100%, 460px);
+    flex: 1 1 260px;
+  }
+}
+
+@media (max-width: 760px) {
+  .files-toolbar-main {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .files-status-filter {
+    max-width: calc(100vw - 48px);
+  }
+
+  .files-toolbar-tools {
+    align-items: stretch;
+  }
+
+  .files-search {
+    min-width: 0;
+  }
+
+  .files-view-filter {
+    flex: none;
+  }
+}
+
+/* 水印字段固定 32 px。移动控件浮在上方，状态变化不改标签的占位宽度。 */
+.wm-tokens {
+  gap: 8px;
+  overflow: visible;
+}
+
+.wm-token-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.wm-token {
+  box-sizing: border-box;
+  height: 32px;
+  gap: 7px;
+  padding: 0 7px 0 10px;
+}
+
+.wm-token.tag {
+  background: var(--green-soft);
+  box-shadow: inset 0 0 0 2px var(--green-soft-line);
+}
+
+.wm-token.text {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 2px var(--line);
+}
+
+.wm-token:focus-visible {
+  outline: 2px solid var(--blue-text);
+  outline-offset: 2px;
+}
+
+.wm-token .wm-token-remove {
+  display: inline-flex;
+  width: 18px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+}
+
+.wm-token-move {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: calc(100% + 4px);
+  display: inline-flex;
+  width: 52px;
+  height: 25px;
+  gap: 2px;
+  padding: 1px 2px;
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: var(--overlay), inset 0 0 0 1px var(--hairline);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 3px);
+  transition: opacity var(--fast) var(--ease), transform var(--fast) var(--ease);
+}
+
+.wm-token-move button {
+  position: relative;
+  display: inline-flex;
+  width: 23px;
+  height: 23px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: var(--ink);
+}
+
+.wm-token-move button + button::before {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: -1px;
+  width: 1px;
+  background: var(--line);
+  content: "";
+}
+
+.wm-token-move::after {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  height: 4px;
+  content: "";
+}
+
+.wm-token-wrap:hover .wm-token-move,
+.wm-token-wrap:focus-within .wm-token-move {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0);
+}
+
+.wm-token-wrap.insert-before::before,
+.wm-token-wrap.insert-after::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--green);
+  content: "";
+}
+
+.wm-token-wrap.insert-before::before {
+  left: -5px;
+}
+
+.wm-token-wrap.insert-after::after {
+  right: -5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wm-token-move {
+    transition: none;
+  }
+}
+
+.files-table {
+  /* 两行文件名的行盒、间距、单元格内边距及分隔线。紧凑模式取内容能容纳的最小高度。 */
+  --file-content-row: calc(var(--fs-body) * 1.5 + var(--meta-size) * 1.45 + 14px);
+}
+.files-table tbody:not(:last-child) tr:last-child td { border-bottom: 1px solid var(--line); }
+/* 合并边框的首尾行各少半条分隔线。 */
+.files-table tbody:first-of-type { --file-first-edge: .5px; }
+.files-table tbody:last-of-type { --file-last-edge: .5px; }
+.files-table .file-row-placeholder td {
+  padding: 0;
+  height: max(calc(var(--file-rows) * var(--row-h)),
+    calc(var(--file-rows) * var(--file-content-row) - var(--file-first-edge, 0px) - var(--file-last-edge, 0px)));
+}
+
+.file-card-slot { display: grid; min-width: 0; }
+.file-card-placeholder {
+  /* 与完整缩略图卡共用的预览、两行文字、标签、间距与内边距的总高度。 */
+  height: calc(248px + var(--fs-body) * 1.5 + var(--fs-small) * 1.4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: var(--r-tile);
+  padding: 12px;
+  text-align: left;
+  background: var(--surface);
+}

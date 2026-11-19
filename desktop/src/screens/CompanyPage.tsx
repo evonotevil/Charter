@@ -16,7 +16,7 @@ import { DropTarget } from "../ui/drop";
 import { InlineText } from "./Agents";
 import { GroupAdjustSheet, ShareChangeSheet } from "./HoldingEdit";
 import { Note } from "../ui/kit";
-import { leftText } from "./InfoCard";
+import { FilingDeadlinePill, leftText } from "./InfoCard";
 import "./layout557.css";
 import { RecognizingChip, useStageFile } from "./common";
 import { useListMotion } from "../ui/motion";
@@ -133,7 +133,7 @@ function Snapshot({ c }: { c: Company }) {
   return (
     <div className="snapshot">
       {/* 5.3.4：概况条只放“要不要处理”的四件事；法域、类型、集团、状态都在标题下的属性里 */}
-      <button className="cell" style={{ textAlign: "left" }} onClick={() => router.set("companyTab", 3)}><span className="t-label">申报</span><span>{left === null ? <span className="t-meta muted">没有待办</span> : left < 0 ? <Pill text={`逾期 ${-left} 天`} kind="bad" /> : left <= 30 ? <Pill text={`${left} 天后到期`} kind="warn" /> : <span className="t-meta">{left} 天后 · {next!.rule.name}</span>}</span></button>
+      <button className="cell" style={{ textAlign: "left" }} onClick={() => router.set("companyTab", 3)}><span className="t-label">申报</span><span>{left === null ? <span className="t-meta muted">没有待办</span> : left <= 30 ? <FilingDeadlinePill days={left} /> : <span className="t-meta">{left} 天后 · {next!.rule.name}</span>}</span></button>
       <div className="cell"><span className="t-label">我负责的材料</span>{pct === null
         ? <button className="row gap6" style={{ textAlign: "left" }} onClick={() => router.open({ kind: "scope", ownerKind: "company", owners: [c.id] })}><Pill text={cnt.configured ? "没有我负责的条目" : "未配置材料范围"} kind="neutral" /><span className="link t-meta">设置</span></button>
         : <span className="row gap8"><ProgressTrack value={pct} width={90} /><b className="num">{cnt.held}/{cnt.total}</b>{cnt.agent > 0 && <span className="t-meta muted">中介 {cnt.agent}</span>}</span>}</div>
@@ -160,7 +160,7 @@ function NextUp({ c }: { c: Company }) {
         <div className="t-headline">{next.rule.name}</div>
         <p className="why">{D.long(next.due)}截止 · {leftText(left)}{next.record?.dateConfirmed ? "" : " · 日期按规则推算"}</p>
         <span className="t-meta why">{party ? `交给 ${party.name}` : "还没有指定中介"}</span>
-        <div className="row gap8"><Button onClick={() => router.openDue(next.key)}>去处理</Button>{!next.record?.dateConfirmed && <Button onClick={() => store.confirmDue(next)}>确认日期</Button>}</div>
+        <div className="row gap8"><Button onClick={() => router.openDue(next.key)}>去处理</Button>{!next.record?.dateConfirmed && <Button kind="quiet" onClick={() => store.confirmDue(next)}>确认日期</Button>}</div>
       </KitCard>
       {list.length > 1 && <KitCard title="接下来" className="overview-horizon">
         <div className="horizon">{list.slice(1, 6).map((o) => (
@@ -197,7 +197,7 @@ function PeopleSummary({ c }: { c: Company }) {
         {hs.map((h) => (
           <div key={h.id} className="people-row" role="row">
             <span className="row gap10" style={{ minWidth: 0 }}>
-              {h.holder.kind === "person" ? <Avatar name={store.nameOf(h.holder)} size={30} /> : <JurisdictionBadge code={store.company(h.holder.id)?.jurisdiction ?? ""} size={30} tint={companyTint(store, h.holder.id)} />}
+              {h.holder.kind === "person" ? <Avatar name={store.nameOf(h.holder)} size={28} /> : <JurisdictionBadge code={store.company(h.holder.id)?.jurisdiction ?? ""} size={28} tint={companyTint(store, h.holder.id)} />}
               <button className="v4-link name-2" title={store.nameOf(h.holder)} style={{ textAlign: "left", color: "var(--ink)" }} onClick={() => h.holder.kind === "company" ? router.openCompany(h.holder.id) : router.openPerson(h.holder.id)}>{store.nameOf(h.holder)}</button>
             </span>
             <span className="t-meta muted ellipsis role">股东{h.isNominee ? " · 代持" : ""}</span>
@@ -206,7 +206,7 @@ function PeopleSummary({ c }: { c: Company }) {
         ))}
         {pids.map((pid) => (
           <div key={pid} className="people-row" role="row">
-            <span className="row gap10" style={{ minWidth: 0 }}><Avatar name={store.person(pid)?.name ?? "?"} size={30} />
+            <span className="row gap10" style={{ minWidth: 0 }}><Avatar name={store.person(pid)?.name ?? "?"} size={28} />
               <button className="v4-link name-2" title={store.person(pid)?.name} style={{ textAlign: "left", color: "var(--ink)" }} onClick={() => router.openPerson(pid)}>{store.person(pid)?.name}</button></span>
             {(() => { const t = [...new Set(os.filter((a) => a.personID === pid).map((a) => a.title))].join("、"); return <span className="t-meta muted ellipsis role" title={t}>{t}</span>; })()}
             <span className="pct num" aria-label="无持股比例" />
@@ -408,7 +408,7 @@ function Dues({ c }: { c: Company }) {
                 {o.record?.dateConfirmed ? <span>· 已确认</span> : <span>· 推算日期</span>}
                 <span className="ellipsis">· {store.responsibleParty(o)?.name ?? "未指定中介"}</span></span>
             </span>
-            <span className={`pill ${left < 0 ? "bad" : left <= 30 ? "warn" : "neutral"}`}>{leftText(left)}</span>
+            <FilingDeadlinePill days={left} />
             </button>
             {!o.record?.dateConfirmed && <button className="v4-chip btnlike" style={{ flexShrink: 0 }} title="按推算日期确认" onClick={() => store.confirmDue(o)}>确认日期</button>}
           </div>

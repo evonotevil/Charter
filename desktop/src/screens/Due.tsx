@@ -1,7 +1,7 @@
 // 申报日历：横幅、范围页签、按月时间线（打勾完成）+ 右侧详情（找谁办、对接人、邮件草稿）。
 
 import { companyTint } from "../ui/uistyle";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, type RefObject, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useApp } from "../state/hooks";
 import * as D from "../domain/day";
 import { type Obligation, obligationStatus } from "../domain/engine";
@@ -12,15 +12,20 @@ import { ActionMenu, Banner, Button, Card, DateField, PageHeader, PopoverRow, Se
 import { PickChip } from "./PropChips";
 import { writePDF } from "../services/files";
 import { useStageFile } from "./common";
-import { leftText } from "./InfoCard";
+import { FilingDeadlinePill, leftText } from "./InfoCard";
 import { Icon } from "../ui/Icon";
-import { useChildMotion, useTweenNumber } from "../ui/motion";
+import { reducedMotion, TweenNumber, useChildMotion } from "../ui/motion";
 import type { Document } from "../domain/models";
 import "./layout557.css";
+import "./due558.css";
+import { DueCompletionQueue, DueUndoTimer } from "./dueUndo";
 
 type Range = 90 | 365 | 0;
+type CompletionNotice = { id: number; key: string; text: string; undo: () => void };
+type BurstOrigin = { id: number; x: number; y: number };
+type PlayBurst = (button: HTMLButtonElement, id: number) => void;
 
-export function DueView() {
+export function DueView({ feedback }: { feedback: ReactNode }) {
   const { store, router } = useApp();
   const [range, setRange] = useState<Range>(365);
   const list = useMemo(() => store.openObligations
@@ -32,11 +37,26 @@ export function DueView() {
   const narrow = useNarrow(pageRef, 720);
   const [drawer, setDrawer] = useState(false);
   const soon = list.filter((o) => D.daysBetween(store.today, o.due) <= 30).length;
-  const shownCount = useTweenNumber(list.length);
-  // #14 完成：这一行先打勾（lime），280ms 后淡出，再真正完成；件数随后递减。
-  const [finishing, setFinishing] = useState<string | null>(null);
-  // 4.5：数据立即完成，不等动画；被移走的行由 useChildMotion 原地淡出（可被下一次操作打断，不排队）。
-  const finish = (o: Obligation, receipt?: Document) => { setFinishing(null); store.complete(o, receipt); };
+  const [completion, setCompletion] = useState<CompletionNotice | null>(null);
+  const completionTimer = useRef(new DueUndoTimer());
+  const completionQueue = useRef(new DueCompletionQueue());
+  useEffect(() => () => {
+    completionTimer.current.cancel();
+    completionQueue.current.dispose();
+  }, []);
+  // 5.5.8：完成提示独立于全局提示。复制邮件不打断计时；连续完成只保留最近一项的撤销。
+  const finish = (o: Obligation, receipt?: Document, pendingSequence?: number) => {
+    let id = pendingSequence;
+    if (id === undefined) {
+      completionQueue.current.cancel(o.key);
+      setLeaving((current) => { const next = new Set(current); next.delete(o.key); return next; });
+      id = completionQueue.current.begin();
+    }
+    const result = store.complete(o, receipt, { toast: false });
+    if (!completionQueue.current.isLatest(id)) return;
+    setCompletion({ id, key: o.key, text: `已完成：${o.company.name} · ${o.rule.name}`, undo: result.undo });
+    completionTimer.current.start(() => setCompletion((current) => current?.id === id ? null : current));
+  };
   const listRef = useChildMotion<HTMLDivElement>(String(range));
 
   const months: { label: string; items: Obligation[] }[] = [];
@@ -46,10 +66,15 @@ export function DueView() {
     months[months.length - 1].items.push(o);
   }
 
-  const subscribe = () => void writeCalendarFile(store).then(async (path) => {
-    await platform().reveal(path);
-    store.showToast("已显示日历文件。用日历应用打开它即可订阅，事项变化时 Charter 会自动更新。");
-  }).catch((e) => store.showToast(`无法写入日历文件：${(e instanceof Error ? e.message : String(e))}`, undefined, "", "failure"));
+  const subscribe = async () => {
+    let path: string;
+    try { path = await writeCalendarFile(store); }
+    catch { store.showToast("日历文件写入失败，未生成订阅文件。", undefined, "", "calendar-error"); return; }
+    try {
+      await platform().reveal(path);
+      store.showToast("已显示日历文件。用日历应用打开它即可订阅，事项变化时 Charter 会自动更新。");
+    } catch { store.showToast("日历文件已生成，但没能在文件夹中显示。", undefined, "", "failure"); }
+  };
 
   const exportList = async (csv: boolean) => {
     const title = `到期事项清单 ${store.today}`;
@@ -65,30 +90,50 @@ export function DueView() {
           lines: m.items.map((o) => `${D.short(o.due)}　${o.company.name}　${o.rule.name}　${store.responsibleParty(o)?.name ?? "未指定中介"}${o.due < store.today ? "　〔已逾期〕" : ""}${o.record?.dateConfirmed ? "" : "　〔日期为推算〕"}`) }));
         await platform().writeBytes(path, await writePDF("到期事项清单", `共 ${list.length} 件，${D.long(store.today)}导出`, sections, "标注“日期为推算”的按规则算出，尚未确认。"));
       }
-      store.showToast(`已导出 ${list.length} 件事项。`, () => void platform().reveal(path), "在访达中显示");
+      store.showToast(`已导出 ${list.length} 件申报事项${overdue ? `，其中 ${overdue} 件已逾期` : ""}。`, () => void platform().reveal(path), "显示文件", overdue ? "overdue" : "success");
     } catch (e) { store.setError(`导出失败：${(e instanceof Error ? e.message : String(e))}`); }
   };
 
   const overdue = list.filter((o) => o.due < store.today).length;
   const [done, setDone] = useState<string[]>([]);
-  const [leaving, setLeaving] = useState<string | null>(null);
-  const tick = (o: Obligation) => {
-    setLeaving(o.key);
-    setTimeout(() => { setLeaving(null); finish(o); setDone((d) => [...d, o.key]); store.showToast(`已完成：${o.company.name} ${o.rule.name}`); }, 520);
+  const [leaving, setLeaving] = useState<Set<string>>(() => new Set());
+  const playBurst = useRef<PlayBurst>(null);
+  const tick = (o: Obligation, button: HTMLButtonElement) => {
+    const sequence = completionQueue.current.schedule(o.key, (pendingSequence) => {
+      setLeaving((current) => { const next = new Set(current); next.delete(o.key); return next; });
+      finish(o, undefined, pendingSequence);
+      setDone((d) => [...d, o.key]);
+    });
+    if (sequence === null) return;
+    setLeaving((current) => new Set(current).add(o.key));
+    playBurst.current?.(button, sequence);
+  };
+  const undoCompletion = () => {
+    if (!completion) return;
+    const { key, undo } = completion;
+    completionTimer.current.cancel();
+    setCompletion(null);
+    undo();
+    setDone((keys) => keys.filter((item) => item !== key));
+    setDrawer(false);
+    store.showToast("已撤销，事项已回到申报日历。");
+    router.set("selectedObligationKey", key);
+    requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`.req-main[data-key="${CSS.escape(key)}"]`)?.focus()));
   };
   const tone = overdue ? "bad" : soon ? "warn" : "ok";
   return (
     <div className="page due-page"><div className="page-inner due-page-inner" ref={pageRef}>
+      <BurstLayer ref={playBurst} scrollArea={listRef} />
       <PageHeader title="申报日历" subtitle={`全部公司 · 到期前 ${store.data.settings.reminderDays.join(" / ")} 天提醒`}>
-        <Button icon="calendar.badge.plus" onClick={subscribe}>订阅到日历</Button>
+        <Button icon="calendar.badge.plus" onClick={() => void subscribe()}>订阅到日历</Button>
         <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" showsChevron={false} entries={[
           item("导出清单 PDF…", "doc.text", () => void exportList(false)),
           item("导出清单 CSV（Excel 可打开）…", "tablecells", () => void exportList(true)),
         ]} />
       </PageHeader>
-      {overdue || soon ? <Banner tone={tone} title={overdue ? `${overdue} 件已逾期` : `30 天内有 ${soon} 件`}>
+      {overdue || soon ? <Banner tone={tone} icon={overdue ? "calendar.badge.clock" : "clock"} title={overdue ? `${overdue} 件已逾期` : `30 天内有 ${soon} 件`}>
         {overdue ? "先联系中介处理逾期的事项，再看快到期的。" : "按日期一件件来，做完点右边的圆圈打勾。"}
-      </Banner> : <span className="t-meta muted" style={{ padding: "2px 2px 6px" }}>{list.length ? `30 天内没有到期事项。接下来 ${shownCount} 件都在 30 天以后。` : "这段时间没有要申报的事。"}</span>}
+      </Banner> : <span className="t-meta muted" style={{ padding: "2px 2px 6px" }}>{list.length ? <>30 天内没有到期事项。接下来 <TweenNumber value={list.length} /> 件都在 30 天以后。</> : "这段时间没有要申报的事。"}</span>}
       <Tabs<Range> value={range} onChange={setRange} tabs={[[90, "90 天内"], [365, "一年内"], [0, "全部"]]} />
       {!list.length ? (
         <Card><div className="celebrate"><span className="emblem"><Icon name="checkmark" size={30} strokeWidth={3} /></span><div className="t-headline">{done.length ? "全部完成！" : "这段时间没有申报事项"}</div><p className="muted">事项按公司的法域和成立日期自动排出。新建公司后这里会出现它的年审。</p></div></Card>
@@ -103,7 +148,7 @@ export function DueView() {
                     const on = o.key === sel?.key, left = D.daysBetween(store.today, o.due), party = store.responsibleParty(o);
                     return (
                       // 5.4：行本身不再是按钮；选中用 aria-current 标在行内的按钮上，“标为已完成”是并列的独立控件
-                      <div key={o.key} data-mid={o.key} role="listitem" className={`req ${leaving === o.key ? "leaving" : ""}`} data-on={on || undefined}>
+                      <div key={o.key} data-mid={o.key} role="listitem" className={`req ${leaving.has(o.key) ? "leaving" : ""}`} data-on={on || undefined}>
                         <button type="button" className="req-main" aria-current={on ? "true" : undefined} data-key={o.key}
                           onClick={() => { router.set("selectedObligationKey", o.key); if (narrow) setDrawer(true); }}>
                         <span className="date col"><span>{D.short(o.due)}</span><span className="t-meta muted" style={{ fontWeight: 600 }}>{D.weekdayName(o.due).replace("星期", "周")}</span></span>
@@ -111,12 +156,11 @@ export function DueView() {
                           <span className="title ellipsis" style={{ fontWeight: 700 }}>{o.rule.name}</span>
                           <span className="row gap6 t-meta muted" style={{ minWidth: 0 }}><span className="v4-code" style={{ width: 22, height: 18, borderRadius: 5, fontSize: 9, ...companyTint(store, o.company.id) }}>{o.company.jurisdiction}</span><span className="ellipsis">{o.company.name}{party ? " · " + party.name : " · 未指定中介"}</span></span>
                         </span>
-                        <span className={`pill ${left < 0 ? "bad" : left <= 30 ? "warn" : "neutral"}`}>{leftText(left)}</span>
+                        <FilingDeadlinePill days={left} />
                         </button>
-                        <button className="check" role="checkbox" aria-checked={leaving === o.key} aria-label={`标为已完成：${o.rule.name}`} title="标为已完成"
-                          onClick={(e) => { e.stopPropagation(); if (!leaving) tick(o); }}>
+                        <button className="check" role="checkbox" aria-checked={leaving.has(o.key)} aria-label={`标为已完成：${o.rule.name}`} title="标为已完成"
+                          onClick={(e) => { e.stopPropagation(); tick(o, e.currentTarget); }}>
                           <Icon name="checkmark" size={14} strokeWidth={3.5} />
-                          {leaving === o.key && <Burst />}
                         </button>
                       </div>
                     );
@@ -129,16 +173,72 @@ export function DueView() {
           {sel && narrow && drawer && <DueDrawer onClose={() => { setDrawer(false); requestAnimationFrame(() => document.querySelector<HTMLElement>(`.req-main[data-key="${CSS.escape(sel.key)}"]`)?.focus()); }}><DueDetail o={sel} onFinish={(o2, r) => { setDrawer(false); finish(o2, r); }} /></DueDrawer>}
         </div>
       )}
+      <div className="two due-feedback-layer">
+        <div className="due-feedback">
+          {feedback}
+          {completion && <div className="due-undo no-drag"
+            onMouseEnter={() => completionTimer.current.pause("pointer")} onMouseLeave={() => completionTimer.current.resume("pointer")}
+            onFocusCapture={() => completionTimer.current.pause("focus")}
+            onBlurCapture={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) completionTimer.current.resume("focus"); }}>
+            <span className="dot"><Icon name="checkmark" size={13} strokeWidth={3.5} /></span>
+            <span className="due-undo-message" role="status" aria-live="polite">{completion.text}</span>
+            <button type="button" className="no-drag" onClick={undoCompletion}>撤销</button>
+          </div>}
+        </div>
+      </div>
     </div></div>
   );
 }
 
-/** 打勾时的小彩点：从圆圈处散开，700ms 后消失。 */
-function Burst() {
+function scrollBurstViewport(layer: HTMLElement, list: HTMLElement) {
+  layer.style.setProperty("--burst-scroll-x", `${-list.scrollLeft}px`);
+  layer.style.setProperty("--burst-scroll-y", `${-list.scrollTop}px`);
+}
+
+function positionBurstViewport(layer: HTMLElement, list: HTMLElement) {
+  const box = list.getBoundingClientRect();
+  const page = layer.parentElement!.getBoundingClientRect();
+  const x = box.left + list.clientLeft, y = box.top + list.clientTop;
+  Object.assign(layer.style, { left: `${x - page.left}px`, top: `${y - page.top}px`, width: `${list.clientWidth}px`, height: `${list.clientHeight}px` });
+  scrollBurstViewport(layer, list);
+  return { x, y };
+}
+
+/** 彩点存储列表内容坐标，随滚动自然移出视区。最后一个事项提交时，独立的层仍能播放完毕。 */
+const BurstLayer = forwardRef<PlayBurst, { scrollArea: RefObject<HTMLDivElement> }>(function BurstLayer({ scrollArea }, ref) {
+  const layer = useRef<HTMLDivElement>(null);
+  const [bursts, setBursts] = useState<BurstOrigin[]>([]);
+  useImperativeHandle(ref, () => (button, id) => {
+    const list = scrollArea.current;
+    if (reducedMotion() || !layer.current || !list) return;
+    const box = button.getBoundingClientRect();
+    const viewport = positionBurstViewport(layer.current, list);
+    const origin = { id, x: box.left + box.width / 2 - viewport.x + list.scrollLeft, y: box.top + box.height / 2 - viewport.y + list.scrollTop };
+    setBursts((active) => [...active, origin]);
+  }, [scrollArea]);
+  const playing = bursts.length > 0;
+  useEffect(() => {
+    if (!playing) return;
+    const list = scrollArea.current, viewport = layer.current;
+    if (!list || !viewport) return;
+    const onScroll = () => scrollBurstViewport(viewport, list);
+    const resize = new ResizeObserver(() => { if (list.isConnected) positionBurstViewport(viewport, list); });
+    resize.observe(list);
+    list.addEventListener("scroll", onScroll, { passive: true });
+    return () => { list.removeEventListener("scroll", onScroll); resize.disconnect(); };
+  }, [playing, scrollArea]);
+  return <div className="due-burst-layer" ref={layer} aria-hidden>
+    {bursts.map((origin) => <Burst key={origin.id} origin={origin}
+      onEnd={() => setBursts((active) => active.filter((burst) => burst.id !== origin.id))} />)}
+  </div>;
+});
+
+function Burst({ origin, onEnd }: { origin: BurstOrigin; onEnd: () => void }) {
   const colors = ["var(--green)", "var(--amber)", "var(--blue-text)", "var(--purple-text)", "var(--red)"];
-  return <span className="burst" aria-hidden>{Array.from({ length: 10 }, (_, i) => {
+  return <span className="burst" style={{ left: origin.x, top: origin.y }}
+    onAnimationEnd={(event) => { if (event.target === event.currentTarget) onEnd(); }}>{Array.from({ length: 10 }, (_, i) => {
     const a = (i / 10) * Math.PI * 2, r = 22 + (i % 3) * 6;
-    return <i key={i} style={{ background: colors[i % colors.length], ["--x" as any]: `${Math.cos(a) * r}px`, ["--y" as any]: `${Math.sin(a) * r}px` }} />;
+    return <i key={i} style={{ background: colors[i % colors.length], "--x": `${Math.cos(a) * r}px`, "--y": `${Math.sin(a) * r}px` } as CSSProperties} />;
   })}</span>;
 }
 
@@ -158,8 +258,8 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
   const [startStage, stageNode] = useStageFile();
   const left = D.daysBetween(store.today, o.due);
   return (
-    <section className="card appear due-detail" aria-label="事项详情" key={o.key}>
-      <div className="col gap6 due-detail-head">
+    <section className="card due-detail" aria-label="事项详情" key={o.key}>
+      <div className="col gap6 due-detail-head appear">
         <button className="t-label" style={{ textAlign: "left" }} onClick={() => router.openCompany(o.company.id)}>{store.jurisdictionName(o.company.jurisdiction)} · {o.company.name}</button>
         <div className="t-title">{o.rule.name}</div>
         <div className="muted t-meta">{D.long(o.due)}截止 · {leftText(D.daysBetween(store.today, o.due))}{o.rule.localName ? " · " + o.rule.localName : ""}</div>

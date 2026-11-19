@@ -12,7 +12,7 @@ import {
 } from "../domain/models";
 import { type Freshness, type Obligation, daysLeft, expiryLabel, expiryOf, freshnessLabel, freshnessNeedsAttention, obligationStatus } from "../domain/engine";
 import { type ArchiveState, archiveStateLabel } from "../domain/models";
-import { useApp } from "../state/hooks";
+import { useApp, useAppContext } from "../state/hooks";
 import type { Store } from "../state/store";
 import { type StagedFile, commitStaged, discardStaged, stage } from "../state/actions";
 import { copyMessage, copyHandoff, packetItems, packetMissing, packetItemTitle, packetReason } from "../services/packets";
@@ -149,7 +149,7 @@ export function stateLine(store: Store, o: Obligation): string {
 
 /** 选择一个文件，复制到临时区并识别，然后弹出确认框。返回 [开始, 弹窗节点, 是否正在识别]。 */
 export function useStageFile(): [(opts: { typeID?: string; owner?: NodeRef; replaces?: Document; form?: string; onArchived?: (d: Document) => void; path?: string }) => Promise<void>, ReactNode, boolean] {
-  const { store } = useApp();
+  const { store } = useAppContext();
   const [file, setFile] = useState<StagedFile | null>(null);
   const [busy, setBusy] = useState(false);
   const start = async (opts: { typeID?: string; owner?: NodeRef; replaces?: Document; form?: string; onArchived?: (d: Document) => void; path?: string }) => {

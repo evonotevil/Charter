@@ -2,8 +2,6 @@
 // - 读 data-tip；元素上的 title 会在第一次悬停时自动转成 data-tip（并补 aria-label / aria-description，读屏不丢信息）。
 // - 悬停约 400ms 出现；键盘聚焦（:focus-visible）也会出现；按下、滚动、Esc、离开即消失。
 // - 默认在元素上方，放不下就放到下方，左右不超出窗口。
-// 另外负责一件和弹层相关的事：有弹层或对话框打开时给 <html> 加 overlay-open，暂停窗口拖动区域，
-// 否则 Electron 的拖动区会盖过弹层，点不到弹层里的按钮。
 
 const DELAY = 400;
 const GAP = 6;
@@ -36,7 +34,7 @@ function find(node: EventTarget | null): HTMLElement | null {
 function hide() {
   window.clearTimeout(timer);
   target = null;
-  if (tip) tip.hidden = true;
+  if (tip && !tip.hidden) tip.hidden = true;
 }
 
 function show(el: HTMLElement) {
@@ -85,9 +83,4 @@ export function installTooltips() {
   document.addEventListener("scroll", hide, true);
   window.addEventListener("blur", hide);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && tip && !tip.hidden) hide(); }, true);
-
-  // 弹层或对话框打开时暂停窗口拖动区域
-  const sync = () => document.documentElement.classList.toggle("overlay-open", !!document.querySelector(".popover:not(.ghost-out), .overlay:not(.ghost-out)"));
-  new MutationObserver(sync).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
-  sync();
 }

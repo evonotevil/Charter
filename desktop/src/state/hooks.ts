@@ -8,9 +8,14 @@ import type { SyncMonitor } from "./sync";
 export interface AppContext { store: Store; router: Router; sync: SyncMonitor }
 export const Ctx = createContext<AppContext | null>(null);
 
-export function useApp(): AppContext {
+export function useAppContext(): AppContext {
   const c = useContext(Ctx);
   if (!c) throw new Error("AppContext missing");
+  return c;
+}
+
+export function useApp(): AppContext {
+  const c = useAppContext();
   useSyncExternalStore(c.store.subscribe, c.store.getVersion);
   useSyncExternalStore(c.router.subscribe, c.router.getVersion);
   useSyncExternalStore(c.sync.subscribe, c.sync.getVersion);

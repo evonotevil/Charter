@@ -33,7 +33,7 @@ export function FileViewToggle() {
 export function itemStatus(i: ArchiveItem): StatusView {
   if (hasFile(i.state)) return statusOfArchive(i.state);
   switch (i.custody) {
-    case "mine": return { key: "missing", text: "缺件", icon: "circle.dashed", cls: "warn-o", hint: "由你保管，还没有归档" };
+    case "mine": return { key: "missing", text: "缺件", icon: "doc.text", cls: "warn-o", hint: "由你保管，还没有归档" };
     case "agent": return { key: "external", text: "中介保管", icon: "lock.circle", cls: "quiet", hint: "由中介或其他机构保管，不算缺件" };
     case "pending": return { key: "unverifiedMark", text: "未归档", icon: "circle.dashed", cls: "miss", hint: "还没有这份文件；是否由你保管尚未确认，不算缺件" };
     case "na": return { key: "notApplicable", text: "不适用", icon: "minus.circle", cls: "quiet", hint: "用不到" };

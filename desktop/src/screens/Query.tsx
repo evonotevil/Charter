@@ -1,9 +1,10 @@
 // 命令面板（Ctrl/⌘ K）与持股链条查询。移植自 QueryViews.swift。
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type Company, type NodeRef, type PacketTemplate, isActiveOn, ref, sameRef, latinPad } from "../domain/models";
 import { breakdown, chainHasNominee, chainPaths, percentLabel } from "../domain/engine";
 import { matchesSearch, searchForms } from "../domain/search";
+import type { Store } from "../state/store";
 import { useApp } from "../state/hooks";
 import { type SettingsPane, settingsPaneSymbol, settingsPaneTitle, settingsPanes } from "../state/router";
 import { platform } from "../platform/platform";
@@ -15,19 +16,12 @@ type Act = { kind: "packet"; companyID: string; purposeID?: string } | { kind: "
   | { kind: "change"; companyID: string } | { kind: "structure"; companyID: string } | { kind: "newCompany" } | { kind: "newGroup" } | { kind: "uploadAny" } | { kind: "calendar" }
   | { kind: "settings"; pane: SettingsPane };
 interface Action { act: Act; title: string; symbol: string }
-type Hit = { kind: "company"; c: Company; id: string } | { kind: "person"; p: { id: string; name: string }; id: string } | { kind: "action"; a: Action; id: string };
+type Hit = { kind: "company"; c: Company; id: string; subtitle: string } | { kind: "person"; p: { id: string; name: string }; id: string } | { kind: "action"; a: Action; id: string };
 type Verb = "packet" | "upload" | "reissue" | "change" | "structure";
 const verbs: [string, Verb][] = [["文件包", "packet"], ["准备", "packet"], ["上传", "upload"], ["归档", "upload"], ["补发", "reissue"], ["缺少", "reissue"], ["缺", "reissue"],
   ["记录变更", "change"], ["变更", "change"], ["股权结构", "structure"], ["结构", "structure"], ["股权", "structure"]];
 
-export function QuickSearch({ onClose }: { onClose: () => void }) {
-  const { store, router } = useApp();
-  const [query, setQuery] = useState("");
-  const [selectedID, setSelectedID] = useState<string | null>(null);
-  const [reissue, setReissue] = useState<{ owner: NodeRef; typeIDs: string[] } | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const q = query.trim();
-
+function searchSections(store: Store, recentCompanyIDs: string[], q: string) {
   const companyMatches = (c: Company, terms: Set<string>) => matchesSearch(terms, [[c.name, ...c.formerNames, ...c.aliases, c.registrationNumber, c.jurisdiction].join(" "), store.jurisdictionName(c.jurisdiction), store.groupsContaining(c.id).map((g) => g.name).join(" "),
     store.officers(c.id).map((a) => store.person(a.personID)?.name ?? "").join(" ")]);
   const allTokens = (c: Company, q: string) => q.split(/\s+/).filter(Boolean).every((t) => companyMatches(c, searchForms(t)));
@@ -78,25 +72,38 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
     const terms = searchForms(text);
     return all.filter((a) => { const forms = searchForms(a.title); return matchesSearch(terms, [a.title]) || [...terms].some((t) => [...forms].some((f) => t.includes(f))); });
   };
+  const companyHit = (c: Company): Hit => ({ kind: "company", c, id: `c-${c.id}`,
+    subtitle: [store.jurisdictionName(c.jurisdiction), c.registrationNumber, store.groupsContaining(c.id).map((g) => g.name).join("、")].filter(Boolean).join("，") });
   const toHit = (a: Action): Hit => ({ kind: "action", a, id: `a-${JSON.stringify(a.act)}-${a.title}` });
   let sections: { id: string; title: string; hits: Hit[] }[];
   if (!q) {
     sections = [
-      { id: "recent", title: "最近", hits: router.recentCompanyIDs.map((id) => store.company(id)).filter((c): c is Company => !!c).map((c) => ({ kind: "company", c, id: `c-${c.id}` })) },
+      { id: "recent", title: "最近", hits: recentCompanyIDs.map((id) => store.company(id)).filter((c): c is Company => !!c).map(companyHit) },
       { id: "common", title: "常用动作", hits: globalActions(null).map(toHit) },
     ];
   } else {
     const parsed = parse(q);
     const terms = searchForms(q);
-    const cs = store.data.companies.filter((c) => allTokens(c, q)).sort((a, b) => a.name.localeCompare(b.name, "zh")).map((c): Hit => ({ kind: "company", c, id: `c-${c.id}` }));
+    const cs = store.data.companies.filter((c) => allTokens(c, q)).sort((a, b) => a.name.localeCompare(b.name, "zh")).map(companyHit);
     const ps = store.data.people.filter((p) => matchesSearch(terms, [p.name, ...p.aliases])).sort((a, b) => a.name.localeCompare(b.name, "zh")).map((p): Hit => ({ kind: "person", p, id: `p-${p.id}` }));
     const found = [...cs, ...ps].slice(0, 30);
     const actions = { id: "actions", title: "动作", hits: [...companyActions(parsed), ...globalActions(q)].map(toHit).slice(0, 8) };
     const list = [{ id: "companies", title: "公司", hits: found.filter((h) => h.kind === "company") }, { id: "people", title: "人员", hits: found.filter((h) => h.kind === "person") }];
     sections = parsed.intent ? [actions, ...list] : [...list, actions];
   }
-  sections = sections.filter((s) => s.hits.length);
-  const flat = sections.flatMap((s) => s.hits);
+  return sections.filter((s) => s.hits.length);
+}
+
+export function QuickSearch({ onClose }: { onClose: () => void }) {
+  const { store, router } = useApp();
+  const [query, setQuery] = useState("");
+  const [selectedID, setSelectedID] = useState<string | null>(null);
+  const [reissue, setReissue] = useState<{ owner: NodeRef; typeIDs: string[] } | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const q = query.trim();
+
+  const sections = useMemo(() => searchSections(store, router.recentCompanyIDs, q), [store, store.data, store.today, router.recentCompanyIDs, q]);
+  const flat = useMemo(() => sections.flatMap((s) => s.hits), [sections]);
   useEffect(() => { if (!selectedID || !flat.some((h) => h.id === selectedID)) setSelectedID(flat[0]?.id ?? null); }, [flat.map((h) => h.id).join("|")]);
   useEffect(() => { listRef.current?.querySelector(`[data-hit="${CSS.escape(selectedID ?? "")}"]`)?.scrollIntoView({ block: "nearest" }); }, [selectedID]);
 
@@ -163,7 +170,7 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
                         <JurisdictionBadge code={h.c.jurisdiction} size={30} highlighted={on} />
                         <span className="col grow" style={{ gap: 1, minWidth: 0 }}>
                           <span className="ellipsis" style={{ fontSize: 15, fontWeight: 500 }}>{h.c.name}</span>
-                          <span className="t-meta ellipsis" style={{ color: sub }}>{[store.jurisdictionName(h.c.jurisdiction), h.c.registrationNumber, store.groupsContaining(h.c.id).map((g) => g.name).join("、")].filter(Boolean).join("，")}</span>
+                          <span className="t-meta ellipsis" style={{ color: sub }}>{h.subtitle}</span>
                         </span>{hint("↩ 打开", on)}
                       </> : h.kind === "person" ? <>
                         <Avatar name={h.p.name} size={30} highlighted={on} />

@@ -362,14 +362,29 @@ const mime = (f) => MIME[path.extname(f).toLowerCase()] || "application/octet-st
 // MARK: - 窗口
 
 let mainWindow = null;
+let sidebarRail = false;
 const win = () => mainWindow;
+const windowButtonPosition = () => ({ x: sidebarRail ? 7 : 18, y: 18 });
+
+function applyWindowButtonPosition() {
+  if (!isMac || !mainWindow || mainWindow.isDestroyed() || mainWindow.isFullScreen()) return;
+  mainWindow.setWindowButtonPosition(windowButtonPosition());
+}
+
+// 5.5.8：仅同步侧栏是否为 76px rail，用来给 macOS 原生交通灯留出对称边距。
+// 布尔值以外、非当前 Charter 窗口、非 macOS 的消息一律无副作用。
+ipcMain.on("charter:set-sidebar-rail", (event, rail) => {
+  if (!isMac || typeof rail !== "boolean" || !mainWindow || mainWindow.isDestroyed() || BrowserWindow.fromWebContents(event.sender) !== mainWindow) return;
+  sidebarRail = rail;
+  applyWindowButtonPosition();
+});
 
 function createWindow() {
   const dark = nativeTheme.shouldUseDarkColors;
   mainWindow = new BrowserWindow({
     width: 1440, height: 920, minWidth: 1080, minHeight: 720, title: "Charter", show: false,
     backgroundColor: dark ? "#111813" : "#F7F9F5",
-    ...(isMac ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 18, y: 18 } } : {}),
+    ...(isMac ? { titleBarStyle: "hiddenInset", trafficLightPosition: windowButtonPosition() } : {}),
     ...(isWin ? { titleBarStyle: "hidden", titleBarOverlay: { color: "#00000000", symbolColor: dark ? "#E9F1E6" : "#25352C", height: 34 } } : {}),
     webPreferences: { preload: path.join(__dirname, "preload.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false },
   });
@@ -382,6 +397,7 @@ function createWindow() {
   // 外部链接用系统浏览器打开；界面内不跳转
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url); return { action: "deny" }; });
   mainWindow.webContents.on("will-navigate", (e, url) => { if (!url.startsWith("app://")) e.preventDefault(); });
+  if (isMac) mainWindow.on("leave-full-screen", applyWindowButtonPosition);
   if (isWin) nativeTheme.on("updated", () => mainWindow?.setTitleBarOverlay?.({ symbolColor: nativeTheme.shouldUseDarkColors ? "#E9F1E6" : "#25352C" }));
   // 5.5.5：打包版不读开发地址
   const dev = app.isPackaged ? undefined : process.env.CHARTER_DEV_URL;

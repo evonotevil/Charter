@@ -1,7 +1,6 @@
-// 文件详情里的预览（5.3.6）。
-// PDF：所有页都能滚动查看，但只渲染可见页及上下各一页；离开可见区域的页释放画布。
-// 关闭或切换文件时取消未完成的加载和渲染，销毁 PDF 文档，把画布缩成 0×0 再移除。
-// 顶部显示“共 N 页 · 第 x 页”和“打开原件”，避免误以为缺页。
+// 文件详情里的预览（5.5.8）。
+// PDF 按页显示：纸面完整放进预览区，四周至少留 16px；用左右按钮切页。
+// 关闭、切换文件或快速翻页时取消未完成的加载和渲染，并及时释放画布。
 
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
@@ -9,59 +8,60 @@ import { loadPdfReader } from "../services/extract";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Button } from "../ui/kit";
+import "./filePreview.css";
 
-/** 单页画布的像素上限：避免一张 300dpi 扫描件在高分屏上生成上亿像素的画布。 */
 const MAX_PIXELS = 4_000_000;
-/** 预渲染范围：可见页上下各约一屏。 */
-const MARGIN = "100% 0px";
+const PAGE_GUTTER = 16;
 
 type RenderTask = { cancel: () => void; promise: Promise<unknown> };
+type PreviewState = "loading" | "ok" | "missing";
 
-/** 释放画布占用的内存并移出页面。 */
 export function releaseCanvas(c: HTMLCanvasElement | null | undefined) {
   if (!c) return;
-  c.width = 0; c.height = 0;
+  c.width = 0;
+  c.height = 0;
   c.remove();
 }
 
 export function FilePreview({ path, onOpenOriginal, onRelocate, onReissue }: { path: string; onOpenOriginal?: () => void; onRelocate?: () => void; onReissue?: () => void }) {
   const pdf = path.toLowerCase().endsWith(".pdf");
-  const scroller = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<"loading" | "ok" | "missing" | "partial">("loading");
+  const [state, setState] = useState<PreviewState>("loading");
   const [pages, setPages] = useState(0);
-  const [aspect, setAspect] = useState(1.414);
   const [current, setCurrent] = useState(1);
   const docRef = useRef<PDFDocumentProxy | null>(null);
 
-  // 1. 加载文档（只读一次，不渲染）
   useEffect(() => {
     let cancelled = false;
     let task: PDFDocumentLoadingTask | null = null;
-    setState("loading"); setPages(0); setCurrent(1);
+    setState("loading");
+    setPages(0);
+    setCurrent(1);
     (async () => {
       try {
         const bytes = await platform().readBytes(path);
         if (cancelled) return;
-        if (!pdf) { setState("ok"); return; }
+        if (!pdf) {
+          setState("ok");
+          return;
+        }
         const pdfjs = await loadPdfReader();
         if (cancelled) return;
         task = pdfjs.getDocument({ data: bytes });
         const doc = await task.promise;
-        if (cancelled) { await doc.destroy(); return; }
-        const p1 = await doc.getPage(1);
-        const vp = p1.getViewport({ scale: 1 });
-        p1.cleanup();
-        if (cancelled) return;
+        if (cancelled) {
+          await doc.destroy();
+          return;
+        }
         docRef.current = doc;
-        setAspect(vp.height / vp.width);
         setPages(doc.numPages);
         setState("ok");
-      } catch { if (!cancelled) setState("missing"); }
+      } catch {
+        if (!cancelled) setState("missing");
+      }
     })();
     return () => {
       cancelled = true;
       docRef.current = null;
-      // destroy() 会同时终止加载、销毁已加载的文档和它的 worker 资源
       void task?.destroy().catch(() => undefined);
     };
   }, [path, pdf]);
@@ -75,79 +75,120 @@ export function FilePreview({ path, onOpenOriginal, onRelocate, onReissue }: { p
         {onRelocate && <Button size="small" kind="primary" icon="folder" onClick={onRelocate}>重新定位…</Button>}
         {onReissue && <Button size="small" icon="square.and.arrow.up" onClick={onReissue}>归档新版…</Button>}
       </span>
-    </div>);
-  if (!pdf) return state === "ok" ? <img src={platform().fileURL(path)} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : null;
+    </div>
+  );
+  if (!pdf) return state === "ok" ? <img className="file-preview-image" src={platform().fileURL(path)} alt="文件图像预览" /> : null;
+
+  const previousDisabled = pages < 2 || current <= 1;
+  const nextDisabled = pages < 2 || current >= pages;
   return (
-    <div className="col" style={{ height: "100%", minHeight: 0 }}>
-      {pages > 0 && (
-        <div className="row gap8 preview-bar">
-          <span className="t-meta num grow" aria-live="polite">共 {pages} 页 · 第 {current} 页{state === "partial" ? " · 部分页面无法显示" : ""}</span>
-          {onOpenOriginal && <Button size="small" kind="quiet" icon="arrow.up.forward.app" onClick={onOpenOriginal}>打开原件</Button>}
+    <div className="file-preview">
+      <div className="file-preview-bar">
+        <div className="file-preview-pager" aria-label="PDF 翻页">
+          <button type="button" className="icon-btn sunken file-preview-arrow" disabled={previousDisabled}
+            aria-label="上一页" title={!pages ? "正在读取页数" : previousDisabled ? "已经是第一页" : "上一页"} onClick={() => setCurrent((page) => Math.max(1, page - 1))}>
+            <Icon name="chevron.left" size={16} />
+          </button>
+          <span className="t-meta num file-preview-page-number" aria-live="polite">{pages > 0 ? `${current} / ${pages}` : "— / —"}</span>
+          <button type="button" className="icon-btn sunken file-preview-arrow" disabled={nextDisabled}
+            aria-label="下一页" title={!pages ? "正在读取页数" : nextDisabled ? "已经是最后一页" : "下一页"} onClick={() => setCurrent((page) => Math.min(pages, page + 1))}>
+            <Icon name="chevron.right" size={16} />
+          </button>
         </div>
-      )}
-      <div ref={scroller} className="scroll grow" style={{ minHeight: 0, paddingBottom: 12 }} aria-busy={state === "loading"}
-        onScroll={(e) => {
-          const el = e.currentTarget; const first = el.querySelector<HTMLElement>("[data-page]");
-          if (!first || !pages) return;
-          const h = first.offsetHeight + 12;
-          setCurrent(Math.min(pages, Math.max(1, Math.floor((el.scrollTop + el.clientHeight / 3) / h) + 1)));
-        }}>
-        {state === "loading" && <div className="muted t-meta" style={{ padding: 16 }}>正在打开…</div>}
-        {pages > 0 && Array.from({ length: pages }, (_, i) => (
-          <PdfPage key={path + i} index={i + 1} docRef={docRef} aspect={aspect} root={scroller} onFail={() => setState("partial")} />
-        ))}
+        {onOpenOriginal && <Button size="small" kind="quiet" onClick={onOpenOriginal}>打开原件</Button>}
+      </div>
+      <div className="file-preview-stage" aria-busy={state === "loading"}>
+        {state === "loading" && <div className="muted t-meta">正在打开…</div>}
+        {pages > 0 && <PdfPage key={`${path}:${current}`} index={current} docRef={docRef} />}
       </div>
     </div>
   );
 }
 
-/** 一页：进入可见范围才渲染；离开就取消渲染并释放画布。 */
-function PdfPage({ index, docRef, aspect, root, onFail }: { index: number; docRef: React.MutableRefObject<PDFDocumentProxy | null>; aspect: number; root: React.RefObject<HTMLDivElement>; onFail: () => void }) {
-  const box = useRef<HTMLDivElement>(null);
-  const [near, setNear] = useState(false);
+function fitPage(stageWidth: number, stageHeight: number, aspect: number) {
+  const availableWidth = Math.max(0, stageWidth - PAGE_GUTTER * 2);
+  const availableHeight = Math.max(0, stageHeight - PAGE_GUTTER * 2);
+  if (availableWidth * aspect <= availableHeight) return { width: availableWidth, height: availableWidth * aspect };
+  return { width: availableHeight / aspect, height: availableHeight };
+}
+
+function PdfPage({ index, docRef }: { index: number; docRef: React.MutableRefObject<PDFDocumentProxy | null> }) {
+  const host = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState<PDFPageProxy | null>(null);
+  const [aspect, setAspect] = useState<number | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [error, setError] = useState(false);
+
   useEffect(() => {
-    const el = box.current; if (!el) return;
-    const io = new IntersectionObserver((es) => setNear(es.some((e) => e.isIntersecting)), { root: root.current, rootMargin: MARGIN });
-    io.observe(el); return () => io.disconnect();
-  }, [root]);
+    let cancelled = false;
+    let loadedPage: PDFPageProxy | null = null;
+    const doc = docRef.current;
+    if (!doc) return;
+    void doc.getPage(index).then((nextPage) => {
+      loadedPage = nextPage;
+      if (cancelled) {
+        nextPage.cleanup();
+        return;
+      }
+      const viewport = nextPage.getViewport({ scale: 1 });
+      setAspect(viewport.height / viewport.width);
+      setPage(nextPage);
+    }).catch(() => { if (!cancelled) setError(true); });
+    return () => {
+      cancelled = true;
+      // 渲染 effect 会先同步取消任务；延后一拍再释放这一页的 PDF.js 资源。
+      if (loadedPage) queueMicrotask(() => loadedPage?.cleanup());
+    };
+  }, [index, docRef]);
+
   useEffect(() => {
-    const host = box.current, doc = docRef.current;
-    if (!near || !host || !doc) return;
+    const element = host.current?.parentElement;
+    if (!element || aspect === null) return;
+    const measure = () => setSize(fitPage(element.clientWidth, element.clientHeight, aspect));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [aspect]);
+
+  useEffect(() => {
+    const element = host.current;
+    if (!element || !page || !size.width || !size.height) return;
     let cancelled = false;
     let task: RenderTask | null = null;
     let canvas: HTMLCanvasElement | null = null;
-    let page: PDFPageProxy | null = null;
     (async () => {
       try {
-        page = await doc.getPage(index);
-        if (cancelled) return;
-        const cssW = host.clientWidth;
         const base = page.getViewport({ scale: 1 });
-        let scale = (cssW / base.width) * Math.min(window.devicePixelRatio || 1, 2);
-        const px = base.width * base.height * scale * scale;
-        if (px > MAX_PIXELS) scale *= Math.sqrt(MAX_PIXELS / px);
-        const vp = page.getViewport({ scale });
+        let scale = (size.width / base.width) * Math.min(window.devicePixelRatio || 1, 2);
+        const pixels = base.width * base.height * scale * scale;
+        if (pixels > MAX_PIXELS) scale *= Math.sqrt(MAX_PIXELS / pixels);
+        const viewport = page.getViewport({ scale });
         canvas = document.createElement("canvas");
-        canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
         canvas.style.cssText = "width:100%;height:100%;display:block";
-        task = page.render({ canvasContext: canvas.getContext("2d")!, viewport: vp }) as unknown as RenderTask;
+        task = page.render({ canvasContext: canvas.getContext("2d")!, viewport }) as unknown as RenderTask;
         await task.promise;
         if (cancelled) return;
-        host.replaceChildren(canvas);
-      } catch (e) {
-        if (!cancelled && (e as { name?: string })?.name !== "RenderingCancelledException") onFail();
+        element.replaceChildren(canvas);
+      } catch (error) {
+        if (!cancelled && (error as { name?: string })?.name !== "RenderingCancelledException") setError(true);
       }
     })();
     return () => {
       cancelled = true;
       try { task?.cancel(); } catch { /* 已完成 */ }
-      page?.cleanup();
       releaseCanvas(canvas);
-      if (host) host.replaceChildren();
+      if (element) element.replaceChildren();
     };
-  }, [near, index, docRef]);
-  return (
-    <div ref={box} data-page={index} className="pdf-page" aria-label={`第 ${index} 页`}
-      style={{ aspectRatio: `1 / ${aspect}` }} />
-  );
+  }, [page, size.width, size.height]);
+
+  if (error) return <div className="file-preview-page-error" role="status">
+    <Icon name="exclamationmark.triangle" size={22} />
+    <span className="t-row">第 {index} 页无法显示</span>
+    <span className="t-meta muted">可以继续翻页，或打开原件查看这一页。</span>
+  </div>;
+  return <div ref={host} data-page={index} className="file-preview-page" aria-label={`第 ${index} 页`}
+    style={{ width: size.width, height: size.height }} />;
 }

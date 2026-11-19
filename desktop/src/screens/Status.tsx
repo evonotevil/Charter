@@ -11,8 +11,8 @@ export interface StatusView { key: StatusKey; text: string; icon: string; cls: s
 export function statusOfArchive(s: ArchiveState): StatusView {
   switch (s.kind) {
     case "valid": return { key: "held", text: "已归档", icon: "checkmark.circle", cls: "held", hint: "有现行文件，在有效期内或长期有效" };
-    case "expiring": return { key: "expiring", text: `${s.days} 天后到期`, icon: "hourglass", cls: "warn", hint: "30 天内到期" };
-    case "expired": return { key: "expired", text: `已过期 ${s.days} 天`, icon: "exclamationmark.triangle", cls: "bad", hint: "过了到期日，需要取得新版" };
+    case "expiring": return { key: "expiring", text: "即将到期", icon: "clock", cls: "warn", hint: `${s.days} 天后到期` };
+    case "expired": return { key: "expired", text: `已过期 ${s.days} 天`, icon: "calendar.badge.clock", cls: "bad", hint: "过了到期日，需要取得新版" };
     case "noDate": return { key: "noDate", text: "未填日期", icon: "calendar", cls: "quiet", hint: "签发或到期日还没填，填上后 Charter 才能判断有效期" };
     case "needsUpdate": return { key: "needsUpdate", text: "需更新", icon: "arrow.triangle.2.circlepath", cls: "warn-o", hint: "公司信息变了，文件内容可能已过时" };
     case "fileMissing": return { key: "fileMissing", text: "源文件不可用", icon: "exclamationmark.triangle", cls: "bad", hint: "有记录，但数据文件夹里找不到文件：可能还没同步下来，或被移动、删除。可以重新定位或归档新版。" };
@@ -40,8 +40,9 @@ export function statusOfFreshness(f: Freshness): StatusView {
   }
 }
 
-export function StatusTag({ s }: { s: StatusView }) {
-  return <span className={`st ${s.cls}`} title={s.hint}><Icon name={s.icon} size={11} strokeWidth={2.4} />{s.text}</span>;
+export function StatusTag({ s, showIcon = true }: { s: StatusView; showIcon?: boolean }) {
+  const risk = s.key === "expiring" || s.key === "expired" || (s.key === "missing" && s.cls === "warn-o");
+  return <span className={`st ${s.cls}${risk ? " risk-pill" : ""}`} data-status={s.key} title={s.hint}>{showIcon && <Icon name={s.icon} size={risk ? 12 : 11} strokeWidth={2.4} />}{s.text}</span>;
 }
 
 /** 附加标签：已签署 / 待签署（类型要求签署时）、已核实（与原件核对过）。 */

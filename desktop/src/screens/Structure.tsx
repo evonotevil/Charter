@@ -3,7 +3,7 @@
 // 连线 2px 圆角折线，比例写在浅绿小胶囊里；待核实为虚线，代持为琥珀色。
 // 点选节点高亮整条控制链并在右侧出摘要；双击打开。搜索并居中、折叠、以它为中心、键盘切换、导出图片；另有缩进列表视图。
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Day } from "../domain/day";
 import * as D from "../domain/day";
 import { type Company, type Holding, type NodeRef, isActiveOn, ref, refKey, latinPad } from "../domain/models";
@@ -169,11 +169,12 @@ const toRef = (k: string): NodeRef => { const i = k.indexOf(":"); return ref(k.s
 
 // MARK: - 结构图
 
-function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFold, matches, checkOn, asOf, totals, api, isToday }: {
+type ChartProps = {
   layout: TreeLayout; snapshotKey: string; chain: { nodes: Set<string>; edges: Set<string> }; selectedKey: string | null; select: (k: string | null) => void; open: (k: string) => void;
   toggleFold: (k: string) => void; matches: Set<string>; checkOn: boolean; asOf: Day; totals: Map<string, number>; api: React.MutableRefObject<{ centerOn: (k: string) => void; fit: () => void } | null>; isToday: boolean;
-}) {
-  const { store } = useApp();
+};
+
+function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFold, matches, checkOn, asOf, totals, api, isToday }: ChartProps) {
   const wrap = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 500 });
   const [xf, setXf] = useState<Xf>({ x: 0, y: 0, k: 1 });
@@ -257,12 +258,14 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
       userMoved.current = true;
-      const cur = xfRef.current;
       if (e.ctrlKey || e.metaKey) {
         const r = el.getBoundingClientRect(), ax = e.clientX - r.left, ay = e.clientY - r.top;
-        const k = clampK(cur.k * Math.exp(-e.deltaY * 0.01));
-        setXf({ k, x: ax - ((ax - cur.x) / cur.k) * k, y: ay - ((ay - cur.y) / cur.k) * k });
-      } else setXf({ ...cur, x: cur.x - e.deltaX, y: cur.y - e.deltaY });
+        const factor = Math.exp(-e.deltaY * 0.01);
+        setXf((cur) => {
+          const k = clampK(cur.k * factor);
+          return { k, x: ax - ((ax - cur.x) / cur.k) * k, y: ay - ((ay - cur.y) / cur.k) * k };
+        });
+      } else setXf((cur) => ({ ...cur, x: cur.x - e.deltaX, y: cur.y - e.deltaY }));
     };
     el.addEventListener("wheel", wheel, { passive: false });
     return () => el.removeEventListener("wheel", wheel);
@@ -302,50 +305,12 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
   };
 
   const focusing = !!selectedKey;
-  const hasKids = (k: string) => layout.nodes.get(k)!.children.length > 0 || layout.nodes.get(k)!.hiddenBelow > 0;
-  const lvl = (k: string) => grow?.get(k);
   return (
     <div ref={wrap} className={`chart-wrap ${animating ? "animating" : ""} ${focusing ? "focusing" : ""} ${xf.k < 0.6 ? "lod" : ""}`} tabIndex={0} onKeyDown={onKey} onPointerDown={panStart}
       role="application" aria-label="股权结构图。方向键在节点间移动，回车打开，空格折叠。" style={{ cursor: "grab", ["--k" as any]: xf.k }}>
       <div className="chart-canvas" style={{ width: layout.width, height: layout.height, transform: `translate(${xf.x}px, ${xf.y}px) scale(${xf.k})` }}>
-        <svg className="edges" width={layout.width} height={layout.height} style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none" }} aria-hidden>
-          {layout.edges.map((e) => {
-            const hl = chain.edges.has(e.holding.id);
-            const l = lvl(e.to);
-            const len = pathLength(e.points);
-            const growing = l !== undefined;
-            return <path key={e.id} d={e.path} className={`${!e.holding.verified ? "pending" : ""} ${e.holding.isNominee ? "nominee" : ""} ${hl ? "hl" : ""} ${growing ? "grow" : ""}`}
-              style={growing ? { ["--len" as any]: len, animationDelay: `${Math.max(0, l - 1) * LEVEL_MS + (l ? 80 : 0)}ms` } : undefined} />;
-          })}
-          {layout.edges.map((e) => {
-            const hl = chain.edges.has(e.holding.id);
-            const text = e.holding.isNominee ? `代持 ${percentLabel(e.holding.percent)}` : percentLabel(e.holding.percent);
-            const w = [...text].reduce((a, ch) => a + (ch.codePointAt(0)! > 0x2e80 ? 11 : 7), 16);
-            const l = lvl(e.to);
-            return <g key={e.id + "l"} className={`lbl ${hl ? "hl" : ""} ${e.holding.isNominee ? "nominee" : ""} ${l !== undefined ? "grow" : ""}`} style={l !== undefined ? { animationDelay: `${l * LEVEL_MS}ms` } : undefined}>
-              <rect x={e.label.x - w / 2} y={e.label.y - 10} width={w} height={20} rx={10} />
-              <text x={e.label.x} y={e.label.y + 4} textAnchor="middle">{text}</text>
-            </g>;
-          })}
-        </svg>
-        {[...layout.nodes.values()].map((n) => {
-          const sel = n.key === selectedKey;
-          const l = lvl(n.key);
-          return (
-            <div key={n.key} className={`node ${chain.nodes.has(n.key) && focusing ? "chain" : ""} ${matches.has(n.key) ? "match" : ""} ${l !== undefined ? "grow" : ""}`} aria-selected={sel}
-              role="group" aria-label={store.nameOf(n.ref)} title={store.nameOf(n.ref)}
-              style={{ left: n.x - NODE_W / 2, top: n.y - NODE_H / 2, width: NODE_W, height: NODE_H, ...(l !== undefined ? { animationDelay: `${l * LEVEL_MS}ms` } : null) }}
-              onClick={(e) => { e.stopPropagation(); select(n.key); wrap.current?.focus({ preventScroll: true }); }} onDoubleClick={() => open(n.key)}>
-              <NodeBody n={n.ref} isToday={isToday} />
-              {hasKids(n.key) && <button className="fold" title={n.hiddenBelow ? `展开下面 ${n.hiddenBelow} 家` : "收起下级"} aria-label={n.hiddenBelow ? "展开" : "收起"}
-                onClick={(e) => { e.stopPropagation(); toggleFold(n.key); }}>{n.hiddenBelow ? <><Icon name="plus" size={8} strokeWidth={3} />{n.hiddenBelow}</> : <Icon name="minus" size={8} strokeWidth={3} />}</button>}
-              {checkOn && n.ref.kind === "company" && (() => { const c = store.company(n.ref.id); if (!c || !store.shareholderCheckApplies(c)) return null; const st = store.shareholderStatus(c.id, asOf);
-                return st.kind !== "complete" && <span className={`pill ${holderStatusTone(st)}`} style={{ position: "absolute", right: -8, top: -11, height: 20 }}>{holderStatusLabel(st)}</span>; })()}
-              {n.ref.kind === "company" && (totals.get(n.ref.id) ?? 0) > 100.005 && <span style={{ position: "absolute", left: 0, right: 0, bottom: -24, display: "flex", justifyContent: "center" }}><Pill text={`合计 ${percentLabel(totals.get(n.ref.id) ?? 0)}`} kind="bad" /></span>}
-              {n.ref.kind === "company" && (totals.get(n.ref.id) ?? 0) < 99.5 && (totals.get(n.ref.id) ?? 0) > 0 && !n.children.length && <span className="t-label" style={{ position: "absolute", left: 0, right: 0, bottom: -20, textAlign: "center" }}>另有 {percentLabel(100 - (totals.get(n.ref.id) ?? 0))} 未录入</span>}
-            </div>
-          );
-        })}
+        <ChartDrawing layout={layout} chain={chain} selectedKey={selectedKey} select={select} open={open} toggleFold={toggleFold}
+          matches={matches} checkOn={checkOn} asOf={asOf} totals={totals} isToday={isToday} wrap={wrap} grow={grow} />
       </div>
       <div className="chart-legend" aria-hidden><span><i />已核实</span><span><i className="pending" />待核实</span><span><i className="nominee" />代持</span></div>
       <div className="chart-tools">
@@ -356,6 +321,57 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
     </div>
   );
 }
+
+// 平移和缩放只移动画布。节点和连线在数据、选中项或生长动画改变时才重绘。
+const ChartDrawing = memo(function ChartDrawing({ layout, chain, selectedKey, select, open, toggleFold, matches, checkOn, asOf, totals, isToday, wrap, grow }:
+  Omit<ChartProps, "snapshotKey" | "api"> & { wrap: React.RefObject<HTMLDivElement>; grow: Map<string, number> | null }) {
+  const { store } = useApp();
+  const focusing = !!selectedKey;
+  const hasKids = (k: string) => layout.nodes.get(k)!.children.length > 0 || layout.nodes.get(k)!.hiddenBelow > 0;
+  const lvl = (k: string) => grow?.get(k);
+  return (
+    <>
+      <svg className="edges" width={layout.width} height={layout.height} style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none" }} aria-hidden>
+        {layout.edges.map((e) => {
+          const hl = chain.edges.has(e.holding.id);
+          const l = lvl(e.to);
+          const len = pathLength(e.points);
+          const growing = l !== undefined;
+          return <path key={e.id} d={e.path} className={`${!e.holding.verified ? "pending" : ""} ${e.holding.isNominee ? "nominee" : ""} ${hl ? "hl" : ""} ${growing ? "grow" : ""}`}
+            style={growing ? { ["--len" as any]: len, animationDelay: `${Math.max(0, l - 1) * LEVEL_MS + (l ? 80 : 0)}ms` } : undefined} />;
+        })}
+        {layout.edges.map((e) => {
+          const hl = chain.edges.has(e.holding.id);
+          const text = e.holding.isNominee ? `代持 ${percentLabel(e.holding.percent)}` : percentLabel(e.holding.percent);
+          const w = [...text].reduce((a, ch) => a + (ch.codePointAt(0)! > 0x2e80 ? 11 : 7), 16);
+          const l = lvl(e.to);
+          return <g key={e.id + "l"} className={`lbl ${hl ? "hl" : ""} ${e.holding.isNominee ? "nominee" : ""} ${l !== undefined ? "grow" : ""}`} style={l !== undefined ? { animationDelay: `${l * LEVEL_MS}ms` } : undefined}>
+            <rect x={e.label.x - w / 2} y={e.label.y - 10} width={w} height={20} rx={10} />
+            <text x={e.label.x} y={e.label.y + 4} textAnchor="middle">{text}</text>
+          </g>;
+        })}
+      </svg>
+      {[...layout.nodes.values()].map((n) => {
+        const sel = n.key === selectedKey;
+        const l = lvl(n.key);
+        return (
+          <div key={n.key} className={`node ${chain.nodes.has(n.key) && focusing ? "chain" : ""} ${matches.has(n.key) ? "match" : ""} ${l !== undefined ? "grow" : ""}`} aria-selected={sel}
+            role="group" aria-label={store.nameOf(n.ref)} title={store.nameOf(n.ref)}
+            style={{ left: n.x - NODE_W / 2, top: n.y - NODE_H / 2, width: NODE_W, height: NODE_H, ...(l !== undefined ? { animationDelay: `${l * LEVEL_MS}ms` } : null) }}
+            onClick={(e) => { e.stopPropagation(); select(n.key); wrap.current?.focus({ preventScroll: true }); }} onDoubleClick={() => open(n.key)}>
+            <NodeBody n={n.ref} isToday={isToday} />
+            {hasKids(n.key) && <button className="fold" title={n.hiddenBelow ? `展开下面 ${n.hiddenBelow} 家` : "收起下级"} aria-label={n.hiddenBelow ? "展开" : "收起"}
+              onClick={(e) => { e.stopPropagation(); toggleFold(n.key); }}>{n.hiddenBelow ? <><Icon name="plus" size={8} strokeWidth={3} />{n.hiddenBelow}</> : <Icon name="minus" size={8} strokeWidth={3} />}</button>}
+            {checkOn && n.ref.kind === "company" && (() => { const c = store.company(n.ref.id); if (!c || !store.shareholderCheckApplies(c)) return null; const st = store.shareholderStatus(c.id, asOf);
+              return st.kind !== "complete" && <span className={`pill ${holderStatusTone(st)}`} style={{ position: "absolute", right: -8, top: -11, height: 20 }}>{holderStatusLabel(st)}</span>; })()}
+            {n.ref.kind === "company" && (totals.get(n.ref.id) ?? 0) > 100.005 && <span style={{ position: "absolute", left: 0, right: 0, bottom: -24, display: "flex", justifyContent: "center" }}><Pill text={`合计 ${percentLabel(totals.get(n.ref.id) ?? 0)}`} kind="bad" /></span>}
+            {n.ref.kind === "company" && (totals.get(n.ref.id) ?? 0) < 99.5 && (totals.get(n.ref.id) ?? 0) > 0 && !n.children.length && <span className="t-label" style={{ position: "absolute", left: 0, right: 0, bottom: -20, textAlign: "center" }}>另有 {percentLabel(100 - (totals.get(n.ref.id) ?? 0))} 未录入</span>}
+          </div>
+        );
+      })}
+    </>
+  );
+});
 
 function NodeBody({ n, isToday }: { n: NodeRef; isToday: boolean }) {
   const { store } = useApp();

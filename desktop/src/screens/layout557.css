@@ -123,6 +123,64 @@
 .overview-archive { grid-area: archive; }
 .overview-agent { grid-area: agent; }
 
+/* 选文件：两栏共用标题行和内容行，任一侧内容增多时两张卡片一起长高。 */
+.packet-files-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 348px;
+  gap: 16px 24px;
+}
+
+.packet-company-field { grid-column: 1 / -1; }
+.packet-purpose-field { align-self: start; }
+.packet-purpose-field > .t-row { margin-right: 8px; }
+
+.packet-files-column {
+  display: grid;
+  grid-row: span 2;
+  grid-template-rows: subgrid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.packet-files-column h3 { line-height: 24px; }
+
+.purpose-category-group .fgroup {
+  background: var(--surface-sunken);
+  border-width: 1px;
+}
+
+.purpose-category-group .fgroup > .frow { padding: 14px 16px; }
+
+.packet-checklist > div {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+.packet-checklist-row {
+  flex: 1 0 auto;
+  min-height: 58px;
+  padding: 8px 16px;
+}
+.packet-toc { padding: 22px; gap: 12px; }
+.packet-toc-group { gap: 2px; }
+.packet-toc-entry { padding-block: 3px; }
+.packet-files-column .packet-toc {
+  padding: 16px 20px;
+  /* 卡片随清单等高，目录分组从顶部连续排列。 */
+  gap: 16px;
+  border-radius: var(--r-tile);
+}
+.packet-files-column .packet-toc-entry { padding-block: 0; }
+.packet-toc-watermark[aria-hidden="true"] { visibility: hidden; }
+
+@media (max-width: 940px) {
+  .packet-files-layout { grid-template-columns: minmax(0, 1fr) 300px; column-gap: 16px; }
+}
+
+@media (max-width: 760px) {
+  .packet-files-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* 准备文件包第 2 步：编辑器与文件预览从同一条顶边开始。 */
 .packet-watermark-layout {
   display: grid;

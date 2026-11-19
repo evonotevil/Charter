@@ -1,0 +1,65 @@
+/* 5.5.8：纵向滚动条淡入 120ms，停止后停留 700ms，再淡出 200ms。 */
+@property --scroll-thumb-alpha {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+:where(*) {
+  --scroll-thumb-alpha: 0;
+}
+
+.scrollbar-auto-hide {
+  transition: --scroll-thumb-alpha 200ms var(--ease);
+}
+
+.scrollbar-auto-hide.scrollbar-active {
+  --scroll-thumb-alpha: 1;
+  transition-duration: 120ms;
+}
+
+::-webkit-scrollbar-thumb:vertical {
+  background-color: color-mix(in srgb, var(--line-strong) calc(var(--scroll-thumb-alpha) * 40%), transparent);
+}
+
+/* 切到文件区时直接绘制导航底色和边框，避免圆角背景重绘与文件列表首次滚动重叠。 */
+.side[data-section="files"] .nav-item {
+  transition-property: color;
+}
+
+.sidebar-logo-tip {
+  position: fixed;
+  z-index: 10000;
+  max-width: 240px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--surface);
+  box-shadow: var(--overlay);
+  pointer-events: none;
+  white-space: nowrap;
+  font-size: var(--fs-small);
+  font-weight: 500;
+  line-height: 1.45;
+  animation: sidebar-tip-in var(--fast) var(--ease) both;
+}
+
+@keyframes sidebar-tip-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: none; }
+}
+
+.sidebar-logo-tip[data-side="right"] {
+  animation-name: sidebar-tip-in-right;
+}
+
+@keyframes sidebar-tip-in-right {
+  from { opacity: 0; transform: translateX(-2px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrollbar-auto-hide,
+  .scrollbar-auto-hide.scrollbar-active { transition: none; }
+  .sidebar-logo-tip { animation: none; }
+}

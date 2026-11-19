@@ -45,6 +45,8 @@ export class SyncMonitor {
   state: SyncState = { kind: "checking" };
   private root: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private savedTimer: ReturnType<typeof setTimeout> | null = null;
+  private latestCheck = 0;
   private version = 0;
   private listeners = new Set<() => void>();
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
@@ -52,14 +54,19 @@ export class SyncMonitor {
   private emit() { this.version++; for (const l of this.listeners) l(); }
 
   start(root: string) {
-    if (this.root !== root) { this.root = root; this.state = { kind: "checking" }; this.emit(); }
+    if (this.root !== root) {
+      this.cancelSavedRefresh();
+      this.root = root; this.state = { kind: "checking" }; this.emit();
+    }
     void this.refresh();
     if (!this.timer) this.timer = setInterval(() => void this.refresh(), 15000);
   }
 
   /** 5.5.6：关闭多台电脑共用时停止检查。 */
   stop() {
+    this.latestCheck++;
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    this.cancelSavedRefresh();
     this.root = null;
     if (this.state.kind !== "local") { this.state = { kind: "local" }; this.emit(); }
   }
@@ -67,15 +74,25 @@ export class SyncMonitor {
   refreshSoon() {
     if (!this.root || this.state.kind === "local" || this.state.kind === "signedOut") return;
     if (this.state.kind === "synced") { this.state = { kind: "syncing", count: 0 }; this.emit(); }
-    setTimeout(() => void this.refresh(), 3000);
+    if (this.savedTimer === null) {
+      this.savedTimer = setTimeout(() => {
+        this.savedTimer = null;
+        void this.refresh();
+      }, 3000);
+    }
+  }
+
+  private cancelSavedRefresh() {
+    if (this.savedTimer !== null) clearTimeout(this.savedTimer);
+    this.savedTimer = null;
   }
 
   async refresh() {
     if (!this.root) return;
-    const root = this.root;
+    const check = ++this.latestCheck;
     try {
-      const s = await platform().syncStatus(root);
-      if (root !== this.root) return;
+      const s = await platform().syncStatus(this.root);
+      if (check !== this.latestCheck) return;
       const next = s.kind === "synced" && !("at" in s && s.at) ? { kind: "synced" as const, at: Date.now() } : s;
       if (JSON.stringify({ ...next, at: 0 }) !== JSON.stringify({ ...this.state, at: 0 })) { this.state = next; this.emit(); }
       else if (next.kind === "synced") { this.state = next; }

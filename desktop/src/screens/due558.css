@@ -1,0 +1,154 @@
+.due-page-inner {
+  position: relative;
+}
+
+.due-burst-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 4;
+  pointer-events: none;
+  overflow: clip;
+}
+
+.due-burst-layer .burst {
+  --burst-duration: 560ms;
+  position: absolute;
+  width: 0;
+  height: 0;
+  transform: translate(var(--burst-scroll-x, 0px), var(--burst-scroll-y, 0px));
+  animation: due-burst-fade var(--burst-duration) linear both;
+}
+
+.due-burst-layer .burst i {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  animation: due-burst-travel var(--burst-duration) ease-out both;
+}
+
+@keyframes due-burst-travel {
+  from { transform: translate(calc(var(--x) * .35), calc(var(--y) * .35)) rotate(0) scale(.8); }
+  to { transform: translate(var(--x), var(--y)) rotate(145deg) scale(.65); }
+}
+
+@keyframes due-burst-fade {
+  0%, 45% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.due-list-scroll .req {
+  height: 56px;
+  min-height: 56px;
+  padding-block: 8px 9px;
+}
+
+.due-list-scroll .req.leaving {
+  animation-duration: 160ms;
+}
+
+.due-list-scroll .req .date {
+  position: relative;
+  top: -.5px;
+  height: 37px;
+}
+
+.due-list-scroll .req .date > span:first-child { line-height: 20px; }
+.due-list-scroll .req .date > span:last-child { line-height: 17px; }
+
+.due-feedback-layer {
+  position: absolute;
+  inset-inline: var(--page-edge);
+  bottom: 16px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* 跟清单共用 .two 的第一列；提示叠在卡片底边，右栏的操作区始终可用。 */
+.due-feedback {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 8px;
+}
+
+.due-feedback > * { pointer-events: auto; }
+
+.due-feedback > .toast {
+  position: static;
+  transform: none;
+  max-width: min(720px, 100%);
+  animation-name: due-feedback-in;
+}
+
+.due-feedback > .toast.out { animation-name: due-feedback-out; }
+
+.due-undo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(520px, 100%);
+  min-height: 46px;
+  padding: 7px 8px 7px 12px;
+  border-radius: var(--radius-tile);
+  background: var(--ink);
+  color: var(--surface);
+  box-shadow: var(--overlay);
+  animation: due-feedback-in var(--panel) var(--ease-bounce);
+}
+
+.due-undo > .dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--green);
+  color: var(--on-green);
+}
+
+.due-undo-message {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.due-undo button {
+  height: 32px;
+  padding: 0 11px;
+  flex: none;
+  border-radius: var(--radius-input);
+  color: inherit;
+  font-size: var(--fs-small);
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.due-undo button:hover,
+.due-undo button:focus-visible {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+@keyframes due-feedback-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes due-feedback-out { to { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .due-undo { animation: none; }
+  .due-burst-layer { visibility: hidden; }
+}

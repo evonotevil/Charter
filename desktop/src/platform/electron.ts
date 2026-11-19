@@ -1,9 +1,10 @@
 // 桌面端（Electron）实现。系统能力由 electron/main.cjs 提供，经 preload 暴露为 window.charter。
 
-import type { CalendarSyncResult, CloudKind, DirEntry, FileStat, Platform, SyncState, TreeInfo } from "./platform";
+import { joinPlatformPath, type CalendarSyncResult, type CloudKind, type DirEntry, type FileStat, type Platform, type SyncState, type TreeInfo } from "./platform";
 
 interface Bridge {
   invoke(cmd: string, ...args: unknown[]): Promise<{ ok: true; value: any } | { ok: false; error: string; raw: string }>;
+  setSidebarRail?(rail: boolean): void;
   onFolderChanged(cb: () => void): () => void;
   onOcrProgress?(cb: (p: { done: number; total: number }) => void): () => void;
   onCopyProgress?(cb: (p: { done: number; total: number }) => void): () => void;
@@ -13,6 +14,8 @@ interface Bridge {
 declare global { interface Window { charter?: Bridge } }
 
 export const inElectron = () => typeof window !== "undefined" && !!window.charter;
+export const electronFileURL = (os: Platform["os"], path: string) =>
+  "charter-file://local/" + encodeURIComponent(os === "windows" ? path.replace(/\\/g, "/") : path);
 
 export async function createElectronPlatform(): Promise<Platform> {
   const b = window.charter!;
@@ -23,11 +26,10 @@ export async function createElectronPlatform(): Promise<Platform> {
     const err = new Error(r.error); (err as any).raw = r.raw; throw err;
   };
   const os = await call<"mac" | "windows" | "linux">("platform_name");
-  const sep = os === "windows" ? "\\" : "/";
   return {
     os,
     defaultRoot: () => call<string>("default_root"),
-    join: (...parts) => parts.filter((p) => p !== "").map((p, i) => (i === 0 ? p.replace(/[\\/]+$/, "") : p.replace(/^[\\/]+|[\\/]+$/g, ""))).join(sep),
+    join: (...parts) => joinPlatformPath(os, ...parts),
     readText: (path) => call<string>("read_text", path),
     readBytes: async (path) => new Uint8Array(await call<Uint8Array>("read_bytes", path)),
     writeText: (path, text) => call("write_text", path, text),
@@ -62,7 +64,7 @@ export async function createElectronPlatform(): Promise<Platform> {
     saveDialog: (o) => call<string | null>("save_dialog", o),
     notify: (title, body) => call("notify", { title, body }),
     copyText: async (text) => { await navigator.clipboard.writeText(text); },
-    fileURL: (path) => "charter-file://local/" + encodeURIComponent(path.replace(/\\/g, "/")),
+    fileURL: (path) => electronFileURL(os, path),
     watch: async (path, onChange) => { const un = b.onFolderChanged(onChange); await call("watch", path); return un; },
     ocr: (png) => call<string>("ocr", png),
     ocrBatch: async (images, onPage) => {

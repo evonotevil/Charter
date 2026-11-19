@@ -3,7 +3,8 @@
 import { showUpdateBadge, subscribeUpdate } from "../services/update";
 import { DemoBanner, TourOverlay } from "./Tour";
 import { isDemo } from "../state/demo";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { useApp } from "../state/hooks";
 import { sections, workspaceSections, type Section } from "../state/router";
 import { ungrouped } from "../state/store";
@@ -22,6 +23,7 @@ import { DueView } from "./Due";
 import { VerifyView } from "./Trust";
 import { useTrashJanitor } from "./Lifecycle";
 import * as D from "../domain/day";
+import "./shell558.css";
 
 export function GroupIcon({ groupID, size = 22, fill = "var(--band)" }: { groupID: string | null; size?: number; fill?: string }) {
   const { store } = useApp();
@@ -48,18 +50,47 @@ const railKey = "charter.sidebar.rail";
 function readRail() { try { return localStorage.getItem(railKey) === "1"; } catch { return false; } }
 function writeRail(v: boolean) { try { localStorage.setItem(railKey, v ? "1" : "0"); } catch { /* 存不了就只在本次有效 */ } }
 
+function LogoTip({ anchor, rail, children }: { anchor: HTMLButtonElement; rail: boolean; children: string }) {
+  const tip = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: 0, top: 0 });
+  useLayoutEffect(() => {
+    const update = () => {
+      const r = anchor.getBoundingClientRect(), t = tip.current?.getBoundingClientRect();
+      const width = t?.width ?? 0, height = t?.height ?? 0;
+      const left = rail ? r.right + 8 : Math.min(r.left, window.innerWidth - width - 8);
+      const top = rail ? r.top + (r.height - height) / 2 : r.bottom + 8;
+      setPosition({ left: Math.max(8, left), top: Math.max(8, top) });
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [anchor, rail]);
+  return createPortal(
+    <div id="sidebar-logo-tip" ref={tip} className="sidebar-logo-tip" role="tooltip" style={position} data-side={rail ? "right" : "bottom"}>{children}</div>,
+    document.body,
+  );
+}
+
 function Sidebar() {
   const { store, router, sync } = useApp();
   const [railPref, setRail] = useState(readRail);
+  const [logoTip, setLogoTip] = useState(false);
+  const logoButton = useRef<HTMLButtonElement>(null);
   const [narrow, setNarrow] = useState(() => window.innerWidth < 1100);
   useEffect(() => { const r = () => setNarrow(window.innerWidth < 1100); window.addEventListener("resize", r); return () => window.removeEventListener("resize", r); }, []);
   const rail = railPref || narrow;
-  const toggle = () => setRail((r) => { writeRail(!r); return !r; });
+  // useLayoutEffect 会在首帧绘制前发出状态；浏览器和非 macOS Electron 没有副作用。
+  useLayoutEffect(() => window.charter?.setSidebarRail?.(rail), [rail]);
+  const logoTipText = narrow ? "窗口过窄，侧栏保持收起" : `${rail ? "展开" : "收起"}侧栏（${shortcutLabel("\\")}）`;
+  const toggle = () => {
+    setLogoTip(false);
+    if (!narrow) setRail((r) => { writeRail(!r); return !r; });
+  };
   useEffect(() => {
     const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); toggle(); } };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, []);
+  }, [narrow]);
   const soon = store.openObligations.filter((o) => D.daysBetween(store.today, o.due) <= 30);
   const overdue = soon.filter((o) => o.due < store.today).length;
   // 与文件页“需处理”同一口径：当前集团范围内的公司文件 + 全部个人文件
@@ -86,11 +117,15 @@ function Sidebar() {
   };
   const tone = overdue ? "warn" : "";
   return (
-    <aside className={`side ${rail ? "rail" : ""}`}>
+    <aside className={`side ${rail ? "rail" : ""}`} data-section={router.section}>
       <div className="titlebar drag-region" />
       <div className="side-top col gap16">
         <div className="brand">
-          <button onClick={toggle} title={`${rail ? "展开" : "收起"}侧栏（${shortcutLabel("\\")}）`} aria-label={rail ? "展开侧栏" : "收起侧栏"} aria-expanded={!rail}><LogoMark size={32} /></button>
+          <button ref={logoButton} onClick={toggle} onPointerEnter={() => setLogoTip(true)} onPointerLeave={() => setLogoTip(false)}
+            onFocus={() => setLogoTip(true)} onBlur={() => setLogoTip(false)}
+            aria-label={logoTipText} aria-expanded={!rail} aria-disabled={narrow || undefined}
+            aria-describedby={logoTip ? "sidebar-logo-tip" : undefined}><LogoMark size={32} /></button>
+          {logoTip && logoButton.current && <LogoTip anchor={logoButton.current} rail={rail}>{logoTipText}</LogoTip>}
           <span className="brand-word">Charter</span>
           {!rail && <><span className="spacer" /><ActionMenu icon="plus" size="small" ariaLabel="新建" showsChevron={false} entries={[
             item("新建公司", "building.2", () => router.open({ kind: "newCompany" }), { shortcut: shortcutLabel("N", true) }),
@@ -124,11 +159,11 @@ function Sidebar() {
   );
 }
 
-function Page() {
+function Page({ calendarFeedback }: { calendarFeedback: ReactNode }) {
   const { router } = useApp();
   switch (router.section) {
     case "structure": return <StructureView />;
-    case "due": return <DueView />;
+    case "due": return <DueView feedback={calendarFeedback} />;
     case "agents": case "parties": case "people": return <PeopleView />;
     case "overview": case "companies": return <CompaniesView />;
     case "files": return <FilesView />;
@@ -138,31 +173,62 @@ function Page() {
   }
 }
 
+const toastIcons = {
+  success: "checkmark", failure: "exclamationmark", "calendar-error": "exclamationmark.triangle",
+  overdue: "clock", missing: "doc.text", duplicate: "doc.on.doc",
+};
+
 export function Shell() {
   const { store, router } = useApp();
   useTrashJanitor();
   const demo = isDemo();
+  // 文件区首屏直接绘制，避免首次滚动时为整页淡入编译额外的图形管线。
+  const animatePageEntry = !demo && router.section !== "files";
   const blocked = store.isLoading || store.isImporting || store.loadFailed;
+  useEffect(() => {
+    const timers = new Map<Element, number>();
+    const positions = new WeakMap<Element, number>();
+    const onScroll = (event: Event) => {
+      const el = event.target instanceof Element ? event.target : document.scrollingElement;
+      if (!el || el.scrollTop === (positions.get(el) ?? 0)) return;
+      positions.set(el, el.scrollTop);
+      const prior = timers.get(el);
+      if (prior !== undefined) window.clearTimeout(prior);
+      else el.classList.add("scrollbar-auto-hide", "scrollbar-active");
+      timers.set(el, window.setTimeout(() => {
+        el.classList.remove("scrollbar-active");
+        timers.delete(el);
+      }, 700));
+    };
+    document.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("scroll", onScroll, true);
+      for (const [el, timer] of timers) { window.clearTimeout(timer); el.classList.remove("scrollbar-active"); }
+      for (const el of document.querySelectorAll(".scrollbar-auto-hide")) el.classList.remove("scrollbar-auto-hide");
+    };
+  }, []);
+  const inCalendarFooter = router.section === "due" && !router.sheet && !blocked && !store.errorMessage;
+  const toast = store.toast && (
+    <div className={`toast ${store.toast.action ? "with-action" : ""} ${store.toast.leaving ? "out" : ""}`} key={store.toast.id} role="status"
+      onMouseEnter={() => store.pauseToast()} onMouseLeave={() => store.resumeToast()}>
+      <span className="dot" data-kind={store.toast.kind}>
+        <Icon name={toastIcons[store.toast.kind]} size={13} strokeWidth={2.5} />
+      </span>
+      <span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{store.toast.text}</span>
+      {store.toast.action && <button onClick={() => { const a = store.toast!.action!; store.dismissToast(); a(); }}>{store.toast.actionTitle}</button>}
+    </div>
+  );
   return (
     <div className="app">
       <Sidebar />
       <main className="main" {...(blocked && !store.isImporting ? { inert: "" } as any : {})}>
         <div className="titlebar drag-region" />
         <DemoBanner />
-        <div className={demo ? "col grow" : "col grow page-in"} key={pageKey(router)} style={{ minHeight: 0 }}><Page /></div>
+        <div className={animatePageEntry ? "col grow page-in" : "col grow"} key={pageKey(router)} style={{ minHeight: 0 }}><Page calendarFeedback={inCalendarFooter ? toast : null} /></div>
       </main>
       {demo && <TourOverlay />}
       <SheetHost />
-      {store.toast && (
-        <div className={`toast ${store.toast.action ? "with-action" : ""} ${store.toast.leaving ? "out" : ""}`} key={store.toast.id} role="status"
-          onMouseEnter={() => store.pauseToast()} onMouseLeave={() => store.resumeToast()}>
-          <span className="dot" style={{ background: store.toast.kind === "success" ? "var(--green)" : "var(--red)", color: store.toast.kind === "success" ? "var(--on-green)" : "#fff" }}>
-            <Icon name={store.toast.kind === "success" ? "checkmark" : "exclamationmark"} size={13} strokeWidth={3.5} />
-          </span>
-          <span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{store.toast.text}</span>
-          {store.toast.action && <button onClick={() => { const a = store.toast!.action!; store.dismissToast(); a(); }}>{store.toast.actionTitle}</button>}
-        </div>
-      )}
+      {!inCalendarFooter && toast}
       {store.isLoading && (
         <div className="overlay" style={{ background: "color-mix(in srgb, var(--canvas) 60%, transparent)" }}>
           <div className="col gap12 sheet" style={{ width: 300, padding: 24 }}>

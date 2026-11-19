@@ -10,6 +10,7 @@ import type { Store } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Button, ConfirmSheet, MenuList, Note, Popover, Segmented, SelectField, SliderRow, TextField } from "../ui/kit";
+import "./files558.css";
 
 /** 5.5.3：水印固定墨色。 */
 export const WM_INK = "#25352C";
@@ -48,19 +49,30 @@ function TokenBuilder({ parts, onChange }: { parts: WMPart[]; onChange: (p: WMPa
   const append = (x: WMPart) => { onChange([...parts, x]); setFresh(parts.length); };
   const addText = () => { const t = draft.trim(); if (!t) return; append({ kind: "text", text: t }); setDraft(""); };
   const name = (p: WMPart) => (p.kind === "tag" ? tagLabel(p.tag) : p.text);
+  const tagIcon = (p: WMPart) => p.kind === "tag" ? ({
+    date: "calendar",
+    file: "doc.text",
+    company: "building.2",
+    packet: "shippingbox",
+    recipient: "person.crop.circle",
+  } as const)[p.tag] : null;
   return <div className="col gap8">
     <div className="wm-tokens" aria-label="水印文字组成，可拖动调整顺序">
       {parts.map((p, i) => (
-        <span key={`${i}-${name(p)}`} className={`wm-token ${p.kind} ${drag === i ? "dragging" : ""} ${fresh === i ? "fresh" : ""}`} draggable tabIndex={0}
+        <span key={`${i}-${name(p)}`} className={`wm-token-wrap ${over === i && drag !== null && drag !== i ? (drag > i ? "insert-before" : "insert-after") : ""}`}>
+          <span className={`wm-token ${p.kind} ${drag === i ? "dragging" : ""} ${fresh === i ? "fresh" : ""}`} draggable tabIndex={0}
           aria-label={`${name(p)}，第 ${i + 1} 个；用左右方向键移动，Delete 删除`}
           onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "ArrowLeft") { e.preventDefault(); move(i, i - 1); } else if (e.key === "ArrowRight") { e.preventDefault(); move(i, i + 1); } else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); onChange(parts.filter((_, k) => k !== i)); } }}
-          style={over === i && drag !== null && drag !== i ? { boxShadow: `${drag > i ? "-3px" : "3px"} 0 0 0 var(--green)` } : undefined}
           onDragStart={(e) => { setDrag(i); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => { setDrag(null); setOver(null); }}
           onDragOver={(e) => { e.preventDefault(); setOver(i); }} onDrop={(e) => { e.preventDefault(); if (drag !== null) move(drag, i); setDrag(null); setOver(null); }}>
+          {tagIcon(p) && <Icon name={tagIcon(p)!} size={14} />}
           {name(p)}
-          <button aria-label={`左移 ${name(p)}`} data-tip="左移" disabled={i === 0} onClick={() => move(i, i - 1)}><Icon name="chevron.left" size={10} /></button>
-          <button aria-label={`右移 ${name(p)}`} data-tip="右移" disabled={i === parts.length - 1} onClick={() => move(i, i + 1)}><Icon name="chevron.right" size={10} /></button>
-          <button aria-label={`移除 ${name(p)}`} data-tip="移除" onClick={() => onChange(parts.filter((_, k) => k !== i))}><Icon name="xmark" size={10} /></button>
+          <button type="button" className="wm-token-remove" aria-label={`移除 ${name(p)}`} data-tip="移除" onClick={() => onChange(parts.filter((_, k) => k !== i))}><Icon name="xmark" size={12} /></button>
+          </span>
+          <span className="wm-token-move">
+            <button type="button" aria-label={`左移 ${name(p)}`} data-tip="左移" disabled={i === 0} onClick={() => move(i, i - 1)}><Icon name="chevron.left" size={10} /></button>
+            <button type="button" aria-label={`右移 ${name(p)}`} data-tip="右移" disabled={i === parts.length - 1} onClick={() => move(i, i + 1)}><Icon name="chevron.right" size={10} /></button>
+          </span>
         </span>
       ))}
       {!parts.length && <span className="t-meta muted" style={{ padding: "0 4px" }}>添加标签或文字</span>}

@@ -6,12 +6,18 @@ import { Store } from "../state/store";
 import { installSampleData } from "../state/sample";
 import { exportBackup, readBackup, restoreBackup } from "../services/backup";
 import { listSnapshots } from "../domain/folder";
+import { joinPlatformPath } from "../platform/platform";
+import { electronFileURL } from "../platform/electron";
 
 const templates = readFileSync(new URL("../assets/charter-templates.json", import.meta.url), "utf8");
 async function fresh(root = "/Charter") {
   const p = new MemoryPlatform(templates); setPlatform(p);
   const s = new Store(root); await s.load(); await installSampleData(s);
   return { p, s };
+}
+
+class MacMemoryPlatform extends MemoryPlatform {
+  readonly os = "mac" as const;
 }
 
 describe("full backup", () => {
@@ -52,6 +58,65 @@ describe("full backup", () => {
     await restoreBackup(other, await readBackup("/out/b.zip"));
     expect(other.data.companies.length).toBe(17);
     expect((await p.stat(other.fileURL(other.data.documents[0]))).exists).toBe(true);
+  });
+
+  it("restores a Mac backup containing a literal backslash in an archived filename", async () => {
+    const p = new MacMemoryPlatform(templates); setPlatform(p);
+    const s = new Store("/Charter"); await s.load(); await installSampleData(s);
+    const documents = s.data.documents.filter((x) => !!x.filePath).slice(0, 3);
+    const unusual = [
+      "files/Example Pte. Ltd./原始材料/ACRA/\\leading.pdf",
+      "files/Example Pte. Ltd./原始材料/ACRA/middle\\name.pdf",
+      "files/Example Pte. Ltd./原始材料/ACRA/trailing.pdf\\",
+    ];
+    const ordinary = unusual.map((path) => path.replace(/\\/g, ""));
+    const backupBytes = unusual.map((_, index) => new TextEncoder().encode(`BACKUP-${index}`));
+    const currentBytes = unusual.map((_, index) => new TextEncoder().encode(`CURRENT-${index}`));
+    const ordinaryBytes = unusual.map((_, index) => new TextEncoder().encode(`ORDINARY-${index}`));
+    for (let index = 0; index < documents.length; index++) {
+      await p.writeBytes(s.folder.abs(unusual[index]), backupBytes[index]);
+      await p.removeFile(s.folder.abs(documents[index].filePath));
+    }
+    s.commit((data) => {
+      for (let index = 0; index < documents.length; index++) data.documents.find((x) => x.id === documents[index].id)!.filePath = unusual[index];
+    });
+    await exportBackup(s, "/out/mac-backup.zip");
+    const opened = await readBackup("/out/mac-backup.zip");
+    const documentsJSON = await opened.zip.file("data/documents.json")!.async("string");
+    for (const path of unusual) {
+      expect(opened.zip.file(path)).not.toBeNull();
+      expect(documentsJSON).toContain(path.replace(/\\/g, "\\\\"));
+    }
+
+    for (let index = 0; index < unusual.length; index++) {
+      await p.writeBytes(s.folder.abs(unusual[index]), currentBytes[index]);
+      await p.writeBytes(s.folder.abs(ordinary[index]), ordinaryBytes[index]);
+    }
+    await restoreBackup(s, opened);
+
+    expect(s.errorMessage ?? null).toBeNull();
+    for (let index = 0; index < unusual.length; index++) {
+      expect(s.data.documents.find((x) => x.id === documents[index].id)?.filePath).toBe(unusual[index]);
+      expect(await p.readBytes(s.folder.abs(unusual[index]))).toEqual(backupBytes[index]);
+      expect(await p.readBytes(s.folder.abs(ordinary[index]))).toEqual(ordinaryBytes[index]);
+    }
+
+    const beforeRestore = (await listSnapshots(s.folder)).find((x) => x.reason === "恢复备份前")!;
+    await s.restoreFromSnapshot(beforeRestore);
+    for (let index = 0; index < unusual.length; index++) {
+      expect(await p.readBytes(s.folder.abs(unusual[index]))).toEqual(currentBytes[index]);
+      expect(await p.readBytes(s.folder.abs(ordinary[index]))).toEqual(ordinaryBytes[index]);
+    }
+  });
+
+  it("keeps literal backslashes at every position in POSIX path components and preview URLs", () => {
+    expect(joinPlatformPath("mac", "/Data", "\\leading.pdf")).toBe("/Data/\\leading.pdf");
+    expect(joinPlatformPath("mac", "/Data", "middle\\name.pdf")).toBe("/Data/middle\\name.pdf");
+    expect(joinPlatformPath("mac", "/Data", "trailing.pdf\\")).toBe("/Data/trailing.pdf\\");
+    expect(joinPlatformPath("windows", "C:\\Data", "\\leading.pdf")).toBe("C:\\Data\\leading.pdf");
+    const posix = "/Data/middle\\name.pdf";
+    const raw = decodeURIComponent(new URL(electronFileURL("mac", posix)).pathname.replace(/^\/+/, ""));
+    expect("/" + raw.replace(/^\/+/, "")).toBe(posix);
   });
 
   it("rejects a config file or a random zip", async () => {

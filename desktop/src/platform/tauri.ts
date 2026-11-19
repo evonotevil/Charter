@@ -27,11 +27,10 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-import type { DirEntry, FileStat, Platform, SyncState } from "./platform";
+import { joinPlatformPath, type DirEntry, type FileStat, type Platform, type SyncState } from "./platform";
 
 export async function createTauriPlatform(): Promise<Platform> {
   const os = (await invoke<string>("platform_name")) as "mac" | "windows" | "linux";
-  const sep = os === "windows" ? "\\" : "/";
   let notifyAllowed: boolean | null = null;
 
   const bytesOf = async (cmd: string, args?: Record<string, unknown>) => new Uint8Array(await invoke<ArrayBuffer>(cmd, args));
@@ -39,7 +38,7 @@ export async function createTauriPlatform(): Promise<Platform> {
   return {
     os,
     defaultRoot: () => invoke<string>("default_root"),
-    join: (...parts) => parts.filter((p) => p !== "").map((p, i) => (i === 0 ? p.replace(/[\\/]+$/, "") : p.replace(/^[\\/]+|[\\/]+$/g, ""))).join(sep),
+    join: (...parts) => joinPlatformPath(os, ...parts),
     readText: (path) => invoke<string>("read_text", { path }),
     readBytes: (path) => bytesOf("read_bytes", { path }),
     writeText: (path, text) => invoke("write_text", { path, text }),

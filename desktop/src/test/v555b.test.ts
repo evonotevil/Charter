@@ -155,7 +155,10 @@ describe("#7 #8 #9 #14 备份与恢复", () => {
   });
   it("拒绝不安全的路径", async () => {
     expect(safeEntryName("files/..\\\\..\\\\outside.txt")).toBe(false);
+    expect(safeEntryName("files/公司/登记号\\扫描件.pdf", "mac")).toBe(true);
+    expect(safeEntryName("files/公司/登记号\\扫描件.pdf", "windows")).toBe(false);
     expect(safeEntryName("files/../../x")).toBe(false);
+    expect(safeEntryName("files//x")).toBe(false);
     expect(safeEntryName("/etc/passwd")).toBe(false);
     expect(safeEntryName("C:/x")).toBe(false);
     expect(safeEntryName("files/公司/营业执照.pdf")).toBe(true);
@@ -163,9 +166,10 @@ describe("#7 #8 #9 #14 备份与恢复", () => {
     await exportBackup(s, "/out/b.zip");
     const z = await JSZip.loadAsync(await p.readBytes("/out/b.zip"));
     z.file("files/..\\..\\outside.txt", "x");
+    z.file("files/../../escaped-after-jszip-normalization.txt", "x");
     await p.writeBytes("/out/evil.zip", await z.generateAsync({ type: "uint8array" }));
     await restoreBackup(s, await readBackup("/out/evil.zip"));
-    expect([...p.files.keys()].some((k) => k.includes("outside"))).toBe(false);
+    expect([...p.files.keys()].some((k) => k.includes("outside") || k.includes("escaped-after-jszip"))).toBe(false);
   });
 });
 

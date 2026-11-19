@@ -91,6 +91,21 @@ export const platform = (): Platform => {
   return current;
 };
 
+/** Join path components without treating a POSIX filename's literal backslash as a separator. */
+const POSIX_PATH_EDGE = /^\/+|\/+$/g;
+const POSIX_PATH_END = /\/+$/;
+const WINDOWS_PATH_EDGE = /^[\\/]+|[\\/]+$/g;
+const WINDOWS_PATH_END = /[\\/]+$/;
+export function joinPlatformPath(os: Platform["os"], ...parts: string[]): string {
+  const windows = os === "windows";
+  const sep = windows ? "\\" : "/";
+  const trimEdge = windows ? WINDOWS_PATH_EDGE : POSIX_PATH_EDGE;
+  const trimEnd = windows ? WINDOWS_PATH_END : POSIX_PATH_END;
+  return parts.filter((part) => part !== "").map((part, index) =>
+    index === 0 ? part.replace(trimEnd, "") : part.replace(trimEdge, "")
+  ).join(sep);
+}
+
 export function basename(path: string): string {
   const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return i >= 0 ? path.slice(i + 1) : path;
