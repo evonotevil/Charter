@@ -15,13 +15,16 @@ const real = () => realPlatform!;
 /** 演示用的平台：文件只在内存里；选择文件、保存位置、复制数据文件夹都不可用；系统、设备名沿用真实平台。 */
 export class DemoPlatform extends MemoryPlatform {
   override readonly os: Platform["os"];
+  override readonly arch: Platform["arch"];
   constructor(private real: Platform, templates: string) {
     super(templates);
     this.os = real.os;
+    this.arch = real.arch;
     (this as { copyTree?: unknown }).copyTree = undefined;
     (this as { cloudKind?: unknown }).cloudKind = undefined;
   }
   override async deviceName() { return this.real.deviceName(); }
+  override async openURL(url: string) { return this.real.openURL(url); }
   override async pickFiles() { return [] as string[]; }
   override async pickFolder() { return null; }
   override async saveDialog() { return null; }

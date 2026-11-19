@@ -4,6 +4,7 @@ import type { CloudKind, DirEntry, FileStat, Platform, SyncState, TreeInfo } fro
 
 export class MemoryPlatform implements Platform {
   readonly os: Platform["os"] = "web";
+  readonly arch: Platform["arch"] = "unknown";
   files = new Map<string, { data: Uint8Array; mtime: number }>();
   dirs = new Set<string>(["/"]);
   prefs = new Map<string, string>();
@@ -78,7 +79,7 @@ export class MemoryPlatform implements Platform {
   async cancelCopy() { /* 内存实现瞬间完成 */ }
   async reveal() {}
   async openPath() {}
-  async openURL() {}
+  async openURL(_url: string) {}
   async deviceName() { return "预览"; }
   // 浏览器预览里用系统选择框读入真实文件，放进内存里的 /uploads；测试环境（无 document）返回空。
   async pickFiles(opts?: { multiple: boolean; extensions?: string[] }): Promise<string[]> {

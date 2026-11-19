@@ -23,6 +23,8 @@ export interface DirEntry { name: string; isDir: boolean; mtime: number | null; 
 
 export interface Platform {
   readonly os: "mac" | "windows" | "linux" | "web";
+  /** 安装包所需的 CPU 架构。旧实现可不提供，更新界面会明确提示无法判断。 */
+  readonly arch?: "arm64" | "x64" | "unknown";
   /** 默认数据文件夹。5.5.6 起新安装在这台电脑上；旧默认位置（同步盘里的 Charter）已有档案时沿用它。 */
   defaultRoot(): Promise<string>;
   /** 5.5.6 多台电脑共用：路径在哪个同步盘里（只认 iCloud 云盘、OneDrive）。 */

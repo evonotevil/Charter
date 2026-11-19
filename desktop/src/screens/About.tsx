@@ -14,13 +14,20 @@ export function AboutSettings() {
   const st = useSyncExternalStore(subscribeUpdate, updateState);
   const auto = useSyncExternalStore(subscribeUpdate, autoCheckOn);
   const [all, setAll] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
   const v = currentVersion();
   const last = lastCheck();
   const status = st.kind === "checking" ? "正在检查更新…" : st.kind === "available" ? `Charter ${st.info.version} 可以更新${st.info.date ? ` · ${D.long(st.info.date)}发布` : ""}`
     : st.kind === "latest" ? "已是最新版本 · 刚刚检查" : st.kind === "error" ? "上次检查失败 · 刚刚" : st.kind === "noURL" ? "还没有设置更新地址"
     : last ? `上次检查：${when(last)}` : "还没有检查过更新";
   const tone = st.kind === "available" ? "green-text" : st.kind === "error" ? "amber-text" : "muted";
-  const open = (url: string) => void platform().openURL(url);
+  const download = async (url: string) => {
+    setDownloading(true); setDownloadError("");
+    try { await platform().openURL(url); }
+    catch { setDownloadError("无法开始下载，请检查网络后重试。"); }
+    finally { setDownloading(false); }
+  };
   return <Scroll><PaneHeader title="关于与更新" detail="当前版本、更新检查和更新内容。" /><div className="col" style={{ gap: 20 }}>
     <div className="row gap16 panel" style={{ padding: 20 }}>
       <LogoMark size={44} />
@@ -40,10 +47,14 @@ export function AboutSettings() {
         <Button kind="quiet" onClick={() => skipVersion(st.info.version)} title="不再提示这个版本；有更新的版本时会再提示">跳过这个版本</Button>
         <span className="grow" />
         <Button onClick={() => remindLater()} title="3 天内侧栏不再提示">稍后提醒</Button>
-        <Button kind="primary" disabled={!st.info.url} onClick={() => open(st.info.url)}>前往下载</Button>
+        {st.info.url
+          ? <Button kind="primary" disabled={downloading} onClick={() => void download(st.info.url)}>{downloading ? "正在下载…" : "下载新版本"}</Button>
+          : <Button kind="primary" onClick={() => void checkForUpdate()}>重新检查</Button>}
       </div>
     </div>}
-    {st.kind === "available" && <span className="t-meta muted">下载页面会在浏览器中打开。安装新版前，档案数据保持在原来的数据文件夹里，不受影响。</span>}
+    {st.kind === "available" && st.info.url && <span className="t-meta muted">点击后会直接下载适合这台电脑的安装包。安装新版前，档案数据保持在原来的数据文件夹里，不受影响。</span>}
+    {st.kind === "available" && !st.info.url && <Note tone="warn">这个版本暂时没有适合这台电脑的安装包，请稍后重新检查。</Note>}
+    {downloadError && <Note tone="warn">{downloadError}</Note>}
     {st.kind === "latest" && <Note tone="ok">Charter {v} 是最新版本。</Note>}
     {st.kind === "error" && <Note tone="warn">{st.message} 档案和设置都不受影响，可以稍后重试。</Note>}
     {st.kind === "noURL" && <Note>这个版本没有配置更新来源，暂时无法检查更新。</Note>}

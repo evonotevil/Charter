@@ -80,6 +80,7 @@ function handle(name, fn) {
 handle("log", (level, msg) => log(level === "error" ? "renderer-error" : "renderer", msg));
 handle("log_path", () => (logFile || path.join(app.getPath("logs"), "main.log")));
 handle("platform_name", () => (isMac ? "mac" : isWin ? "windows" : "linux"));
+handle("platform_arch", () => (isMac && app.runningUnderARM64Translation ? "arm64" : process.arch === "arm64" ? "arm64" : process.arch === "x64" ? "x64" : "unknown"));
 handle("default_root", () => defaultRoot());
 // 5.5.6 多台电脑共用
 handle("cloud_kind", (p) => share.cloudKind(p));

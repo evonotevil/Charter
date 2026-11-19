@@ -1,6 +1,6 @@
 // 5.5.5：检查更新。读取 GitHub Releases 的最新版本（版本号、日期、发布说明），不上传任何档案数据。
-import { DOWNLOAD_PAGE_URL, UPDATE_FEED_URL, UPDATE_FALLBACK_URL } from "../config/update";
-import { platform } from "../platform/platform";
+import { UPDATE_FEED_URL, UPDATE_FALLBACK_URL } from "../config/update";
+import { platform, type Platform } from "../platform/platform";
 
 export type UpdateInfo = { version: string; date?: string; notes: string[]; fullNotes: string; url: string };
 export type UpdateState =
@@ -24,11 +24,25 @@ export function releaseBullets(body: string): string[] {
     .map((l) => l.replace(/^[-*]\s+/, "").replace(/\*\*|__|`/g, "").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").trim()).filter(Boolean).slice(0, 6);
 }
 
-export function parseRelease(json: unknown): UpdateInfo {
-  const r = json as { tag_name?: string; name?: string; body?: string; html_url?: string; published_at?: string };
+type ReleaseAsset = { name?: string; browser_download_url?: string };
+type DownloadTarget = Pick<Platform, "os" | "arch">;
+
+/** 只接受本仓库正式 Release 的安装包直链，避免更新源里的任意地址被打开。 */
+export function selectReleaseDownload(version: string, assets: ReleaseAsset[], target: DownloadTarget): string {
+  const expected = target.os === "windows" && target.arch === "x64" ? `Charter-${version}-Windows-Setup.exe`
+    : target.os === "mac" && (target.arch === "arm64" || target.arch === "x64") ? `Charter-${version}-Mac-${target.arch}.dmg`
+    : "";
+  if (!expected) return "";
+  const url = `https://github.com/evonotevil/Charter/releases/download/v${version}/${expected}`;
+  return assets.some((asset) => asset.name === expected && asset.browser_download_url === url) ? url : "";
+}
+
+export function parseRelease(json: unknown, target: DownloadTarget = platform()): UpdateInfo {
+  const r = json as { tag_name?: string; body?: string; published_at?: string; assets?: ReleaseAsset[] };
   if (!r || typeof r.tag_name !== "string") throw new Error("更新服务器返回的内容无法识别。");
   const body = r.body ?? "";
-  return { version: r.tag_name.replace(/^v/i, ""), date: r.published_at?.slice(0, 10), notes: releaseBullets(body), fullNotes: body, url: DOWNLOAD_PAGE_URL || r.html_url || "" };
+  const version = r.tag_name.replace(/^v/i, "");
+  return { version, date: r.published_at?.slice(0, 10), notes: releaseBullets(body), fullNotes: body, url: selectReleaseDownload(version, r.assets ?? [], target) };
 }
 
 let state: UpdateState = { kind: UPDATE_FEED_URL ? "idle" : "noURL" };

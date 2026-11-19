@@ -164,6 +164,11 @@ fn platform_name() -> &'static str {
     if cfg!(target_os = "macos") { "mac" } else if cfg!(windows) { "windows" } else { "linux" }
 }
 
+#[tauri::command]
+fn platform_arch() -> &'static str {
+    if cfg!(target_arch = "aarch64") { "arm64" } else if cfg!(target_arch = "x86_64") { "x64" } else { "unknown" }
+}
+
 struct Watcher(Mutex<Option<notify::RecommendedWatcher>>);
 
 /// 监听数据文件夹里的 JSON 变化（另一台设备同步过来时），合并成一次事件通知前端。
@@ -204,7 +209,7 @@ pub fn run() {
         .manage(Watcher(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             default_root, read_text, read_bytes, write_text, write_bytes, stat, list_dir, mkdirs, copy_file, move_file,
-            remove_file, remove_dir, temp_dir, device_name, sync_status, ocr, cjk_font, bundled_templates, platform_name, watch
+            remove_file, remove_dir, temp_dir, device_name, sync_status, ocr, cjk_font, bundled_templates, platform_name, platform_arch, watch
         ])
         .run(tauri::generate_context!())
         .expect("Charter 启动失败");

@@ -31,12 +31,14 @@ import { joinPlatformPath, type DirEntry, type FileStat, type Platform, type Syn
 
 export async function createTauriPlatform(): Promise<Platform> {
   const os = (await invoke<string>("platform_name")) as "mac" | "windows" | "linux";
+  const arch = (await invoke<string>("platform_arch")) as "arm64" | "x64" | "unknown";
   let notifyAllowed: boolean | null = null;
 
   const bytesOf = async (cmd: string, args?: Record<string, unknown>) => new Uint8Array(await invoke<ArrayBuffer>(cmd, args));
 
   return {
     os,
+    arch,
     defaultRoot: () => invoke<string>("default_root"),
     join: (...parts) => joinPlatformPath(os, ...parts),
     readText: (path) => invoke<string>("read_text", { path }),

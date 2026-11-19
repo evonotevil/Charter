@@ -26,8 +26,10 @@ export async function createElectronPlatform(): Promise<Platform> {
     const err = new Error(r.error); (err as any).raw = r.raw; throw err;
   };
   const os = await call<"mac" | "windows" | "linux">("platform_name");
+  const arch = await call<"arm64" | "x64" | "unknown">("platform_arch");
   return {
     os,
+    arch,
     defaultRoot: () => call<string>("default_root"),
     join: (...parts) => joinPlatformPath(os, ...parts),
     readText: (path) => call<string>("read_text", path),
