@@ -23,22 +23,22 @@
 <section class="updates" id="updates">
       <div class="container updates-grid">
         <div class="updates-copy">
-          <h2>这一版，统一设计与交互。</h2>
-          <div class="version">5.5.7 <small>当前版本</small></div>
-          <p>新版统一设置、证据关联和双栏页面的交互与布局，并改善入门教程和文件包预览。</p>
+          <h2>5.5.8 更新内容</h2>
+          <div class="version">5.5.8 <small>当前版本</small></div>
+          <p>申报日历可以撤销刚完成的事项，长文件列表和股权结构图滚动更顺，文件与材料包的操作也更清楚。</p>
         </div>
         <div class="change-list">
           <article class="change">
-            <h3>证据关联更清楚</h3>
-            <p>连续选择公司、人员、任职和持股，核实依据可以直接回到原记录。</p>
+            <h3>完成事项可以撤销</h3>
+            <p>误点完成后有 5 秒撤销；连续完成时只恢复最近一项，复制邮件不会打断倒计时。</p>
           </article>
           <article class="change">
-            <h3>设置与规则更顺手</h3>
-            <p>档案清单支持多选法域，合规规则显示适用公司数和自动保存状态。</p>
+            <h3>文件预览与材料包</h3>
+            <p>PDF 支持左右翻页，准备文件包可全选或取消全选，长目录在独立区域查看。</p>
           </article>
           <article class="change">
-            <h3>页面布局更整齐</h3>
-            <p>人员、日历、股权结构和集团页面统一双栏高度与滚动方式。</p>
+            <h3>滚动与备份恢复</h3>
+            <p>长文件列表与股权结构滚动更连贯，并修正特殊文件名导致的备份恢复错误。</p>
           </article>
         </div>
       </div>
@@ -47,26 +47,29 @@
       <div class="container download-grid">
         <div class="download-copy">
           <h2>下载 Charter 5</h2>
-          <p>5.5.7 提供 Mac Apple 芯片版、Intel 版和 Windows 安装版。应用没有使用商业代码签名证书。</p>
-          <a class="action download-action" href="https://github.com/evonotevil/Charter/releases/download/v5.5.7/Charter-5.5.7-Mac-arm64.dmg">下载 macOS 版</a>
+          <p>5.5.8 提供 Mac Apple 芯片版、Intel 版，以及 Windows 安装版和免安装版。应用没有使用商业代码签名证书。</p>
+          <a class="action download-action" href="https://github.com/evonotevil/Charter/releases/download/v5.5.8/Charter-5.5.8-Mac-arm64.dmg">下载 macOS 版</a>
           <p>macOS 首次打开时，请在访达中右键 Charter 并选择「打开」；Windows 请选择「更多信息」后继续运行。</p>
         </div>
         <div>
           <div class="packages" aria-label="所有安装包">
-            <a class="package" href="https://github.com/evonotevil/Charter/releases/download/v5.5.7/Charter-5.5.7-Mac-arm64.dmg">
+            <a class="package" href="https://github.com/evonotevil/Charter/releases/download/v5.5.8/Charter-5.5.8-Mac-arm64.dmg">
               <b>macOS Apple 芯片</b><span>arm64 / DMG</span><em>下载</em>
             </a>
-            <a class="package" href="https://github.com/evonotevil/Charter/releases/download/v5.5.7/Charter-5.5.7-Mac-x64.dmg">
+            <a class="package" href="https://github.com/evonotevil/Charter/releases/download/v5.5.8/Charter-5.5.8-Mac-x64.dmg">
               <b>macOS Intel</b><span>x64 / DMG</span><em>下载</em>
             </a>
-            <a class="package" href="https://github.com/evonotevil/Charter/releases/download/v5.5.7/Charter-5.5.7-Windows-Setup.exe">
+            <a class="package" href="https://github.com/evonotevil/Charter/releases/download/v5.5.8/Charter-5.5.8-Windows-Setup.exe">
               <b>Windows 安装版</b><span>setup.exe</span><em>下载</em>
+            </a>
+            <a class="package" href="https://github.com/evonotevil/Charter/releases/download/v5.5.8/Charter-5.5.8-Windows-x64.zip">
+              <b>Windows 免安装版</b><span>x64 / ZIP</span><em>下载</em>
             </a>
           </div>
           <div class="download-meta">
-            <a href="https://github.com/evonotevil/Charter/releases/download/v5.5.7/SHA256SUMS.txt">SHA-256 校验值</a>
-            <a href="https://github.com/evonotevil/Charter/releases/tag/v5.5.7">完整安装说明</a>
+            <a href="https://github.com/evonotevil/Charter/releases/download/v5.5.8/SHA256SUMS.txt">SHA-256 校验值</a>
+            <a href="https://github.com/evonotevil/Charter/releases/tag/v5.5.8">完整安装说明</a>
           </div>
         </div>
       </div>
-    </section></main><footer><span>Charter 5.5.7 / 本地优先的公司治理工作区</span><a href="https://github.com/evonotevil/Charter">GitHub 源码</a></footer></div><script>const tabs=[...document.querySelectorAll('[role=tab]')];function select(t){tabs.forEach(b=>{b.setAttribute('aria-selected',String(b===t));b.tabIndex=b===t?0:-1});document.querySelector('#product-image').src='assets/screens/'+t.dataset.shot+'.png';document.querySelector('#product-image').alt='Charter '+t.dataset.label+'界面';document.querySelector('#product-label').textContent=t.dataset.label;document.querySelector('#product-panel').setAttribute('aria-labelledby',t.id)}tabs.forEach((t,i)=>{t.tabIndex=i? -1:0;t.onclick=()=>select(t);t.onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();let n=e.key==='Home'?0:e.key==='End'?tabs.length-1:(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;select(tabs[n]);tabs[n].focus()}}});</script></body></html>
+    </section></main><footer><span>Charter 5.5.8 / 本地优先的公司治理工作区</span><a href="https://github.com/evonotevil/Charter">GitHub 源码</a></footer></div><script>const tabs=[...document.querySelectorAll('[role=tab]')];function select(t){tabs.forEach(b=>{b.setAttribute('aria-selected',String(b===t));b.tabIndex=b===t?0:-1});document.querySelector('#product-image').src='assets/screens/'+t.dataset.shot+'.png';document.querySelector('#product-image').alt='Charter '+t.dataset.label+'界面';document.querySelector('#product-label').textContent=t.dataset.label;document.querySelector('#product-panel').setAttribute('aria-labelledby',t.id)}tabs.forEach((t,i)=>{t.tabIndex=i? -1:0;t.onclick=()=>select(t);t.onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();let n=e.key==='Home'?0:e.key==='End'?tabs.length-1:(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;select(tabs[n]);tabs[n].focus()}}});</script></body></html>

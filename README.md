@@ -4,7 +4,7 @@
 
 Charter 是面向海外子公司管理的 Mac / Windows 桌面应用。你可以查看一家公司背后的股东与任职人员，追踪下一次申报，整理材料，并按用途导出带水印的文件包。
 
-**当前版本：5.5.7** · [下载应用](#下载与安装) · [产品网站与交互演示](https://evonotevil.github.io/Charter/) · [更新记录](https://github.com/evonotevil/Charter/releases)
+**当前版本：5.5.8** · [下载应用](#下载与安装) · [产品网站与交互演示](https://evonotevil.github.io/Charter/) · [更新记录](https://github.com/evonotevil/Charter/releases)
 
 ![Charter 公司总览：集中查看集团公司、法域和待办事项](site/assets/screens/03-companies.png)
 
@@ -12,15 +12,15 @@ Charter 是面向海外子公司管理的 Mac / Windows 桌面应用。你可以
 
 | 系统 | 安装包 |
 | --- | --- |
-| macOS 12+ · Apple 芯片（M1 及以后） | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.7/Charter-5.5.7-Mac-arm64.dmg) |
-| macOS 12+ · Intel | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.7/Charter-5.5.7-Mac-x64.dmg) |
-| Windows 10 / 11 · x64 | [下载安装版 EXE](https://github.com/evonotevil/Charter/releases/download/v5.5.7/Charter-5.5.7-Windows-Setup.exe) |
+| macOS 12+ · Apple 芯片（M1 及以后） | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.8/Charter-5.5.8-Mac-arm64.dmg) |
+| macOS 12+ · Intel | [下载 DMG](https://github.com/evonotevil/Charter/releases/download/v5.5.8/Charter-5.5.8-Mac-x64.dmg) |
+| Windows 10 / 11 · x64 | [下载安装版 EXE](https://github.com/evonotevil/Charter/releases/download/v5.5.8/Charter-5.5.8-Windows-Setup.exe) · [下载免安装 ZIP](https://github.com/evonotevil/Charter/releases/download/v5.5.8/Charter-5.5.8-Windows-x64.zip) |
 
 Mac 打开 DMG 后，将 Charter 拖入“应用程序”；Windows 运行安装程序。升级前先退出正在运行的 Charter。
 
 安装包尚未使用 Apple Developer ID 或 Windows 商业代码签名证书，首次打开可能出现系统提示。Mac 可在访达中右键选择“打开”，或在“系统设置 → 隐私与安全性”中允许打开；Windows SmartScreen 可选择“更多信息 → 仍要运行”。
 
-[完整发布说明](https://github.com/evonotevil/Charter/releases/latest) · [SHA-256 校验值](https://github.com/evonotevil/Charter/releases/download/v5.5.7/SHA256SUMS.txt)
+[完整发布说明](https://github.com/evonotevil/Charter/releases/latest) · [SHA-256 校验值](https://github.com/evonotevil/Charter/releases/download/v5.5.8/SHA256SUMS.txt)
 
 ## 能做什么
 
@@ -32,7 +32,7 @@ Mac 打开 DMG 后，将 Charter 拖入“应用程序”；Windows 运行安装
 | 整理公司与个人材料 | 在“已有材料 / 完整性审阅”之间切换，设置我负责、中介保管、待确认、不在我的范围或不适用。只有“我负责”的缺项计入完整度。 |
 | 保留核实依据 | 将文件关联到公司、人员、任职或持股；记录证据类型、页码和核实状态，追踪旧版与新版。 |
 | 准备对外文件包 | 按用途选文件、预览水印、指定接收方和保存位置；支持清除文件信息、可选压平、发送记录及再次导出。处理导出副本，保留原件。 |
-| 备份与升级 | 导出和恢复完整备份；在“关于与更新”中检查新版本、查看更新内容并前往下载。 |
+| 备份与升级 | 导出和恢复完整备份。在“关于与更新”中检查新版本、查看更新内容并直接下载当前系统对应的安装包。 |
 
 系统日历同步在 Mac 上使用 Apple 日历，Windows 上需要桌面版 Outlook；也可使用 `.ics` 订阅文件。
 
