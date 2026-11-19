@@ -7,6 +7,7 @@ import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from "pdf
 import { loadPdfReader } from "../services/extract";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
+import { PreviewPager } from "../ui/PreviewPager";
 import { Button } from "../ui/kit";
 import "./filePreview.css";
 
@@ -79,22 +80,10 @@ export function FilePreview({ path, onOpenOriginal, onRelocate, onReissue }: { p
   );
   if (!pdf) return state === "ok" ? <img className="file-preview-image" src={platform().fileURL(path)} alt="文件图像预览" /> : null;
 
-  const previousDisabled = pages < 2 || current <= 1;
-  const nextDisabled = pages < 2 || current >= pages;
   return (
     <div className="file-preview">
       <div className="file-preview-bar">
-        <div className="file-preview-pager" aria-label="PDF 翻页">
-          <button type="button" className="icon-btn sunken file-preview-arrow" disabled={previousDisabled}
-            aria-label="上一页" title={!pages ? "正在读取页数" : previousDisabled ? "已经是第一页" : "上一页"} onClick={() => setCurrent((page) => Math.max(1, page - 1))}>
-            <Icon name="chevron.left" size={16} />
-          </button>
-          <span className="t-meta num file-preview-page-number" aria-live="polite">{pages > 0 ? `${current} / ${pages}` : "— / —"}</span>
-          <button type="button" className="icon-btn sunken file-preview-arrow" disabled={nextDisabled}
-            aria-label="下一页" title={!pages ? "正在读取页数" : nextDisabled ? "已经是最后一页" : "下一页"} onClick={() => setCurrent((page) => Math.min(pages, page + 1))}>
-            <Icon name="chevron.right" size={16} />
-          </button>
-        </div>
+        <PreviewPager page={current} pages={pages} onPageChange={setCurrent} />
         {onOpenOriginal && <Button size="small" kind="quiet" onClick={onOpenOriginal}>打开原件</Button>}
       </div>
       <div className="file-preview-stage" aria-busy={state === "loading"}>

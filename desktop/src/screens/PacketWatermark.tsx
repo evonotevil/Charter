@@ -9,6 +9,7 @@ import type { Company } from "../domain/models";
 import type { Store } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
+import { PreviewPager } from "../ui/PreviewPager";
 import { Button, ConfirmSheet, MenuList, Note, Popover, Segmented, SelectField, SliderRow, TextField } from "../ui/kit";
 import "./files558.css";
 
@@ -140,32 +141,7 @@ function renderPage(url: string, kind: "pdf" | "image", page: number, maxW: numb
 export type PreviewFile = { id: string; title: string; url: string; kind: "pdf" | "image"; text: string };
 
 export function WatermarkPreview({ files, index, onIndex, settings }: { files: PreviewFile[]; index: number; onIndex: (i: number) => void; settings: WatermarkSettings }) {
-  const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
-  const [dims, setDims] = useState<{ w: number; h: number; scale: number } | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const base = useRef<HTMLCanvasElement>(null), top = useRef<HTMLCanvasElement>(null);
   const cur = files[Math.min(index, files.length - 1)];
-  const maxW = Math.round(560 * (window.devicePixelRatio || 1));
-  useEffect(() => setPage(1), [cur?.id]);
-  useEffect(() => {
-    if (!cur) return; let live = true;
-    void renderPage(cur.url, cur.kind, page, maxW).then((r) => {
-      if (!live) return;
-      const scale = Math.min(maxW / r.w, cur.kind === "image" ? 1 : Infinity);
-      for (const c of [base.current, top.current]) if (c) { c.width = r.bmp.width; c.height = r.bmp.height; }
-      base.current?.getContext("2d")!.drawImage(r.bmp, 0, 0);
-      setPages(r.pages); setDims({ w: r.w, h: r.h, scale: r.bmp.width / r.w || scale }); setErr(null);
-      // 预读下一页
-      if (page < r.pages) void renderPage(cur.url, cur.kind, page + 1, maxW);
-    }).catch((e) => live && setErr(e instanceof Error ? e.message : String(e)));
-    return () => { live = false; };
-  }, [cur?.url, page]);
-  useEffect(() => {
-    const c = top.current; if (!c || !dims || !cur) return;
-    let raf = requestAnimationFrame(() => { const ctx = c.getContext("2d")!; ctx.clearRect(0, 0, c.width, c.height); void drawWatermark(ctx, dims.w, dims.h, dims.scale, cur.text, settings); });
-    return () => cancelAnimationFrame(raf);
-  }, [dims, cur?.text, settings]);
   return <div className="col gap10 watermark-preview">
     <section className="col gap8 watermark-preview-control">
       <span className="t-row">预览文件</span>
@@ -177,22 +153,49 @@ export function WatermarkPreview({ files, index, onIndex, settings }: { files: P
         <span className="t-meta muted watermark-preview-hint">也可以在第一步的清单里点选</span>
       </div>
     </section>
-    {!cur ? <Note>没有要加水印的文件：在第一步把至少一份文件设为“加水印”。</Note> : <>
+    {!cur ? <Note>没有要加水印的文件：在第一步把至少一份文件设为“加水印”。</Note> :
+      <WatermarkedPages key={`${cur.id}:${cur.url}`} cur={cur} settings={settings} />}
+  </div>;
+}
+
+function WatermarkedPages({ cur, settings }: { cur: PreviewFile; settings: WatermarkSettings }) {
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(0);
+  const [dims, setDims] = useState<{ w: number; h: number; scale: number } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const base = useRef<HTMLCanvasElement>(null), top = useRef<HTMLCanvasElement>(null);
+  const maxW = Math.round(560 * (window.devicePixelRatio || 1));
+  useEffect(() => {
+    let live = true;
+    void renderPage(cur.url, cur.kind, page, maxW).then((r) => {
+      if (!live) return;
+      const scale = Math.min(maxW / r.w, cur.kind === "image" ? 1 : Infinity);
+      for (const c of [base.current, top.current]) if (c) { c.width = r.bmp.width; c.height = r.bmp.height; }
+      base.current?.getContext("2d")!.drawImage(r.bmp, 0, 0);
+      setPages(r.pages); setDims({ w: r.w, h: r.h, scale: r.bmp.width / r.w || scale }); setErr(null);
+      // 预读下一页
+      if (page < r.pages) void renderPage(cur.url, cur.kind, page + 1, maxW);
+    }).catch((e) => live && setErr(e instanceof Error ? e.message : String(e)));
+    return () => { live = false; };
+  }, [cur.url, cur.kind, page, maxW]);
+  useEffect(() => {
+    const c = top.current; if (!c || !dims) return;
+    let raf = requestAnimationFrame(() => { const ctx = c.getContext("2d")!; ctx.clearRect(0, 0, c.width, c.height); void drawWatermark(ctx, dims.w, dims.h, dims.scale, cur.text, settings); });
+    return () => cancelAnimationFrame(raf);
+  }, [dims, cur.text, settings]);
+  return <>
     <div className="row" style={{ justifyContent: "center", padding: 16, borderRadius: "var(--r-tile)", background: "var(--surface-sunken)" }}>
       {err ? <Note tone="warn">预览失败：{err}</Note> :
-        <span className="wm-stage page-fade" key={`${cur.id}-${page}`} style={{ height: 440, aspectRatio: dims ? `${dims.w} / ${dims.h}` : "210 / 297", maxWidth: "100%" }}>
+        <span className="wm-stage page-fade" key={page} style={{ height: 440, aspectRatio: dims ? `${dims.w} / ${dims.h}` : "210 / 297", maxWidth: "100%" }}>
           <canvas ref={base} className="wm-page" style={{ width: "100%", height: "100%" }} aria-label={`水印预览：${cur.title} 第 ${page} 页`} />
           <canvas ref={top} aria-hidden />
         </span>}
     </div>
-    <div className="row gap8" style={{ justifyContent: "center" }}>
-      <Button size="small" kind="quiet" icon="chevron.left" ariaLabel="上一页" disabled={page <= 1} onClick={() => setPage(page - 1)} />
-      <span className="t-meta muted num" style={{ minWidth: 88, textAlign: "center" }}>第 {page} / {pages} 页</span>
-      <Button size="small" kind="quiet" icon="chevron.right" ariaLabel="下一页" disabled={page >= pages} onClick={() => setPage(page + 1)} />
-    </div>
+    {(!err || pages > 0) && <div className="row" style={{ justifyContent: "center" }}>
+      <PreviewPager page={page} pages={pages} onPageChange={(next) => { setErr(null); setPage(next); }} />
+    </div>}
     <span className="t-meta muted selectable" style={{ textAlign: "center" }}>{cur.text || "（水印文字为空）"}</span>
-    </>}
-  </div>;
+  </>;
 }
 
 export function SignedConfirm({ title, onClose, onConfirm }: { title: string; onClose: () => void; onConfirm: () => void }) {

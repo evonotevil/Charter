@@ -859,6 +859,9 @@ mark.hl { background: var(--green-soft); color: inherit; border-radius: 3px; pad
 .icon-btn.sunken { background: var(--surface-sunken); }
 .icon-btn:hover:not(:disabled) { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, var(--surface-sunken)); }
 .icon-btn:disabled { color: var(--disabled-fg); cursor: not-allowed; background: transparent; }
+.preview-pager { display: inline-flex; align-items: center; gap: 5px; }
+.preview-pager .icon-btn:disabled { background: var(--surface-sunken); opacity: .36; }
+.preview-page-number { min-width: 42px; text-align: center; white-space: nowrap; }
 .fate button { height: 26px; padding: 0 12px; font-size: var(--fs-body); }
 .slider-line { display: flex; align-items: center; gap: 12px; }
 .slider-line-label { width: 70px; flex: none; }
