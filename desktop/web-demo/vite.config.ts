@@ -18,6 +18,7 @@ const releases = "https://github.com/evonotevil/Charter/releases";
 const tag = release ? release.tag_name : `v${pkg.version}`;
 if (!/^v\d+\.\d+\.\d+$/.test(tag)) throw new Error(`Invalid release tag: ${tag}`);
 const version = tag.slice(1);
+const macMinimum = version === pkg.version ? `macOS ${pkg.build.mac.minimumSystemVersion} 及以上` : "";
 function asset(name: string) {
   return release
     ? release.assets.find((file) => file.name === name)?.browser_download_url
@@ -25,12 +26,12 @@ function asset(name: string) {
 }
 
 const platforms = [
-  { name: "Mac", options: [["Apple 芯片", "Mac-arm64.dmg"], ["Intel 芯片", "Mac-x64.dmg"]] },
-  { name: "Windows", options: [["安装版", "Windows-Setup.exe"], ["免安装版", "Windows-x64.zip"]] },
-].map(({ name, options }) => ({
+  { name: "Mac", requirement: macMinimum, options: [["Apple 芯片", "Mac-arm64.dmg"], ["Apple 芯片", "Mac-arm64.zip"], ["Intel 芯片", "Mac-x64.dmg"], ["Intel 芯片", "Mac-x64.zip"]] },
+  { name: "Windows", requirement: "Windows 10 / 11 · x64", options: [["安装版", "Windows-Setup.exe"], ["免安装版", "Windows-x64.zip"]] },
+].map(({ name, requirement, options }) => ({
   name,
+  requirement,
   options: options.flatMap(([label, suffix]) => {
-    if (!release && suffix.endsWith(".zip")) return [];
     const url = asset(`Charter-${version}-${suffix}`);
     return url ? [{ label, url, format: suffix.split(".").pop()!.toUpperCase() }] : [];
   }),

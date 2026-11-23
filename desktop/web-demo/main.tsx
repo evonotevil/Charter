@@ -57,7 +57,7 @@ function Downloads() {
   const [platform, setPlatform] = useState(0);
   const [variant, setVariant] = useState(0);
   const [copyStatus, setCopyStatus] = useState("");
-  const { name: platformName, options } = platforms[platform];
+  const { name: platformName, requirement, options } = platforms[platform];
   const selected = options[variant];
   const isMac = platformName === "Mac";
   const command = "xattr -cr /Applications/Charter.app";
@@ -81,11 +81,12 @@ function Downloads() {
         <div className="platform-switch" role="group" aria-label="操作系统">
           {platforms.map(({ name }, i) => <button type="button" key={name} aria-pressed={platform === i} onClick={() => { setPlatform(i); setVariant(0); setCopyStatus(""); }}>{name}</button>)}
         </div>
+        {requirement && <p className="platform-requirement">{requirement}</p>}
         <fieldset className="package-options">
-          <legend className="picker-label">02 / 选择{isMac ? "芯片" : "安装方式"}</legend>
+          <legend className="picker-label">02 / 选择{isMac ? "芯片与格式" : "安装方式"}</legend>
           {options.map(({ label, url, format }, i) => <label key={url}><input type="radio" name="package" checked={variant === i} onChange={() => setVariant(i)} /><span>{label}</span><small>{format}</small></label>)}
         </fieldset>
-        <a className="download-primary" href={selected.url}>下载 {platformName} {selected.label}</a>
+        <a className="download-primary" href={selected.url}>下载 {platformName} {selected.label} · {selected.format}</a>
       </div>
     </div>
     <div className="install-guide">
@@ -95,7 +96,7 @@ function Downloads() {
         {isMac ?
         <section>
           <ol>
-            <li>打开 DMG，把 Charter 拖到「应用程序」，然后从「应用程序」打开一次。</li>
+            <li>{selected.format === "ZIP" ? <>解压 ZIP，把 Charter 移到「应用程序」，然后从「应用程序」打开一次。</> : <>打开 DMG，把 Charter 拖到「应用程序」，然后从「应用程序」打开一次。</>}</li>
             <li>如果提示无法验证开发者，打开「系统设置 → 隐私与安全性」，找到 Charter 的提示，点「仍要打开」并确认。<a href="https://support.apple.com/zh-cn/102445">Apple 官方说明</a></li>
           </ol>
           <details className="terminal-help">
