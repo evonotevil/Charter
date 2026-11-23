@@ -93,7 +93,9 @@ jobs:
           esac
           test "$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")" = "$VERSION"
           test "$(plutil -extract CFBundleVersion raw "$APP/Contents/Info.plist")" = "$VERSION.$GITHUB_RUN_NUMBER"
-          lipo -verify_arch "$(lipo -archs "$APP/Contents/MacOS/Charter")" "$APP/Contents/Resources/charter-calendar.node"
+          test "$(lipo -archs "$APP/Contents/Resources/charter-calendar.node")" = "$(cat macos-architectures.txt)"
+          FRAMEWORK="$APP/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework"
+          test "$(plutil -extract LSMinimumSystemVersion raw "$APP/Contents/Info.plist")" = "$(xcrun vtool -show-build "$FRAMEWORK" | awk '/minos/ {print $2; exit}')"
           test -f "$APP/Contents/Resources/app.asar"
           test -f "$APP/Contents/Resources/charter-templates.json"
           hdiutil verify "release/Charter-$VERSION-Mac-$EXPECTED_ARCH.dmg"
