@@ -6,6 +6,9 @@ const { execFileSync } = require("node:child_process");
 exports.default = async function afterPack(ctx) {
   if (ctx.electronPlatformName === "darwin") {
     const app = path.join(ctx.appOutDir, `${ctx.packager.appInfo.productFilename}.app`);
+    const executable = path.join(app, "Contents/MacOS", ctx.packager.appInfo.productFilename);
+    const architectures = execFileSync("/usr/bin/lipo", ["-archs", executable], { encoding: "utf8" }).trim().split(/\s+/);
+    require("./build-calendar.cjs").buildCalendar(path.join(app, "Contents/Resources/charter-calendar.node"), architectures);
     execFileSync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", app], { stdio: "inherit" });
     console.log("  • 已为 macOS 应用写入 ad-hoc 签名", app);
     return;

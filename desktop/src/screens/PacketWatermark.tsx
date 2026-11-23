@@ -1,17 +1,17 @@
 // 5.5：材料包水印——设置栏、预览、签名确认。设计稿见 Figma「5.5 · 材料包水印」。
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { PacketTemplate, PacketWatermark } from "../domain/models";
+import { useEffect, useRef, useState } from "react";
+import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from "pdfjs-dist";
+import { sha256Bytes } from "../services/hash";
+import type { PacketWatermark } from "../domain/models";
 import { loadPdfReader } from "../services/extract";
-import { type PacketItem, type WMEligibility, packetIncluded, packetItemID, packetItemTitle, wmContext, wmEligibility } from "../services/packets";
-import { type WMPart, type WMStyle, type WatermarkSettings, WM_TAGS, defaultWatermark, drawWatermark, kindOf, resolveText, tagLabel } from "../services/watermark";
-import type { Company } from "../domain/models";
+import { emptyWatermarkMessage, type PacketItem, type WMEligibility, packetItemID, wmEligibility } from "../services/packets";
+import { type WMStyle, type WatermarkSettings, defaultWatermark, drawWatermark } from "../services/watermark";
 import type { Store } from "../state/store";
 import { platform } from "../platform/platform";
-import { Icon } from "../ui/Icon";
 import { PreviewPager } from "../ui/PreviewPager";
-import { Button, ConfirmSheet, MenuList, Note, Popover, Segmented, SelectField, SliderRow, TextField } from "../ui/kit";
-import "./files558.css";
+import { ConfirmSheet, Note, Segmented, SelectField, SliderRow, TextField } from "../ui/kit";
+import { WatermarkTokens } from "./WatermarkTokens";
 
 /** 5.5.3：水印固定墨色。 */
 export const WM_INK = "#25352C";
@@ -19,16 +19,24 @@ export const inked = (s: WatermarkSettings): WatermarkSettings => ({ ...s, color
 export const defaultPacketWatermark = (): PacketWatermark => ({ enabled: false, settings: defaultWatermark(), skip: [], stripMeta: false });
 
 /** 每个清单项能否加水印。签名 PDF 第一次出现时默认不加。 */
-export function useEligibility(items: PacketItem[], store: Store) {
-  const [map, setMap] = useState<Record<string, WMEligibility>>({});
-  const key = items.map((i) => packetItemID(i) + (i.document?.id ?? "")).join(",");
+export function useEligibility(items: PacketItem[], store: Store, reviewBytes: boolean, revision: number) {
+  const [result, setResult] = useState<{ key: string; map: Record<string, WMEligibility> } | null>(null);
+  const key = JSON.stringify([reviewBytes, revision, items.map(i => [packetItemID(i), i.document?.id, i.document?.filePath])]);
   useEffect(() => {
     let live = true;
-    void Promise.all(items.map(async (i) => [packetItemID(i), await wmEligibility(i, store)] as const)).then((r) => live && setMap(Object.fromEntries(r)));
+    let next = 0;
+    const map: Record<string, WMEligibility> = {};
+    const check = async () => {
+      while (live && next < items.length) {
+        const item = items[next++];
+        map[packetItemID(item)] = await wmEligibility(item, store, reviewBytes);
+      }
+    };
+    void Promise.all([check(), check()]).then(() => { if (live) setResult({ key, map }); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  return map;
+  }, [key, store]);
+  return result?.key === key ? result.map : {};
 }
 
 export function eligibilityPill(e?: WMEligibility): { text: string; kind: "warn" | "neutral" } | null {
@@ -37,61 +45,9 @@ export function eligibilityPill(e?: WMEligibility): { text: string; kind: "warn"
   return "signed" in e ? { text: "电子签名", kind: "warn" } : null;
 }
 
-// ---------- 水印文字：标签 + 自定义文字，可拖动、左右移 ----------
-
-function TokenBuilder({ parts, onChange }: { parts: WMPart[]; onChange: (p: WMPart[]) => void }) {
-  const [drag, setDrag] = useState<number | null>(null);
-  const [over, setOver] = useState<number | null>(null);
-  const [fresh, setFresh] = useState<number | null>(null);
-  const [draft, setDraft] = useState("");
-  const [menu, setMenu] = useState(false);
-  const anchor = useRef<HTMLSpanElement>(null);
-  const move = (from: number, to: number) => { if (from === to || to < 0 || to >= parts.length) return; const p = [...parts]; const [x] = p.splice(from, 1); p.splice(to, 0, x); onChange(p); };
-  const append = (x: WMPart) => { onChange([...parts, x]); setFresh(parts.length); };
-  const addText = () => { const t = draft.trim(); if (!t) return; append({ kind: "text", text: t }); setDraft(""); };
-  const name = (p: WMPart) => (p.kind === "tag" ? tagLabel(p.tag) : p.text);
-  const tagIcon = (p: WMPart) => p.kind === "tag" ? ({
-    date: "calendar",
-    file: "doc.text",
-    company: "building.2",
-    packet: "shippingbox",
-    recipient: "person.crop.circle",
-  } as const)[p.tag] : null;
-  return <div className="col gap8">
-    <div className="wm-tokens" aria-label="水印文字组成，可拖动调整顺序">
-      {parts.map((p, i) => (
-        <span key={`${i}-${name(p)}`} className={`wm-token-wrap ${over === i && drag !== null && drag !== i ? (drag > i ? "insert-before" : "insert-after") : ""}`}>
-          <span className={`wm-token ${p.kind} ${drag === i ? "dragging" : ""} ${fresh === i ? "fresh" : ""}`} draggable tabIndex={0}
-          aria-label={`${name(p)}，第 ${i + 1} 个；用左右方向键移动，Delete 删除`}
-          onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "ArrowLeft") { e.preventDefault(); move(i, i - 1); } else if (e.key === "ArrowRight") { e.preventDefault(); move(i, i + 1); } else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); onChange(parts.filter((_, k) => k !== i)); } }}
-          onDragStart={(e) => { setDrag(i); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => { setDrag(null); setOver(null); }}
-          onDragOver={(e) => { e.preventDefault(); setOver(i); }} onDrop={(e) => { e.preventDefault(); if (drag !== null) move(drag, i); setDrag(null); setOver(null); }}>
-          {tagIcon(p) && <Icon name={tagIcon(p)!} size={14} />}
-          {name(p)}
-          <button type="button" className="wm-token-remove" aria-label={`移除 ${name(p)}`} data-tip="移除" onClick={() => onChange(parts.filter((_, k) => k !== i))}><Icon name="xmark" size={12} /></button>
-          </span>
-          <span className="wm-token-move">
-            <button type="button" aria-label={`左移 ${name(p)}`} data-tip="左移" disabled={i === 0} onClick={() => move(i, i - 1)}><Icon name="chevron.left" size={10} /></button>
-            <button type="button" aria-label={`右移 ${name(p)}`} data-tip="右移" disabled={i === parts.length - 1} onClick={() => move(i, i + 1)}><Icon name="chevron.right" size={10} /></button>
-          </span>
-        </span>
-      ))}
-      {!parts.length && <span className="t-meta muted" style={{ padding: "0 4px" }}>添加标签或文字</span>}
-    </div>
-    <div className="row gap8">
-      <span ref={anchor} style={{ display: "inline-flex" }}><Button size="small" icon="plus" onClick={() => setMenu(true)}>插入标签</Button></span>
-      <TextField value={draft} onChange={setDraft} placeholder="自定义文字，回车添加" onEnter={addText} style={{ flex: 1, minWidth: 0 }} />
-      <Button size="small" disabled={!draft.trim()} onClick={addText}>添加</Button>
-    </div>
-    <Popover anchor={anchor} open={menu} onClose={() => setMenu(false)} minWidth={180}>
-      <MenuList close={() => setMenu(false)} entries={WM_TAGS.map(([t, l]) => ({ kind: "item" as const, title: l, action: () => append({ kind: "tag", tag: t }) }))} />
-    </Popover>
-  </div>;
-}
-
 // ---------- 设置栏 ----------
 
-export function WatermarkSettingsPanel({ wm, onChange, recipient, onRecipient, focusRecipient, onFocused }: { wm: PacketWatermark; onChange: (w: PacketWatermark) => void; recipient: string; onRecipient: (s: string) => void; focusRecipient?: boolean; onFocused?: () => void }) {
+export function WatermarkSettingsPanel({ wm, onChange, recipient, onRecipient, focusRecipient, onFocused, emptyText }: { wm: PacketWatermark; onChange: (w: PacketWatermark) => void; recipient: string; onRecipient: (s: string) => void; focusRecipient?: boolean; onFocused?: () => void; emptyText: boolean }) {
   const recBox = useRef<HTMLDivElement>(null);
   useEffect(() => { if (!focusRecipient) return; const t = setTimeout(() => { recBox.current?.scrollIntoView({ block: "center", behavior: "smooth" }); recBox.current?.querySelector("input")?.focus(); onFocused?.(); }, 260); return () => clearTimeout(t); }, [focusRecipient]);
   const s = wm.settings;
@@ -99,8 +55,9 @@ export function WatermarkSettingsPanel({ wm, onChange, recipient, onRecipient, f
   const usesRecipient = s.parts.some((p) => p.kind === "tag" && p.tag === "recipient");
   const head = (t: string, right?: React.ReactNode) => <div className="row gap8"><span className="t-row grow">{t}</span>{right}</div>;
   return <div className="col" style={{ gap: 20 }}>
-    <section className="col gap8"><span className="t-row">水印文字</span><TokenBuilder parts={s.parts} onChange={(parts) => set({ parts })} />
-      <span className="t-meta muted">拖动标签调整顺序；鼠标移到标签上可左移、右移或删除。</span></section>
+    <section className="col gap8"><span className="t-row">水印文字</span><WatermarkTokens parts={s.parts} onChange={(parts) => set({ parts })} />
+      {emptyText && <span className="t-meta amber-text" role="status">{emptyWatermarkMessage}</span>}
+      <span className="t-meta muted">拖动标签调整顺序，也可点按标签移动。拖动时按 Esc 取消。</span></section>
     <section className="col gap8">{head("语言", <Segmented options={[["zh", "中文"], ["en", "English"]]} value={s.lang} onChange={(lang) => set({ lang })} />)}
       {s.lang === "en" && <span className="t-meta muted">日期写作 10 Nov 2026，文件名称用英文类型名；公司名称、接收方和自定义文字照原样。</span>}</section>
     <section className="col gap8" ref={recBox as never}><span className="t-row">接收方</span>
@@ -112,35 +69,18 @@ export function WatermarkSettingsPanel({ wm, onChange, recipient, onRecipient, f
       <SliderRow label="字号" min={1} max={12} step={0.5} value={s.size} onChange={(size) => set({ size })} format={(v) => `${v}%`} />
       {s.style !== "footer" && <SliderRow label="倾斜角度" min={-90} max={90} value={s.angle} onChange={(angle) => set({ angle })} format={(v) => `${v}°`} />}
     </section>
-    <span className="t-meta muted">水印统一使用墨色（{WM_INK}），打印效果为黑色。字号按页宽的百分比计算。</span>
+    <span className="row gap8 wrap t-meta muted">
+      <span className="swatch on" style={{ background: WM_INK }} aria-hidden="true" />
+      <span>水印统一使用墨色（{WM_INK}），打印效果为黑色。字号按页宽的百分比计算。</span>
+    </span>
   </div>;
 }
 
-// ---------- 预览：页面只渲染一次并缓存，水印画在上层，拖动滑块逐帧重绘 ----------
+// 预览在本次选中的文件快照上翻页。水印独立绘制，修改样式不重读原件。
 
-const pageCache = new Map<string, Promise<{ bmp: ImageBitmap; w: number; h: number; pages: number }>>();
-function renderPage(url: string, kind: "pdf" | "image", page: number, maxW: number) {
-  const key = `${url}#${page}@${maxW}`;
-  if (!pageCache.has(key)) {
-    pageCache.set(key, (async () => {
-      const bytes = await platform().readBytes(url);
-      if (kind === "image") { const bmp = await createImageBitmap(new Blob([bytes as BlobPart])); return { bmp, w: bmp.width, h: bmp.height, pages: 1 }; }
-      const pdfjs = await loadPdfReader();
-      const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
-      const pg = await doc.getPage(Math.min(page, doc.numPages));
-      const vp1 = pg.getViewport({ scale: 1 }); const vp = pg.getViewport({ scale: maxW / vp1.width });
-      const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
-      await pg.render({ canvasContext: c.getContext("2d")!, viewport: vp, canvas: c } as never).promise;
-      const r = { bmp: await createImageBitmap(c), w: vp1.width, h: vp1.height, pages: doc.numPages }; void doc.destroy(); return r;
-    })());
-    pageCache.get(key)!.catch(() => pageCache.delete(key));
-  }
-  return pageCache.get(key)!;
-}
+export type PreviewFile = { id: string; title: string; url: string; kind: "pdf" | "image"; sha256: string; text: string };
 
-export type PreviewFile = { id: string; title: string; url: string; kind: "pdf" | "image"; text: string };
-
-export function WatermarkPreview({ files, index, onIndex, settings }: { files: PreviewFile[]; index: number; onIndex: (i: number) => void; settings: WatermarkSettings }) {
+export function WatermarkPreview({ files, index, onIndex, settings, onChanged }: { files: PreviewFile[]; index: number; onIndex: (i: number) => void; settings: WatermarkSettings; onChanged: (title: string) => void }) {
   const cur = files[Math.min(index, files.length - 1)];
   return <div className="col gap10 watermark-preview">
     <section className="col gap8 watermark-preview-control">
@@ -154,11 +94,12 @@ export function WatermarkPreview({ files, index, onIndex, settings }: { files: P
       </div>
     </section>
     {!cur ? <Note>没有要加水印的文件：在第一步把至少一份文件设为“加水印”。</Note> :
-      <WatermarkedPages key={`${cur.id}:${cur.url}`} cur={cur} settings={settings} />}
+      <WatermarkedPages key={`${cur.id}:${cur.url}:${cur.sha256}`} cur={cur} settings={settings} onChanged={onChanged} />}
   </div>;
 }
 
-function WatermarkedPages({ cur, settings }: { cur: PreviewFile; settings: WatermarkSettings }) {
+function WatermarkedPages({ cur, settings, onChanged }: { cur: PreviewFile; settings: WatermarkSettings; onChanged: (title: string) => void }) {
+  const [source, setSource] = useState<PDFDocumentProxy | ImageBitmap | null>(null);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(0);
   const [dims, setDims] = useState<{ w: number; h: number; scale: number } | null>(null);
@@ -167,17 +108,57 @@ function WatermarkedPages({ cur, settings }: { cur: PreviewFile; settings: Water
   const maxW = Math.round(560 * (window.devicePixelRatio || 1));
   useEffect(() => {
     let live = true;
-    void renderPage(cur.url, cur.kind, page, maxW).then((r) => {
+    let loading: PDFDocumentLoadingTask | undefined;
+    let image: ImageBitmap | undefined;
+    const load = async () => {
+      const bytes = await platform().readBytes(cur.url);
+      const digest = await sha256Bytes(bytes);
       if (!live) return;
-      const scale = Math.min(maxW / r.w, cur.kind === "image" ? 1 : Infinity);
-      for (const c of [base.current, top.current]) if (c) { c.width = r.bmp.width; c.height = r.bmp.height; }
-      base.current?.getContext("2d")!.drawImage(r.bmp, 0, 0);
-      setPages(r.pages); setDims({ w: r.w, h: r.h, scale: r.bmp.width / r.w || scale }); setErr(null);
-      // 预读下一页
-      if (page < r.pages) void renderPage(cur.url, cur.kind, page + 1, maxW);
-    }).catch((e) => live && setErr(e instanceof Error ? e.message : String(e)));
-    return () => { live = false; };
-  }, [cur.url, cur.kind, page, maxW]);
+      if (digest !== cur.sha256) { onChanged(cur.title); return; }
+      if (cur.kind === "image") {
+        image = await createImageBitmap(new Blob([bytes as BlobPart]));
+        if (!live) { image.close(); return; }
+        setSource(image); setPages(1);
+      } else {
+        const reader = await loadPdfReader();
+        if (!live) return;
+        loading = reader.getDocument({ data: bytes });
+        const pdf = await loading.promise;
+        if (live) { setSource(pdf); setPages(pdf.numPages); }
+      }
+    };
+    void load().catch(e => { if (live) setErr(e instanceof Error ? e.message : String(e)); });
+    return () => { live = false; image?.close(); void loading?.destroy().catch(() => undefined); };
+  }, [cur.url, cur.sha256, cur.kind, cur.title, onChanged]);
+
+  useEffect(() => {
+    if (!source) return;
+    let live = true;
+    let render: RenderTask | undefined;
+    const paint = async () => {
+      const c = base.current, overlay = top.current;
+      if (!c || !overlay) return;
+      let w: number, h: number;
+      if ("getPage" in source) {
+        const pg = await source.getPage(page);
+        if (!live) return;
+        const box = pg.getViewport({ scale: 1 });
+        w = box.width; h = box.height;
+        const viewport = pg.getViewport({ scale: maxW / w });
+        c.width = overlay.width = Math.floor(viewport.width);
+        c.height = overlay.height = Math.floor(viewport.height);
+        render = pg.render({ canvasContext: c.getContext("2d")!, viewport });
+        await render.promise;
+      } else {
+        w = c.width = overlay.width = source.width;
+        h = c.height = overlay.height = source.height;
+        c.getContext("2d")!.drawImage(source, 0, 0);
+      }
+      if (live) { setDims({ w, h, scale: c.width / w }); setErr(null); }
+    };
+    void paint().catch(e => { if (live) setErr(e instanceof Error ? e.message : String(e)); });
+    return () => { live = false; render?.cancel(); };
+  }, [source, page, maxW]);
   useEffect(() => {
     const c = top.current; if (!c || !dims) return;
     let raf = requestAnimationFrame(() => { const ctx = c.getContext("2d")!; ctx.clearRect(0, 0, c.width, c.height); void drawWatermark(ctx, dims.w, dims.h, dims.scale, cur.text, settings); });

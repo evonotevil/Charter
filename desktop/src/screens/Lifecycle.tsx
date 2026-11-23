@@ -5,11 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import * as D from "../domain/day";
 import { type InboxCategory, type InboxItem, type NodeRef, type TrashEntry, inboxCategoryLabel, ref, trashKeepDays } from "../domain/models";
 import { useApp } from "../state/hooks";
-import { addToInbox, deletionImpact, processInbox, purgeTrash, resolveTarget, restoreTrash, trashDocuments, trashInbox, updateInbox } from "../state/lifecycle";
+import { deletionImpact, processInbox, purgeTrash, resolveTarget, restoreTrash, trashDocuments, trashInbox, updateInbox } from "../state/lifecycle";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Button, Card, Checkbox, ConfirmSheet, EmptyStateView, Modal, Pill, SelectField, SheetScaffold } from "../ui/kit";
-import { inboxResultFeedback } from "./fileFeedback";
+import { InboxBatchResults } from "./InboxBatchResults";
+import { InboxImportProgressCard } from "./InboxImportProgress";
 
 const err = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -65,20 +66,15 @@ export function InboxPane() {
   const shown = items.filter((i) => !onlyDup || i.duplicateOf);
   const all = shown.length > 0 && shown.every((i) => sel.has(i.id));
   const selected = items.filter((i) => sel.has(i.id));
+  const queued = router.inboxPaths.length;
+  const incoming = router.inboxImportProgress;
+  const activity = busy;
+  const results = router.inboxResultsFor(store.folder.root);
   const add = async () => {
-    const paths = await platform().pickFiles({ multiple: true, extensions: ["pdf", "png", "jpg", "jpeg", "heic", "tif", "tiff"], title: "加入待整理" });
-    if (!paths.length) return;
-    setBusy("正在加入…");
-    try {
-      const r = await addToInbox(store, paths, setBusy);
-      const feedback = inboxResultFeedback(r.added, r.duplicates);
-      store.showToast(feedback.text, undefined, "", feedback.kind);
-    }
-    catch (e) { store.setError(`加入待整理失败：${err(e)}`); }
-    finally { setBusy(null); }
+    await router.chooseFiles(null);
   };
   const process = async (ids: string[]) => {
-    setBusy("正在归档…");
+    setBusy("正在按分类处理…");
     try {
       const r = await processInbox(store, ids);
       store.showToast([r.archived.length ? `已归档 ${r.archived.length} 份` : "", r.trashed ? `${r.trashed} 份无关文件移到废纸篓` : "", r.skipped ? `${r.skipped} 份还缺信息，留在待整理` : ""].filter(Boolean).join("，") + "。");
@@ -91,18 +87,25 @@ export function InboxPane() {
     store.showToast(`已移到废纸篓 ${entries.length} 份。`, () => void restoreTrash(store, entries.map((e) => e.id)), "撤销");
     setSel(new Set());
   };
-  const ready = items.filter((i) => resolveTarget(store, i).req || resolveTarget(store, i).category === "irrelevant");
+  const ready = items.filter((i) => {
+    const target = resolveTarget(store, i);
+    return target.req || target.category === "irrelevant";
+  });
+  const trashCount = ready.filter((i) => (i.chosen?.category ?? i.category) === "irrelevant").length;
+  const archiveCount = ready.length - trashCount;
+  const actionLabel = [archiveCount && `归档 ${archiveCount} 份`, trashCount && `移到废纸篓 ${trashCount} 份`].filter(Boolean).join("，");
   return (
     <div className="col gap16">
-      <span className="row gap6 t-meta muted" title="文字识别、去重和分类建议都在这台电脑上完成，不联网、不上传。无关文件进废纸篓，30 天内可恢复。"><Icon name="lock.circle" size={13} />分好类再进正式档案。识别都在这台电脑上完成，不联网。</span>
-      {!items.length && busy && <span className="busy-chip" role="status"><span className="ring" />{busy}</span>}
-      {items.length > 0 && <div className="toolbar">
+      {!incoming && <span className="row gap6 t-meta muted" title="文字识别、去重和分类建议都在这台电脑上完成，不联网、不上传。无关文件进废纸篓，30 天内可恢复。"><Icon name="lock.circle" size={13} />分好类再进正式档案。识别都在这台电脑上完成，不联网。</span>}
+      {(items.length > 0 || incoming || results.length > 0) && <div className="toolbar">
         <Button icon="square.and.arrow.up" onClick={() => void add()}>加入更多…</Button>
-        {busy && <span className="busy-chip" role="status"><span className="ring" />{busy}</span>}
         <span className="spacer" />
         {items.some((i) => i.duplicateOf) && <button className={`v4-toggle ${onlyDup ? "on" : ""}`} onClick={() => setOnlyDup(!onlyDup)}>只看重复 · {items.filter((i) => i.duplicateOf).length}</button>}
-        {ready.length > 0 && <Button kind="primary" onClick={() => void process(ready.map((i) => i.id))}>按当前分类处理可处理的 {ready.length} 份</Button>}
+        {ready.length > 0 && <Button kind={archiveCount ? "primary" : "danger"} disabled={!!activity || !!incoming} onClick={() => void process(ready.map((i) => i.id))}>{actionLabel}</Button>}
       </div>}
+      {incoming && <InboxImportProgressCard progress={incoming} queued={queued} />}
+      {activity && <span className="busy-chip" role="status" aria-live="polite"><span className="ring" />{activity}</span>}
+      <InboxBatchResults results={results} />
       {selected.length > 0 && (
         <div className="card" style={{ padding: "12px 16px", flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <b>已选 {selected.length} 份</b>
@@ -110,11 +113,11 @@ export function InboxPane() {
           {categories.map((c) => <Button key={c} size="small" onClick={() => updateInbox(store, selected.map((i) => i.id), { category: c })}>{inboxCategoryLabel[c]}</Button>)}
           <OwnerPicker kind={selected.every((i) => (i.chosen?.category ?? i.category) === "company") ? "company" : "person"} onPick={(o) => updateInbox(store, selected.map((i) => i.id), { owner: o })} />
           <span className="spacer" />
-          <Button size="small" kind="danger" onClick={() => void toTrash(selected)}>移到废纸篓</Button>
-          <Button size="small" onClick={() => void process(selected.map((i) => i.id))}>归档所选</Button>
+          <Button size="small" kind="danger" disabled={!!activity || !!incoming} onClick={() => void toTrash(selected)}>移到废纸篓</Button>
+          <Button size="small" title="归档信息齐全的文件，将无关文件移到废纸篓" disabled={!!activity || !!incoming} onClick={() => void process(selected.map((i) => i.id))}>按分类处理所选</Button>
         </div>
       )}
-      {!items.length ? <Card><EmptyStateView symbol="tray.and.arrow.down" title="待整理是空的" message="把一批来源材料拖进窗口，或点“加入待整理”。Charter 会先放在这里，等你分好类再归档。" actionTitle="加入待整理…" action={() => void add()} /></Card> : (
+      {!items.length ? incoming || results.length > 0 ? null : <Card><EmptyStateView symbol="tray.and.arrow.down" title="待整理是空的" message="把 PDF、DOCX、XLSX 或照片拖进窗口，或点“加入待整理”。Charter 会先放在这里，等你分好类再归档。" actionTitle="加入待整理…" action={() => void add()} /></Card> : (
         <div className="card flush" style={{ overflowX: "auto" }}>
           <table className="table">
             <thead><tr>
@@ -125,7 +128,7 @@ export function InboxPane() {
           </table>
         </div>
       )}
-      {items.length > 0 && <span className="t-meta muted">需要新建公司的材料，可以选中后用“导入向导”处理：<button className="link" onClick={() => router.startImport(selected.map((i) => store.folder.abs(i.path)), null)}>用导入向导打开所选</button></span>}
+      {items.length > 0 && <span className="t-meta muted">需要新建公司、核对日期或选择文件版本时，<button className="link" disabled={!selected.length} onClick={() => router.openImportWizard(selected.map((i) => store.folder.abs(i.path)))}>用导入向导打开所选{selected.length ? `（${selected.length}）` : ""}</button></span>}
     </div>
   );
 }
@@ -138,9 +141,8 @@ function OwnerPicker({ kind, onPick }: { kind: "company" | "person"; onPick: (o:
 
 function InboxRow({ i, selected, onToggle }: { i: InboxItem; selected: boolean; onToggle: () => void }) {
   const { store } = useApp();
-  const cat = i.chosen?.category ?? i.category;
   const target = resolveTarget(store, i);
-  const owner = target.req?.owner;
+  const { category: cat, owner } = target;
   const typeID = i.chosen?.typeID ?? i.typeID;
   const ownerKind = cat === "company" ? "company" : "person";
   const ownerOpts = ownerKind === "company" ? store.data.companies.map((c) => [c.id, c.name] as [string, string]) : store.data.people.map((p) => [p.id, p.name] as [string, string]);

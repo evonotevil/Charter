@@ -33,9 +33,9 @@ export function FileViewToggle() {
 export function itemStatus(i: ArchiveItem): StatusView {
   if (hasFile(i.state)) return statusOfArchive(i.state);
   switch (i.custody) {
-    case "mine": return { key: "missing", text: "缺件", icon: "doc.text", cls: "warn-o", hint: "由你保管，还没有归档" };
+    case "mine": return { key: "missing", text: "缺件", cls: "warn", hint: "应由我方保管 · 尚未归档" };
     case "agent": return { key: "external", text: "中介保管", icon: "lock.circle", cls: "quiet", hint: "由中介或其他机构保管，不算缺件" };
-    case "pending": return { key: "unverifiedMark", text: "未归档", icon: "circle.dashed", cls: "miss", hint: "还没有这份文件；是否由你保管尚未确认，不算缺件" };
+    case "pending": return { key: "unfiled", text: "未归档", cls: "quiet", hint: "保管责任待确认 · 尚未归档" };
     case "na": return { key: "notApplicable", text: "不适用", icon: "minus.circle", cls: "quiet", hint: "用不到" };
     case "outOfScope": return { key: "notApplicable", text: "不在我的范围", icon: "minus.circle", cls: "quiet", hint: "不归你管" };
   }
@@ -46,7 +46,7 @@ export function CustodyChip({ owner, item }: { owner: NodeRef; item: ArchiveItem
   const { store } = useApp();
   return (
     <PickChip label={<span><span className="muted" style={{ fontWeight: 500 }}>保管 </span>{custodyLabel[item.custody]}{item.explicit ? "" : <span className="muted" style={{ fontWeight: 500 }}>（未设置）</span>}</span>} title="由谁保管：只有“我负责”的缺项才算缺件" width={260}
-      className="outline">
+      className="outline custody-chip">
       {(close) => <>
         {custodies.map((c) => <PopoverRow key={c} title={custodyLabel[c]} trailing={c === item.custody && item.explicit ? "✓" : undefined} checked={c === item.custody}
           onClick={() => { close(); store.setCustody([owner], [item.typeID], c); }} />)}

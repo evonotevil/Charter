@@ -1,8 +1,9 @@
 // 导入与识别：逐份识别 → 用户确认 → 一次归档；可保存草稿稍后继续。移植自 FilesView.swift 的 ImportView 与 ImportDoneView.swift。
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as D from "../domain/day";
-import { type Company, type Document, type DocumentType, type NodeRef, emptyArchive, ref, sameRef, typeAppliesTo, uuid, latinPad, latinPadEnd } from "../domain/models";
+import { directImportExtensions, inboxImportExtensions } from "../domain/importFormats";
+import { type Company, type Document, type DocumentType, type NodeRef, emptyArchive, ref, sameRef, typeAppliesTo, uuid, latinPad } from "../domain/models";
 import { matchCompany } from "../domain/recognize";
 import { snapshotTitle } from "../domain/folder";
 import { useApp } from "../state/hooks";
@@ -14,16 +15,20 @@ import { useOcrStatus } from "./common";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { Button, Checkbox, DateField, FormGroup, Modal, Pill, SelectField, SheetScaffold, Spinner, TextField } from "../ui/kit";
-import { PurposeReadinessAction, ReissueRequestSheet, computeReadiness, versionNotice } from "./common";
-import { ProgressBar, ProgressTrack } from "../ui/kit";
+import { PurposeReadinessAction, computeReadiness, versionNotice } from "./common";
+import { ProgressBar } from "../ui/kit";
+import { applyInboxChoiceToImport, inboxItemLookup, inboxLinksForImport } from "../state/lifecycle";
+import { ArchiveSuccessMark } from "./ArchiveSuccessMark";
+import "./archiveResult.css";
+import "./importReview.css";
 
-const exts = new Set(["pdf", "png", "jpg", "jpeg", "heic", "tif", "tiff"]);
 const extOf = (p: string) => (p.split(".").pop() ?? "").toLowerCase();
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
 /** 展开拖入的文件夹：子文件夹名作为公司名线索。 */
-async function collect(paths: string[]): Promise<ImportItem[]> {
+async function collect(paths: string[], extensions: string[]): Promise<ImportItem[]> {
   const p = platform();
+  const exts = new Set(extensions);
   const out: ImportItem[] = [];
   const blank = (path: string, folderHint?: string): ImportItem => ({
     id: uuid(), path, folderHint, recognized: false, include: true, evidence: [], confidence: 0, needsReview: false, typeUncertain: false, ownerUncertain: false, confirmed: false,
@@ -47,12 +52,27 @@ async function collect(paths: string[]): Promise<ImportItem[]> {
 
 function PathThumb({ path }: { path: string }) {
   const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => { let live = true; void thumbnail(path, 52).then((s) => live && setSrc(s)); return () => { live = false; }; }, [path]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setSrc(null);
+    void thumbnail(path, 52, controller.signal).then((result) => {
+      if (!controller.signal.aborted) setSrc(result);
+    });
+    return () => controller.abort();
+  }, [path]);
   const frame = { width: 26, height: 32, borderRadius: 4, flex: "none", boxShadow: "0 0 0 .5px rgba(0,0,0,.15)" } as const;
   return src ? <img src={src} alt="" style={{ ...frame, objectFit: "cover", objectPosition: "top", background: "#fff" }} /> : <span style={{ ...frame, background: "var(--band)" }} />;
 }
 
-interface Result { count: number; companyIDs: string[]; newCompanyCount: number }
+interface Result {
+  count: number;
+  companyIDs: string[];
+  personIDs: string[];
+  newCompanyCount: number;
+  removedFromInbox: number;
+  received: string;
+  undoID?: string;
+}
 
 export function ImportView({ paths, resume, context, onClose }: { paths: string[]; resume: boolean; context: ImportContext | null; onClose: () => void }) {
   const ocrStatus = useOcrStatus();
@@ -72,6 +92,16 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
 
   const contextCompany = context?.kind === "company" ? store.company(context.id) : undefined;
   const contextGroup = context?.kind === "group" ? store.group(context.id) : undefined;
+  const inboxSourceForPath = useMemo(() => inboxItemLookup(store), [store, store.data.inbox]);
+  const inboxSources = useMemo(() => {
+    const sources = new Map<string, NonNullable<ReturnType<typeof inboxSourceForPath>>>();
+    for (const path of new Set([...paths, ...items.map((item) => item.path)])) {
+      const source = inboxSourceForPath(path);
+      if (source) sources.set(path, source);
+    }
+    return sources;
+  }, [paths, items, inboxSourceForPath]);
+  const preserveInboxChoice = (item: ImportItem) => applyInboxChoiceToImport(store, item, inboxSourceForPath(item.path));
   const draftOf = (its = state.current.items, ds = state.current.drafts): PendingImport => ({ deviceID: store.deviceID, savedAt: Date.now(), context, rows: its, drafts: ds });
 
   // 关闭（稍后继续、Esc）：保存未确认的行
@@ -103,7 +133,7 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
     let its = [...state.current.items];
     let ds = [...state.current.drafts];
     const firstNew = its.length;
-    its.push(...(await collect(newPaths)));
+    its.push(...(await collect(newPaths, context ? directImportExtensions : inboxImportExtensions)).map(preserveInboxChoice));
     const todo = its.map((x, i) => [x, i] as const).filter(([x]) => !x.recognized && !x.missing).map(([, i]) => i);
     let done = its.length - todo.length;
     setItems(its); setProgress(done); setWorking(todo.length > 0);
@@ -126,7 +156,7 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
     for (const i of todo) {
       let it = { ...its[i] };
       let r;
-      try { r = await recognizeFile(it.path, ctx); }
+      try { r = await recognizeFile(it.path, ctx, inboxSourceForPath(it.path)?.fileName); }
       catch { r = { text: "", evidence: ["无法读取文件内容"], confidence: 0, typeFromContent: false, usedOCR: false } as Awaited<ReturnType<typeof recognizeFile>>; }
       Object.assign(it, { typeID: r.typeID, issueDate: r.issueDate, expiryDate: r.expiryDate, evidence: [...r.evidence], companyNameGuess: r.companyNameGuess,
         jurisdiction: r.jurisdiction, registrationNumber: r.registrationNumber, incorporationDate: r.incorporationDate, typeUncertain: !r.typeID || !r.typeFromContent });
@@ -170,8 +200,13 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
         }
       }
       confidence = Math.min(Math.max(confidence, 0), 1);
-      it = { ...it, confidence, ownerUncertain, recognized: true,
-        needsReview: confidence < 0.8 || !r.typeID || ownerUncertain || (!it.owner && !it.newCompanyKey) };
+      it = preserveInboxChoice({
+        ...it,
+        confidence,
+        ownerUncertain,
+        recognized: true,
+        needsReview: confidence < 0.8 || !r.typeID || ownerUncertain || (!it.owner && !it.newCompanyKey),
+      });
       its = its.map((x, k) => (k === i ? it : x));
       done++;
       state.current = { items: its, drafts: ds };
@@ -236,10 +271,17 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
       byKey.set(d.key, { ...c, registrationNumber: d.registrationNumber, incorporationDate: d.incorporationDate, archive: c.archive ?? emptyArchive() });
     }
     const reqs: ArchiveRequest[] = [];
+    const removeInboxIDs: string[] = [];
     for (const i of items.filter(ready)) {
       const owner: NodeRef | undefined = i.owner ?? (i.newCompanyKey && byKey.get(i.newCompanyKey) ? ref("company", byKey.get(i.newCompanyKey)!.id) : undefined);
       if (!owner || !i.typeID) continue;
-      reqs.push({ path: i.path, typeID: i.typeID, owner, issued: i.issueDate, expiry: i.expiryDate, keepBoth: !!i.keepBoth && !!replaced(i) });
+      const inbox = inboxSourceForPath(i.path);
+      const links = inboxLinksForImport(store, inbox, i.typeID, owner);
+      reqs.push({
+        path: i.path, typeID: i.typeID, owner, issued: i.issueDate, expiry: i.expiryDate,
+        keepBoth: !!i.keepBoth && !!replaced(i), source: inbox?.sourcePath, originalFileName: inbox?.fileName, sha256: inbox?.sha256, links,
+      });
+      if (inbox) removeInboxIDs.push(inbox.id);
     }
     if (!reqs.length) return;
     setCommitting(true);
@@ -248,7 +290,7 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
     await store.snapshotBeforeChange(`导入 ${reqs.length} 份文件前`);
     const before = store.data;
     try {
-      const archived = await store.archiveBatch(reqs, [...byKey.values()]);
+      const archived = await store.archiveBatch(reqs, [...byKey.values()], { removeInboxIDs });
       let received = "";
       store.commit((d) => {
         if (contextGroup) for (const c of byKey.values()) {
@@ -257,12 +299,13 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
         }
         received = store.closeRequests(d, archived);
       });
+      const removedFromInbox = removeInboxIDs.length;
       const undoID = store.recordUndo(`归档 ${archived.length} 份文件`, before, archived.map((a) => a.filePath));
       finished.current = true;
       store.savePendingImport(null);
       const n = byKey.size;
-      store.showToast(`已归档 ${archived.length} 份文件${received}${n ? `，新建 ${n} 家公司。请补充新公司的财年结束日和中介。` : "。"}`, undoID ? () => store.undoID(undoID) : undefined);
-      setResult({ count: archived.length, companyIDs: ids, newCompanyCount: n });
+      const personIDs = [...new Set(reqs.filter((r) => r.owner.kind === "person").map((r) => r.owner.id))];
+      setResult({ count: archived.length, companyIDs: ids, personIDs, newCompanyCount: n, removedFromInbox, received, undoID });
     } catch (e) {
       setCommitError(`归档失败，档案没有改动：${(e instanceof Error ? e.message : String(e))}`);
     } finally { setCommitting(false); }
@@ -286,14 +329,13 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
   }
 
   const title = committing ? `正在归档 ${readyCount} 份文件` : working ? `正在识别 ${Math.min(progress + 1, items.length)} / ${items.length} 份文件${ocrStatus && ocrStatus !== "正在识别" ? ` · ${ocrStatus.replace("正在识别", "")}` : ""}` : pending > 0 ? `识别完成，请确认 ${pending} 处` : "都确认好了，可以归档";
-  const base = committing ? "正在复制文件并一次写入档案，请保持窗口打开。" : working ? "逐份读取首页，找出公司名称、注册编号、文件类型和签发日期。全部在这台电脑上完成，不会上传。" : "把握高的已自动归位。琥珀色的需要你看一眼，改好或点“确认”后一起归档。";
-  const subtitle = (contextCompany ? `归档到 ${contextCompany.name}。` : contextGroup ? `优先在${latinPad(contextGroup.name)}的公司中匹配，新公司会归入这个集团。` : "") + base;
+  const base = committing ? "正在复制文件并一次写入档案，请保持窗口打开。" : working ? "逐份读取首页，找出公司名称、注册编号、文件类型和签发日期。全部在这台电脑上完成，不会上传。" : pending ? "请核对文件类型和归属。信息正确时，点“确认无误”。" : "";
+  const inboxHint = inboxSources.size ? `已打开待整理中的 ${inboxSources.size} 份副本；归档后会从待整理移除，取消不会重复加入。` : "";
+  const subtitle = (contextCompany ? `归档到 ${contextCompany.name}。` : contextGroup ? `优先在${latinPad(contextGroup.name)}的公司中匹配，新公司会归入这个集团。` : inboxHint) + base;
   const shown = working ? items.filter((i) => i.recognized) : items;
   const hasRecognized = items.some((i) => i.recognized);
   const companies = new Set(items.filter((i) => i.include).map((i) => (i.owner?.kind === "company" ? i.owner.id : i.newCompanyKey ? "new:" + i.newCompanyKey : null)).filter(Boolean)).size;
   const fig = (n: number, l: string) => <span className="row baseline gap4"><span className="num" style={{ fontSize: 15, fontWeight: 600 }}>{n}</span><span className="muted">{l}</span></span>;
-  const flag = (on: boolean) => (on ? { borderRadius: "var(--r-field)", boxShadow: "0 0 0 1.5px var(--amber-text)" } : undefined);
-  const C = { check: 22, type: 200, owner: 210, date: 150, state: 150 };
   return (
     <Modal onClose={() => !committing && close()} dismissOnEscape={!committing}>
       <SheetScaffold title={title} subtitle={subtitle} width={1240} height={820} onSubmit={() => { if (!working && !committing && !pending && readyCount) void commit(); }}
@@ -320,47 +362,52 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
               </div>;
             })}
           </FormGroup>}
-          <div className="col gap4" style={{ opacity: committing ? .6 : 1, pointerEvents: committing ? "none" : undefined }}>
-            <div className="band-header" style={{ gap: 10 }}>
-              <span style={{ width: C.check }} /><span className="grow">文件</span><span style={{ width: C.type }}>类型</span><span style={{ width: C.owner }}>归属</span>
-              <span style={{ width: C.date }}>签发日期</span><span style={{ width: C.date }}>到期日期</span><span style={{ width: C.state }}>结果</span>
-            </div>
-            {shown.map((i, k) => {
-              const unresolved = i.include && i.recognized && !resolved(i);
-              const typeFlag = unresolved && (!i.typeID || (i.needsReview && !i.confirmed && i.typeUncertain));
-              const ownerFlag = unresolved && ((!i.owner && !i.newCompanyKey) || (i.needsReview && !i.confirmed && i.ownerUncertain));
-              return (
-                <div key={i.id}>
-                  {k > 0 && <div className="hairline" style={{ marginLeft: 16 }} />}
-                  <div className="row appear" style={{ gap: 10, padding: "8px 16px", opacity: i.include ? 1 : 0.55 }}>
-                    <span style={{ width: C.check, flex: "none" }}><Checkbox checked={i.include} onChange={(include) => !i.missing && update(i.id, { include })} /></span>
-                    <div className="row gap8 grow" style={{ minWidth: 0 }}>
+          <div className="import-review-scroll" style={{ opacity: committing ? .6 : 1, pointerEvents: committing ? "none" : undefined }}>
+            <table className="table import-review" aria-label="导入文件核对">
+              <colgroup>
+                <col className="import-col-check" /><col /><col className="import-col-type" /><col className="import-col-owner" />
+                <col className="import-col-date" span={2} /><col className="import-col-result" />
+              </colgroup>
+              <thead><tr>
+                <th scope="col"><span className="sr-only">归档选择</span></th><th scope="col">文件</th><th scope="col">类型</th><th scope="col">归属</th>
+                <th scope="col">签发日期</th><th scope="col">到期日期</th><th scope="col" className="r">结果</th>
+              </tr></thead>
+              <tbody>{shown.map((i) => {
+                const fileName = inboxSources.get(i.path)?.fileName ?? baseName(i.path);
+                const unresolved = i.include && i.recognized && !resolved(i);
+                const typeFlag = unresolved && (!i.typeID || (i.needsReview && !i.confirmed && i.typeUncertain));
+                const ownerFlag = unresolved && ((!i.owner && !i.newCompanyKey) || (i.needsReview && !i.confirmed && i.ownerUncertain));
+                return (
+                  <tr key={i.id} className="appear" style={{ opacity: i.include ? 1 : .55 }}>
+                    <td><Checkbox checked={i.include} disabled={i.missing} ariaLabel={`归档 ${fileName}`} onChange={(include) => update(i.id, { include })} /></td>
+                    <td><div className="row gap8">
                       <PathThumb path={i.path} />
-                      <div className="col" style={{ gap: 2, minWidth: 0 }}>
-                        <span className="ellipsis" title={i.path}>{baseName(i.path)}</span>
+                      <div className="col import-review-file">
+                        <span className="ellipsis" title={i.path}>{fileName}</span>
                         <span className="t-meta muted ellipsis" title={fullBasis(i)}>{basis(i)}</span>
+                        {inboxSources.has(i.path) && <span className="t-meta muted ellipsis" title={inboxSources.get(i.path)!.sourcePath}>来自待整理 · 原位置：{inboxSources.get(i.path)!.sourcePath}</span>}
                         {i.recognized && !i.missing && replaced(i) && <Checkbox checked={i.keepBoth ?? false} onChange={(keepBoth) => update(i.id, { keepBoth })}><span className="t-meta" title="勾选后不替换现有版本，两份都保留为现行文件">另存为一份</span></Checkbox>}
                       </div>
-                    </div>
-                    <span style={{ width: C.type, flex: "none", ...flag(typeFlag) }}>
+                    </div></td>
+                    <td className={typeFlag ? "import-review-uncertain" : undefined}>
                       <SelectField options={typeOptions(i).map((t) => [t.id, t.name + (t.jurisdictions.length === 1 ? `（${t.jurisdictions[0]}）` : "")] as [string, string])}
-                        value={i.typeID ?? ""} onChange={(typeID) => update(i.id, { typeID, confirmed: true })} placeholder="请选择类型" minWidth={C.type} maxWidth={C.type} />
-                    </span>
-                    <span style={{ width: C.owner, flex: "none", ...flag(ownerFlag) }}>
-                      <SelectField options={ownerChoices} value={ownerValue(i)} onChange={(v) => setOwner(i, v)} placeholder="请选择归属" minWidth={C.owner} maxWidth={C.owner} />
-                    </span>
-                    <span style={{ width: C.date, flex: "none" }}><DateField value={i.issueDate} onChange={(issueDate) => update(i.id, { issueDate })} placeholder="可留空" minWidth={C.date} /></span>
-                    <span style={{ width: C.date, flex: "none" }}><DateField value={i.expiryDate} onChange={(expiryDate) => update(i.id, { expiryDate })} placeholder="可留空" relativeTo={i.issueDate} minWidth={C.date} /></span>
-                    <span style={{ width: C.state, flex: "none" }}>
-                      {!i.recognized ? <Spinner size={12} /> : !i.include ? <Pill text="不归档" />
-                        : resolved(i) ? <Pill text={i.needsReview ? "✓ 已确认" : "✓ 把握高"} kind="valid" title={i.needsReview ? "你已确认" : `把握程度 ${Math.round(i.confidence * 100)}%`} />
-                          : <span className="row gap6"><Pill text="请确认" kind="warn" title={`把握程度 ${Math.round(i.confidence * 100)}%`} />
-                            <Button kind="quiet" size="small" disabled={!ready(i)} title={ready(i) ? "类型和归属没问题" : "先选好类型和归属"} onClick={() => update(i.id, { confirmed: true })}>确认</Button></span>}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+                        value={i.typeID ?? ""} onChange={(typeID) => update(i.id, { typeID, confirmed: true })} ariaLabel="文件类型" placeholder="请选择类型" minWidth={0} />
+                    </td>
+                    <td className={ownerFlag ? "import-review-uncertain" : undefined}>
+                      <SelectField options={ownerChoices} value={ownerValue(i)} onChange={(v) => setOwner(i, v)} ariaLabel="文件归属" placeholder="请选择归属" minWidth={0} />
+                    </td>
+                    <td className="import-review-date"><DateField value={i.issueDate} onChange={(issueDate) => update(i.id, { issueDate })} ariaLabel="签发日期" placeholder="可留空" minWidth={0} /></td>
+                    <td className="import-review-date"><DateField value={i.expiryDate} onChange={(expiryDate) => update(i.id, { expiryDate })} ariaLabel="到期日期" placeholder="可留空" relativeTo={i.issueDate} minWidth={0} /></td>
+                    <td className="r">
+                      {i.missing ? <Pill text="原件缺失" kind="warn" /> : !i.include ? <Pill text="不归档" /> : !i.recognized ? <Spinner size={12} />
+                        : resolved(i) ? <Pill text={i.needsReview ? "已确认" : "把握高"} kind="valid" icon="checkmark.circle" title={i.needsReview ? "你已确认" : `把握程度 ${Math.round(i.confidence * 100)}%`} />
+                          : ready(i) ? <Button size="small" title={`确认类型和归属 · 把握程度 ${Math.round(i.confidence * 100)}%`} onClick={() => update(i.id, { confirmed: true })}>确认无误</Button>
+                            : <Pill text="待补信息" kind="warn" title="请选择文件类型和归属" />}
+                    </td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
           </div>
         </div>
       </SheetScaffold>
@@ -372,61 +419,76 @@ export function ImportView({ paths, resume, context, onClose }: { paths: string[
 
 export function ImportDoneView({ result, focusCompanyID, onClose }: { result: Result; focusCompanyID?: string; onClose: () => void }) {
   const { store, router } = useApp();
-  const [reissue, setReissue] = useState<{ owner: NodeRef; typeIDs: string[] } | null>(null);
   const focus = store.company(focusCompanyID);
   const rows = computeReadiness(store, focus ? [focus.id] : result.companyIDs).map((r, i) => [r, i] as const)
     .sort((a, b) => (a[0].complete !== b[0].complete ? (a[0].complete ? 1 : -1) : a[0].missing.length - b[0].missing.length || a[1] - b[1])).map(([r]) => r);
-  const n = result.companyIDs.length;
-  let s: string;
-  if (focus) { const p = store.archiveProgress(focus); s = `${latinPadEnd(focus.name)}的档案清单已归档 ${p.have}/${p.total} 项。`; }
-  else if (!n) s = "文件已归入人员档案。";
-  else if (result.newCompanyCount) s = `建立了 ${result.newCompanyCount} 家公司的档案` + (n > result.newCompanyCount ? `，并更新了 ${n - result.newCompanyCount} 家公司。` : "。");
-  else s = `更新了 ${n} 家公司的档案。`;
-  const readyP = [...new Set(rows.filter((r) => r.complete).map((r) => r.templateName))];
-  const incomplete = rows.filter((r) => !r.complete).length;
-  if (readyP.length) s += readyP.join("、") + "材料已经可以随时导出" + (incomplete ? "；" : "。");
-  if (incomplete) s += `还有 ${incomplete} 项用途缺文件。`;
+  const companies = (focus ? [focus.id] : result.companyIDs).map((id) => store.company(id)).filter((c): c is Company => !!c);
+  const grouped = companies.map((company) => ({ company, rows: rows.filter((r) => r.companyID === company.id) }));
+  const received = result.received.replace(/^，/, "");
+  const resultDetail = [
+    result.removedFromInbox ? `已从待整理移除 ${result.removedFromInbox} 份` : "",
+    received,
+    result.newCompanyCount ? `建立了 ${result.newCompanyCount} 家公司档案` : "",
+    !companies.length && result.personIDs.length ? `已归入 ${result.personIDs.length} 位人员的档案` : "",
+  ].filter(Boolean).join("，");
+  const openTarget = () => {
+    const company = focus ?? companies[0];
+    if (company) { router.companyTab = 0; router.openCompany(company.id); onClose(); return; }
+    const personID = result.personIDs[0];
+    if (personID) { router.openPerson(personID); onClose(); return; }
+    router.go("files"); onClose();
+  };
+  const undo = () => {
+    if (result.undoID && store.undoID(result.undoID)) onClose();
+  };
+  const targetTitle = companies.length ? "打开公司页" : result.personIDs.length ? "打开人员页" : "返回文件";
+  useEffect(() => {
+    if (result.undoID && !store.hasUndoID(result.undoID)) onClose();
+  }, [result.undoID, store, store.data, onClose]);
   return (
-    <Modal onClose={onClose}>
-      <SheetScaffold title={focus ? `已归档到 ${focus.name}` : "归档完成"} width={860} height={820}
-        leading={<span className="muted">{focus ? "下一步：在档案清单里补齐缺失文件。" : "下一步：打开公司页，补齐缺失文件。"}</span>}
-        trailing={<>
-          <Button onClick={onClose}>完成</Button>
-          {focus ? <Button kind="primary" onClick={() => { router.companyTab = 0; router.openCompany(focus.id); onClose(); }}>查看档案</Button>
-            : <Button kind="primary" onClick={() => { const first = rows[0] && store.data.companies.find((c) => rows.some((r) => r.companyID === c.id)); if (first) router.openCompany(first.id); else router.go("companies"); onClose(); }}>打开公司页</Button>}
-        </>}>
-        <div className="col gap32">
-          <div className="row" style={{ gap: 28, padding: 32, borderRadius: "var(--r-emblem)", background: "var(--lime)", color: "var(--on-lime)" }}>
-            <ArchiveSeal size={120} />
-            <div className="col gap8 grow">
-              <span className="t-display" style={{ fontWeight: 800 }}><span className="num" style={{ letterSpacing: -2.2, marginRight: 10 }}>{result.count}</span>份已归档</span>
-              <span style={{ fontSize: 15, opacity: .8 }}>{s}</span>
+    <Modal onClose={onClose} ariaLabelledBy="archive-result-title">
+      <div className="sheet archive-result-sheet" data-import-done>
+        <span className="sr-only">归档完成</span>
+        <div className="archive-result">
+          <div className="archive-result-summary">
+            <ArchiveSuccessMark />
+            <div className="col gap4 grow">
+              <h1 className="t-headline num" id="archive-result-title">已归档 {result.count} 份文件</h1>
+              <span className="t-body muted">文件已移入正式档案。{resultDetail && `${resultDetail}。`}{result.newCompanyCount > 0 && "请补充新公司的财年结束日和中介。"}</span>
             </div>
           </div>
-          {rows.length > 0 && <>
-            <div className="col gap4">
-              <span className="t-section">随时能出哪些材料</span>
-              <span className="t-body muted">{focus ? "按用途检查还缺什么。" : "按用途检查每家公司缺什么。"}</span>
-            </div>
-            <div className="col" style={{ background: "var(--band)", borderRadius: "var(--r-surface)" }}>
-              {rows.map((r, i) => (
-                <div key={r.templateID + r.companyID}>
-                  {i > 0 && <div className="hairline" />}
-                  <div className="row gap16" style={{ padding: "18px 22px" }}>
-                    <div className="col gap4" style={{ width: 220, flex: "none" }}><span className="t-row">{r.templateName}</span><span className="t-meta muted ellipsis">{r.companyName}</span></div>
-                    <div className="col gap6 grow">
-                      <ProgressTrack value={r.total ? r.got / r.total : 0} width={240} />
-                      <span className="t-meta muted" title={r.complete ? "" : r.missingDetail.join("\n")}>{r.complete ? "齐全，可随时导出" : "还缺：" + r.missing.join("、")}</span>
-                    </div>
-                    <span className="row" style={{ width: 140, justifyContent: "flex-end", flex: "none" }}><PurposeReadinessAction row={r} onReissue={(owner, typeIDs) => setReissue({ owner, typeIDs })} /></span>
-                  </div>
+          {grouped.length > 0 && <div className="archive-result-content"><section className="archive-readiness">
+            <h2 className="t-section">材料准备情况</h2>
+            {grouped.map(({ company, rows: companyRows }) => {
+              const incomplete = companyRows.filter((r) => !r.complete).length;
+              const readinessSummary = incomplete ? `${incomplete} 项用途待补齐` : "用途材料齐全";
+              return <div className="archive-readiness-company" data-readiness-company={company.id} key={company.id}>
+                <div className="archive-readiness-company-head">
+                  <span className="row gap6 t-meta muted"><Icon name="building.2" size={14} />{company.name}</span>
+                  <span className="t-meta muted">{companyRows.length ? readinessSummary : "尚未配置适用的文件包用途"}</span>
                 </div>
-              ))}
-            </div>
-          </>}
+                {companyRows.map((r) => <div className="archive-readiness-purpose" data-readiness-purpose={r.templateID} key={r.templateID}>
+                  <div className="archive-readiness-copy">
+                    <span className="t-row">{r.templateName}</span>
+                    <span className="t-meta muted" data-readiness-missing-list title={r.complete ? "" : r.missingDetail.join("\n")}>
+                      {r.complete ? "材料齐全，可以准备文件包" : r.missing.join("、")}
+                    </span>
+                  </div>
+                  <span className={r.complete ? "archive-readiness-ready" : "archive-readiness-count"} data-readiness-missing-count={r.missing.length}>
+                    {r.complete ? <PurposeReadinessAction row={r} onReissue={() => undefined} /> : `缺 ${r.missing.length} 项`}
+                  </span>
+                </div>)}
+              </div>;
+            })}
+          </section></div>}
         </div>
-      </SheetScaffold>
-      {reissue && <ReissueRequestSheet owner={reissue.owner} typeIDs={reissue.typeIDs} onClose={() => setReissue(null)} />}
+        <div className="sheet-foot">
+          {result.undoID ? <Button kind="quiet" onClick={undo}>撤销本次归档</Button> : <span />}
+          <span className="spacer" />
+          <Button onClick={onClose}>完成</Button>
+          <Button kind="primary" onClick={openTarget}>{targetTitle}</Button>
+        </div>
+      </div>
     </Modal>
   );
 }

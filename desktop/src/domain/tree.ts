@@ -6,7 +6,7 @@ import { type Holding, type NodeRef, ref, refKey } from "./models";
 export const NODE_W = 220, NODE_H = 60, GAP_X = 36, ROW_STEP = 150;
 const PAD = 48;
 
-export interface TreeNode { key: string; ref: NodeRef; layer: number; x: number; y: number; children: string[]; parents: string[]; hiddenBelow: number }
+export interface TreeNode { key: string; ref: NodeRef; layer: number; x: number; y: number; children: string[]; parents: string[]; folded: boolean; hiddenBelow: number }
 export interface TreeEdge { id: string; holding: Holding; from: string; to: string; path: string; label: { x: number; y: number }; points: { x: number; y: number }[] }
 export interface TreeLayout { nodes: Map<string, TreeNode>; edges: TreeEdge[]; width: number; height: number; layers: string[][]; roots: string[] }
 
@@ -33,9 +33,26 @@ export function layoutTree(args: { nodes: NodeRef[]; holdings: Holding[]; collap
   }
   const byName = (a: string, b: string) => (names.get(a) ?? "").localeCompare(names.get(b) ?? "", "zh");
 
-  // 1. 可见节点：从顶层往下走，折叠的节点不展开。没有被走到的（循环持股）也显示。
-  let roots = [...keys].filter((k) => !pars.get(k)!.length).sort(byName);
-  if (!roots.length && keys.size) roots = [[...keys].sort(byName)[0]];
+  // 先在完整图内找入口。逆后序让上游分量先出现，独立的循环持股也能取到一个入口。
+  const visited = new Set<string>();
+  const finished: string[] = [];
+  const visit = (k: string, finish?: string[]) => {
+    if (visited.has(k)) return;
+    visited.add(k);
+    for (const child of kids.get(k)!) visit(child, finish);
+    finish?.push(k);
+  };
+  for (const k of [...keys].sort(byName)) visit(k, finished);
+  visited.clear();
+  const roots: string[] = [];
+  for (const k of finished.reverse()) {
+    if (visited.has(k)) continue;
+    roots.push(k);
+    visit(k);
+  }
+  roots.sort(byName);
+
+  // 收起只截断从这个节点出发的路径，共有下属仍可经其他上级抵达。
   const visible = new Set<string>();
   const order: string[] = [];
   const walk = (k: string) => {
@@ -45,10 +62,6 @@ export function layoutTree(args: { nodes: NodeRef[]; holdings: Holding[]; collap
     for (const c of [...kids.get(k)!].sort(byName)) walk(c);
   };
   roots.forEach(walk);
-  for (const k of [...keys].sort(byName)) if (!visible.has(k) && pars.get(k)!.every((p) => !visible.has(p) || !collapsed.has(p))) {
-    // 循环中的节点：只有当它的上级都没有被折叠时才补上
-    if (pars.get(k)!.some((p) => visible.has(p) && !collapsed.has(p)) || !pars.get(k)!.some((p) => visible.has(p))) walk(k);
-  }
   const vKids = (k: string) => (collapsed.has(k) ? [] : kids.get(k)!.filter((c) => visible.has(c)));
   const vPars = (k: string) => pars.get(k)!.filter((p) => visible.has(p) && !collapsed.has(p));
 
@@ -128,9 +141,10 @@ export function layoutTree(args: { nodes: NodeRef[]; holdings: Holding[]; collap
   for (const k of order) {
     const x = X.get(k)! - minX + PAD + NODE_W / 2, y = PAD + layer.get(k)! * ROW_STEP + NODE_H / 2;
     maxX = Math.max(maxX, x + NODE_W / 2);
-    const hidden = collapsed.has(k) ? countBelow(k, kids) : 0;
+    const folded = collapsed.has(k) && kids.get(k)!.length > 0;
+    const hidden = folded ? countHiddenBelow(k, kids, visible, collapsed) : 0;
     const [kind, id] = k.split(":") as ["company" | "person", string];
-    nodes.set(k, { key: k, ref: ref(kind, id), layer: layer.get(k)!, x, y, children: vKids(k), parents: vPars(k), hiddenBelow: hidden });
+    nodes.set(k, { key: k, ref: ref(kind, id), layer: layer.get(k)!, x, y, children: vKids(k), parents: vPars(k), folded, hiddenBelow: hidden });
   }
 
   // 5. 连线
@@ -160,9 +174,15 @@ export function layoutTree(args: { nodes: NodeRef[]; holdings: Holding[]; collap
   return { nodes, edges, width: Math.max(maxX + PAD, 400), height, layers, roots: roots.filter((r) => nodes.has(r)) };
 }
 
-function countBelow(k: string, kids: Map<string, string[]>): number {
+function countHiddenBelow(k: string, kids: Map<string, string[]>, visible: Set<string>, collapsed: Set<string>): number {
   const seen = new Set<string>();
-  const go = (x: string) => { for (const c of kids.get(x) ?? []) if (!seen.has(c)) { seen.add(c); go(c); } };
+  const go = (x: string) => {
+    for (const child of kids.get(x)!) {
+      if (visible.has(child) || seen.has(child)) continue;
+      seen.add(child);
+      if (!collapsed.has(child)) go(child);
+    }
+  };
   go(k);
   return seen.size;
 }

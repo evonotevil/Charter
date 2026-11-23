@@ -1,6 +1,6 @@
 // 组件库：与 Swift 版 Kit / DesignSystem / Components 一一对应。
 
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import * as D from "../domain/day";
 import type { Day } from "../domain/day";
@@ -13,19 +13,26 @@ export function shortcutLabel(key: string, shift = false) {
   return platform().os === "mac" ? `${shift ? "⇧" : ""}⌘${key}` : `${shift ? "Ctrl+Shift+" : "Ctrl+"}${key}`;
 }
 
+/** 页面级快捷键须让当前对话框及教程先处理键盘输入。 */
+export function hasActiveModal() {
+  return !!document.querySelector('[aria-modal="true"]:not(.ghost-out)');
+}
+
 export type BtnKind = "primary" | "secondary" | "accent" | "quiet" | "danger";
 export type BtnSize = "small" | "regular" | "large";
 
 export function Button(p: {
   kind?: BtnKind; size?: BtnSize; icon?: string; children?: ReactNode; onClick?: (e: React.MouseEvent) => void; disabled?: boolean;
   title?: string; className?: string; style?: CSSProperties; type?: "button" | "submit"; autoFocus?: boolean; ariaLabel?: string;
+  ariaExpanded?: boolean; ariaControls?: string; buttonRef?: React.Ref<HTMLButtonElement>;
   /** 看起来禁用、但仍可聚焦，悬停和读屏能读到原因（describedBy）。点击不执行 onClick。 */
   softDisabled?: boolean; describedBy?: string;
 }) {
   const iconOnly = !p.children && !!p.icon;
   return (
-    <button type={p.type ?? "button"} className={`btn ${p.kind ?? "secondary"} ${p.size === "regular" || !p.size ? "" : p.size} ${iconOnly ? "icon" : ""} ${p.className ?? ""}`}
-      onClick={p.softDisabled ? undefined : p.onClick} disabled={p.disabled} aria-disabled={p.softDisabled || undefined} aria-describedby={p.describedBy} title={p.title} style={p.style} autoFocus={p.autoFocus} aria-label={p.ariaLabel ?? (iconOnly ? p.title : undefined)}>
+    <button ref={p.buttonRef} type={p.type ?? "button"} className={`btn ${p.kind ?? "secondary"} ${p.size === "regular" || !p.size ? "" : p.size} ${iconOnly ? "icon" : ""} ${p.className ?? ""}`}
+      onClick={p.softDisabled ? undefined : p.onClick} disabled={p.disabled} aria-disabled={p.softDisabled || undefined} aria-describedby={p.describedBy}
+      aria-expanded={p.ariaExpanded} aria-controls={p.ariaControls} title={p.title} style={p.style} autoFocus={p.autoFocus} aria-label={p.ariaLabel ?? (iconOnly ? p.title : undefined)}>
       {p.icon && <Icon name={p.icon} size={p.size === "small" ? 13 : 15} />}
       {p.children}
     </button>
@@ -48,22 +55,26 @@ export function Avatar({ name, size = 30, dashed, highlighted }: { name: string;
   );
 }
 
-export const JurisdictionBadge = ({ code, size = 36, highlighted, tint }: { code: string; size?: number; highlighted?: boolean; tint?: CSSProperties }) =>
-  <span className={`jbadge ${highlighted ? "hl" : ""}`} style={{ width: size, height: size, borderRadius: size * 0.3, fontSize: size * 0.32, ...(highlighted ? null : tint) }}>{code}</span>;
+export const JurisdictionBadge = ({ code, size = 36, highlighted, tint }: { code: string; size?: number; highlighted?: boolean; tint?: CSSProperties }) => {
+  const fontSize = size <= 20 ? 9.5 : size <= 36 ? 12 : 14;
+  return <span className={`jbadge ${highlighted ? "hl" : ""}`} style={{ width: size, height: size, borderRadius: size * 0.3, fontSize, ...(highlighted ? null : tint) }}>{code}</span>;
+};
 
 export const ProgressCapsule = ({ value, style }: { value: number; style?: CSSProperties }) =>
   <div className="progress" style={style}><div style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }} /></div>;
 
-export function Spinner({ size = 14 }: { size?: number }) {
-  return <span style={{ width: size, height: size, borderRadius: "50%", border: "2.5px solid var(--line)", borderTopColor: "var(--green)", display: "inline-block", animation: "spin .8s linear infinite" }} />;
+export function Spinner({ size = 20 }: { size?: number }) {
+  return <span className="spinner" aria-hidden style={{ width: size, height: size }} />;
 }
 
 // MARK: - 浮层
 
 /** 锚定在触发元素下方（或上方）的浮层；点外面或按 Esc 关闭。 */
-export function Popover({ anchor, open, onClose, children, placement = "bottom", align = "start", minWidth, style }: {
-  anchor: React.RefObject<HTMLElement>; open: boolean; onClose: () => void; children: ReactNode; placement?: "bottom" | "top" | "right";
-  align?: "start" | "end" | "center"; minWidth?: number; style?: CSSProperties;
+export type PopoverCloseReason = "escape" | "outside";
+
+export function Popover({ anchor, open, onClose, children, placement = "bottom", align = "start", minWidth, style, role = "dialog", ariaLabel }: {
+  anchor: React.RefObject<HTMLElement>; open: boolean; onClose: (reason?: PopoverCloseReason) => void; children: ReactNode; placement?: "bottom" | "top" | "right";
+  align?: "start" | "end" | "center"; minWidth?: number; style?: CSSProperties; role?: "dialog" | "presentation"; ariaLabel?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number; side: "top" | "bottom" } | null>(null);
@@ -102,9 +113,9 @@ export function Popover({ anchor, open, onClose, children, placement = "bottom",
         const all = live();
         if (all.indexOf(other) > all.indexOf(ref.current!)) return;
       }
-      onClose();
+      onClose("outside");
     };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape" && isTop()) { e.stopPropagation(); onClose(); } };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape" && isTop()) { e.preventDefault(); e.stopPropagation(); onClose("escape"); } };
     document.addEventListener("mousedown", down, true);
     document.addEventListener("keydown", key, true);
     return () => { document.removeEventListener("mousedown", down, true); document.removeEventListener("keydown", key, true); };
@@ -112,16 +123,16 @@ export function Popover({ anchor, open, onClose, children, placement = "bottom",
   useExitGhost(ref, open);
   if (!open) return null;
   return createPortal(
-    <div ref={ref} className="popover" data-side={pos?.side} style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, minWidth, ...style }} role="dialog">{children}</div>,
+    <div ref={ref} className="popover" data-side={pos?.side} style={{ left: pos?.left ?? -9999, top: pos?.top ?? -9999, minWidth, ...style }} role={role} aria-label={ariaLabel}>{children}</div>,
     document.body,
   );
 }
 
-export function PopoverRow({ title, icon, trailing, checked, destructive, disabled, onClick }: {
-  title: string; icon?: string; trailing?: string; checked?: boolean; destructive?: boolean; disabled?: boolean; onClick: () => void;
+export function PopoverRow({ title, icon, trailing, checked, destructive, disabled, onClick, role }: {
+  title: string; icon?: string; trailing?: string; checked?: boolean; destructive?: boolean; disabled?: boolean; onClick: () => void; role?: "menuitem";
 }) {
   return (
-    <button className={`prow ${destructive ? "destructive" : ""}`} onClick={onClick} disabled={disabled}>
+    <button className={`prow ${destructive ? "destructive" : ""}`} onClick={onClick} disabled={disabled} role={role}>
       {icon && <span className="ic"><Icon name={icon} size={14} /></span>}
       <span className="ellipsis grow">{title}</span>
       {trailing && <span className="t-meta muted">{trailing}</span>}
@@ -139,13 +150,41 @@ export const item = (title: string, icon: string | undefined, action: () => void
 export const divider: MenuEntry = { kind: "divider" };
 export const header = (title: string): MenuEntry => ({ kind: "header", title });
 
-export function MenuList({ entries, close }: { entries: MenuEntry[]; close: () => void }) {
+export function MenuList({ entries, close, select, autoFocus = false, id, ariaLabel = "操作菜单", onTab }: {
+  entries: MenuEntry[]; close: () => void; select?: (action: () => void) => void; autoFocus?: boolean; id?: string; ariaLabel?: string;
+  onTab?: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const items = () => [...(ref.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([disabled])') ?? [])]
+    .filter((item) => item.offsetParent !== null);
+  useEffect(() => {
+    if (!autoFocus) return;
+    const frame = requestAnimationFrame(() => items()[0]?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [autoFocus]);
+  const move = (current: HTMLElement, offset: number) => {
+    const available = items();
+    if (!available.length) return;
+    const index = available.indexOf(current as HTMLButtonElement);
+    available[(Math.max(0, index) + offset + available.length) % available.length].focus({ preventScroll: true });
+  };
+  const choose = (action: () => void) => {
+    if (select) select(action);
+    else {
+      close();
+      action();
+    }
+  };
   return (
-    <div className="col" style={{ gap: 1 }}>
-      {entries.map((e, i) => e.kind === "divider" ? <div key={i} className="pdivider" />
-        : e.kind === "header" ? <div key={i} className="pheader">{e.title}</div>
-          : <PopoverRow key={i} title={e.title} icon={e.icon} trailing={e.shortcut} destructive={e.destructive} disabled={e.disabled}
-            onClick={() => { close(); e.action(); }} />)}
+    <div ref={ref} id={id} className="col" role="menu" aria-label={ariaLabel} style={{ gap: 1 }} onKeyDown={(event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); move(event.target as HTMLElement, event.key === "ArrowDown" ? 1 : -1); }
+      else if (event.key === "Home" || event.key === "End") { event.preventDefault(); const available = items(); available[event.key === "Home" ? 0 : available.length - 1]?.focus({ preventScroll: true }); }
+      else if (event.key === "Tab" && onTab) onTab();
+    }}>
+      {entries.map((e, i) => e.kind === "divider" ? <div key={i} className="pdivider" role="presentation" />
+        : e.kind === "header" ? <div key={i} className="pheader" role="presentation">{e.title}</div>
+          : <div key={i} role="none"><PopoverRow role="menuitem" title={e.title} icon={e.icon} trailing={e.shortcut} destructive={e.destructive} disabled={e.disabled}
+            onClick={() => choose(e.action)} /></div>)}
     </div>
   );
 }
@@ -155,15 +194,34 @@ export function ActionMenu({ title, icon, kind = "secondary", size = "regular", 
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+  const menuLabel = ariaLabel ?? title ?? "更多操作";
+  const close = (restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) requestAnimationFrame(() => ref.current?.focus({ preventScroll: true }));
+  };
+  const select = (action: () => void) => {
+    // 先把入口设为当前焦点，让随后打开的弹窗把它记作返回位置。
+    ref.current?.focus({ preventScroll: true });
+    setOpen(false);
+    action();
+  };
+  const leave = () => {
+    // Tab 的默认动作会从当前焦点继续；先同步还到入口，让浏览器沿原生顺序前进或后退一次。
+    ref.current?.focus({ preventScroll: true });
+    setOpen(false);
+  };
   return (
     <>
-      <button ref={ref} className={`btn ${kind} ${size === "regular" ? "" : size} ${title ? "" : "icon"}`} onClick={() => setOpen((o) => !o)} aria-label={ariaLabel ?? title ?? "更多操作"} title={ariaLabel}>
+      <button ref={ref} className={`btn ${kind} ${size === "regular" ? "" : size} ${title ? "" : "icon"}`} onClick={() => setOpen((o) => !o)}
+        onKeyDown={(event) => { if (!open && (event.key === "ArrowDown" || event.key === "ArrowUp")) { event.preventDefault(); setOpen(true); } }}
+        aria-label={menuLabel} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} title={ariaLabel}>
         {icon && <Icon name={icon} size={size === "small" ? 13 : 15} />}
         {title}
         {title && showsChevron && <Icon name={placement === "top" ? "chevron.up" : "chevron.down"} size={10} style={{ opacity: .6 }} />}
       </button>
-      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} placement={placement} align={align}>
-        <MenuList entries={entries} close={() => setOpen(false)} />
+      <Popover anchor={ref} open={open} onClose={(reason) => close(reason === "escape")} placement={placement} align={align} role="presentation">
+        <MenuList id={menuId} ariaLabel={menuLabel} entries={entries} close={close} select={select} autoFocus onTab={leave} />
       </Popover>
     </>
   );
@@ -177,7 +235,7 @@ export function useContextMenu() {
   const node = state ? (
     <>
       {createPortal(<div ref={anchor} style={{ position: "fixed", left: state.x, top: state.y, width: 1, height: 1 }} />, document.body)}
-      <Popover anchor={anchor} open onClose={() => setState(null)}><MenuList entries={state.entries} close={() => setState(null)} /></Popover>
+      <Popover anchor={anchor} open onClose={() => setState(null)} role="presentation"><MenuList ariaLabel="快捷菜单" entries={state.entries} close={() => setState(null)} /></Popover>
     </>
   ) : null;
   return { open, node };
@@ -213,6 +271,7 @@ export function SelectField<V>({ options, optionsWhenOpen, value, onChange, plac
   const pick = (v: V) => { onChange(v); close(); };
   useEffect(() => { if (open) setHi(Math.max(0, flat.findIndex(([v]) => k(v) === k(value)))); }, [open]);
   useEffect(() => { setHi(0); }, [q]);
+  useEffect(() => { if (open && menuOptions.length <= 8) listRef.current?.focus(); }, [open, menuOptions.length]);
   useEffect(() => { listRef.current?.querySelector<HTMLElement>(`[data-i="${hi}"]`)?.scrollIntoView({ block: "nearest" }); }, [hi, open]);
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(flat.length - 1, h + 1)); }
@@ -265,36 +324,54 @@ export function SelectField<V>({ options, optionsWhenOpen, value, onChange, plac
 
 // MARK: - 日期
 
-export function DateField({ value, onChange, placeholder = "选择日期", relativeTo, relativeLabel = "签发后", allowsClear = true, minWidth = 170, ariaLabel }: {
-  value?: Day; onChange: (d?: Day) => void; placeholder?: string; relativeTo?: Day; relativeLabel?: string; allowsClear?: boolean; minWidth?: number; ariaLabel?: string;
+export function DateField({ value, onChange, placeholder = "选择日期", relativeTo, relativeLabel = "签发后", allowsClear = true, minWidth = 180, ariaLabel, inline = false, inputRef }: {
+  value?: Day; onChange: (d?: Day) => void; placeholder?: string; relativeTo?: Day; relativeLabel?: string; allowsClear?: boolean; minWidth?: number; ariaLabel?: string; inline?: boolean;
+  inputRef?: React.RefObject<HTMLInputElement>;
 }) {
   const [text, setText] = useState(value ?? "");
   const [invalid, setInvalid] = useState(false);
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const errorId = useId();
   useEffect(() => { setText(value ?? ""); setInvalid(false); }, [value]);
-  const commit = () => {
-    const t = text.trim();
-    if (!t) { if (allowsClear) onChange(undefined); setInvalid(false); return; }
-    const d = D.parseDay(t);
-    if (d) { onChange(d); setInvalid(false); } else setInvalid(true);
+  const accept = (day: Day | undefined) => {
+    setText(day ?? "");
+    setInvalid(false);
+    if (day !== value) onChange(day);
   };
-  const why = invalid ? D.dayError(text) : "";
+  const commit = () => {
+    if (!text.trim()) {
+      if (allowsClear || value) accept(allowsClear ? undefined : value);
+      else setInvalid(true);
+      return;
+    }
+    const day = D.parseDay(text);
+    if (day) accept(day);
+    else setInvalid(true);
+  };
+  const why = invalid ? (text.trim() ? D.dayError(text) : "请填写日期。") : "";
   // 5.4.1：外观与 .field 一致（高度、圆角、2px 边框、悬停、绿色聚焦环、错误红框）
   return (<span style={{ position: "relative", display: "inline-flex", flexDirection: "column", alignItems: "flex-end" }}>
-    <div ref={ref} className={`row gap6 date-field ${focused || open ? "focus" : ""} ${invalid ? "invalid" : ""}`} title={why || undefined} aria-invalid={invalid || undefined}
+    <div ref={ref} className={`row gap6 date-field ${inline ? "inline-date" : ""} ${focused || open ? "focus" : ""} ${invalid ? "invalid" : ""}`} title={why || undefined} aria-invalid={invalid || undefined}
       style={{ minWidth }}>
-      <button onClick={() => setOpen((o) => !o)} title="打开日历" className="muted row" style={{ width: 22, height: 22, justifyContent: "center" }}><Icon name="calendar" size={14} /></button>
-      <input value={text} aria-label={ariaLabel} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onFocus={() => setFocused(true)}
-        onBlur={() => { setFocused(false); commit(); }} onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
+      <button onClick={() => setOpen((o) => !o)} title="打开日历" aria-label={ariaLabel ? `打开${ariaLabel}日历` : "打开日历"} aria-haspopup="dialog" aria-expanded={open} className="muted row" style={{ width: 22, height: 22, justifyContent: "center" }}><Icon name="calendar" size={14} /></button>
+      <input ref={inputRef} value={text} aria-label={ariaLabel} aria-invalid={invalid || undefined} aria-describedby={why ? errorId : undefined} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onFocus={() => setFocused(true)}
+        onBlur={() => { setFocused(false); commit(); }} onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing) return;
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape" && (invalid || text !== (value ?? ""))) {
+            e.preventDefault(); e.stopPropagation();
+            accept(value);
+          }
+        }}
         className="num" style={{ border: 0, outline: "none", background: "transparent", font: "inherit", color: "var(--ink)", width: 0, minWidth: 0, flex: 1 }} />
-      {allowsClear && value && <button title="清除日期" className="muted" onClick={() => { onChange(undefined); setText(""); }} style={{ opacity: .7 }}><Icon name="xmark.circle.fill" size={14} /></button>}
+      {!inline && allowsClear && value && <button title="清除日期" className="muted" onClick={() => accept(undefined)} style={{ opacity: .7 }}><Icon name="xmark.circle.fill" size={14} /></button>}
       <Popover anchor={ref} open={open} onClose={() => setOpen(false)}>
-        <CalendarPanel value={value} onPick={(d) => { onChange(d); setOpen(false); }} relativeTo={relativeTo} relativeLabel={relativeLabel} allowsClear={allowsClear} />
+        <CalendarPanel value={value} onPick={(d) => { accept(d); setOpen(false); }} relativeTo={relativeTo} relativeLabel={relativeLabel} allowsClear={allowsClear} />
       </Popover>
     </div>
-    {why && <span role="alert" className="t-meta red-text" style={{ marginTop: 4, whiteSpace: "nowrap" }}>{why}</span>}
+    {why && <span id={errorId} role="alert" className="t-meta red-text" style={{ marginTop: 4, whiteSpace: "nowrap" }}>{why}</span>}
     </span>
   );
 }
@@ -531,9 +608,21 @@ export function useFocusReturn(ref: React.RefObject<HTMLElement>) {
   }, []);
 }
 
-export function Modal({ onClose, children, dismissOnEscape = true }: { onClose: () => void; children: ReactNode; dismissOnEscape?: boolean }) {
+export function Modal({ onClose, children, dismissOnEscape = true, ariaLabelledBy, ariaLabel }: { onClose: () => void; children: ReactNode; dismissOnEscape?: boolean; ariaLabelledBy?: string; ariaLabel?: string }) {
   const depth = useContext(SheetDepth);
+  const titleID = useId();
   const overlay = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = overlay.current;
+    if (!el || ariaLabelledBy || ariaLabel) return;
+    const heading = el.querySelector<HTMLElement>(".t-sheet, h1, h2");
+    if (heading) {
+      if (!heading.id) heading.id = titleID;
+      el.setAttribute("aria-labelledby", heading.id);
+    } else {
+      el.removeAttribute("aria-labelledby");
+    }
+  }, [children, titleID, ariaLabelledBy, ariaLabel]);
   useExitGhost(overlay, true);
   useFocusReturn(overlay);
   useEffect(() => {
@@ -550,7 +639,7 @@ export function Modal({ onClose, children, dismissOnEscape = true }: { onClose: 
   }, [onClose, dismissOnEscape]);
   return createPortal(
     <SheetDepth.Provider value={depth + 1}>
-      <div ref={overlay} className="overlay" role="dialog" aria-modal="true" style={{ zIndex: 900 + depth * 10 }}
+      <div ref={overlay} className="overlay" role="dialog" aria-modal="true" aria-labelledby={ariaLabelledBy} aria-label={ariaLabel} style={{ zIndex: 900 + depth * 10 }}
         // 弹窗经 portal 渲染，React 事件仍会沿组件树冒泡到触发它的行；在这里截住点击类事件。键盘事件不截，Esc 等快捷键挂在 window 上。
         onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()} onMouseDown={(e) => { if (e.target === e.currentTarget) { /* 与 Mac 一致：点背景不关闭 */ } }}>{children}</div>
     </SheetDepth.Provider>,
@@ -558,15 +647,19 @@ export function Modal({ onClose, children, dismissOnEscape = true }: { onClose: 
   );
 }
 
-export function SheetScaffold({ title, subtitle, width = 560, height, children, leading, trailing, onSubmit, headerTrailing, fixedHeight, onCloseButton, className }: {
+export function SheetScaffold({ title, subtitle, width = 560, height, children, leading, trailing, onSubmit, onKeyDown, headerTrailing, fixedHeight, onCloseButton, className }: {
   title: string; subtitle?: ReactNode; width?: number; height?: number; children: ReactNode; leading?: ReactNode; trailing?: ReactNode; onSubmit?: () => void; className?: string;
+  onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
   /** 标题栏右侧（例如步骤条）。 */ headerTrailing?: ReactNode; /** 固定高度：分步流程切换时窗口不跳动。 */ fixedHeight?: boolean;
   /** 右上角 ✕ 关闭按钮。 */ onCloseButton?: () => void;
 }) {
   const h = `min(${height ?? 720}px, calc(100vh - 48px))`;
   return (
     <div className={`sheet ${className ?? ""}`.trimEnd()} style={{ width, maxHeight: h, height: fixedHeight ? h : undefined }}
-      onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && onSubmit) { e.preventDefault(); onSubmit(); } }}>
+      onKeyDown={(e) => {
+        onKeyDown?.(e);
+        if (!e.defaultPrevented && e.key === "Enter" && (e.metaKey || e.ctrlKey) && onSubmit) { e.preventDefault(); onSubmit(); }
+      }}>
       <div className="sheet-head" style={headerTrailing || onCloseButton ? { display: "flex", flexDirection: "row", alignItems: "center", gap: 24, textAlign: "left" } : undefined}>
         <div style={{ flex: 1, minWidth: 0 }}><div className="t-sheet" title={title}>{title}</div>
         {subtitle && <div className="muted">{subtitle}</div>}</div>
@@ -574,13 +667,14 @@ export function SheetScaffold({ title, subtitle, width = 560, height, children, 
         {onCloseButton && <button className="icon-btn sunken" aria-label="关闭" data-tip="关闭（Esc）" onClick={onCloseButton}><Icon name="xmark" size={16} /></button>}
       </div>
       <div className="sheet-body" style={fixedHeight ? { flex: 1 } : undefined}>{children}</div>
+      <div className="sheet-feedback" />
       <div className="sheet-foot">{leading}<span className="spacer" />{trailing}</div>
     </div>
   );
 }
 
-export function ConfirmSheet({ title, message, details = [], confirmTitle, cancelTitle = "取消", destructive, warn, onConfirm, onClose }: {
-  title: string; message: string; details?: string[]; confirmTitle: string; cancelTitle?: string; destructive?: boolean; warn?: boolean; onConfirm: () => void; onClose: () => void;
+export function ConfirmSheet({ title, message, details = [], confirmTitle, cancelTitle = "取消", focusCancel = false, destructive, warn, onConfirm, onClose }: {
+  title: string; message: string; details?: string[]; confirmTitle: string; cancelTitle?: string; focusCancel?: boolean; destructive?: boolean; warn?: boolean; onConfirm: () => void; onClose: () => void;
 }) {
   return (
     <Modal onClose={onClose}>
@@ -602,8 +696,8 @@ export function ConfirmSheet({ title, message, details = [], confirmTitle, cance
         )}
         <div className="row gap10">
           <span className="spacer" />
-          <Button onClick={onClose}>{cancelTitle}</Button>
-          <Button kind={destructive ? "danger" : "primary"} autoFocus onClick={() => { onClose(); onConfirm(); }}>{confirmTitle}</Button>
+          <Button autoFocus={focusCancel} onClick={onClose}>{cancelTitle}</Button>
+          <Button kind={destructive ? "danger" : "primary"} autoFocus={!focusCancel} onClick={() => { onClose(); onConfirm(); }}>{confirmTitle}</Button>
         </div>
       </div>
     </Modal>
@@ -707,6 +801,7 @@ export function Tabs<V extends string | number>({ tabs, value, onChange }: { tab
           {label}{count !== undefined && <span className="count">{count}</span>}
         </button>
       ))}
+      <span className="spacer drag-region" aria-hidden="true" />
     </div>
   );
 }
@@ -777,7 +872,7 @@ export function Slider({ value, min, max, step = 1, onChange, label, format, par
 
 /** 颜色色块：28px 圆，选中时白色内圈 + 品牌绿外圈。 */
 export function ColorSwatch({ color, selected, onPick, label }: { color: string; selected: boolean; onPick: () => void; label: string }) {
-  return <button className={`swatch ${selected ? "on" : ""}`} style={{ background: color }} aria-label={label} aria-pressed={selected} data-tip={label} onClick={onPick}>{selected && <Icon name="checkmark" size={13} />}</button>;
+  return <button className={`swatch ${selected ? "on" : ""}`} style={{ background: color }} aria-label={label} aria-pressed={selected} data-tip={label} onClick={onPick} />;
 }
 
 /** 容器宽度低于 px 时为 true（容器查询的 JS 版，给需要换结构的布局用）。 */

@@ -4,7 +4,7 @@
 import type JSZip from "jszip";
 import { platform } from "../platform/platform";
 import { writeZip } from "./files";
-import { type DataSnapshot, FORMAT_VERSION, makeSnapshot, restoreSnapshot } from "../domain/folder";
+import { type DataSnapshot, FORMAT_VERSION, restoreSnapshot } from "../domain/folder";
 import type { Store } from "../state/store";
 
 const MANIFEST = "charter-backup.json";
@@ -158,7 +158,7 @@ export async function restoreBackup(s: Store, b: OpenedBackup) {
   try {
     if (!s.loadFailed && !(await s.ensureSaved("恢复备份"))) return;
     if (!s.loadFailed) {
-      snap = await makeSnapshot(f, "恢复备份前");
+      snap = await s.createSnapshot("恢复备份前");
       // 5.5.5：会被覆盖的归档文件也存进这份快照，从快照恢复时放回
       for (const e of b.zip.file(/^(files|group-icons|inbox|trash)\//)) {
         const parts = e.name.split("/"), dest = p.join(f.root, ...parts);

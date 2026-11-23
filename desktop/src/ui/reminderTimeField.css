@@ -1,0 +1,110 @@
+.reminder-time-field {
+  position: relative;
+  display: inline-flex;
+  width: 124px;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.field.reminder-time-input {
+  width: 124px;
+  max-width: 100%;
+  height: 36px;
+  min-height: 36px;
+  padding-right: 30px;
+  font-variant-numeric: tabular-nums;
+}
+
+.reminder-time-chevron {
+  position: absolute;
+  top: 12px;
+  right: 10px;
+  display: inline-flex;
+  color: var(--muted);
+  pointer-events: none;
+  transition: opacity var(--fast) var(--ease);
+}
+
+.reminder-time-chevron.open {
+  opacity: 0;
+}
+
+.reminder-time-menu {
+  position: fixed;
+  z-index: 1050;
+  max-height: 218px;
+  padding: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-input);
+  background: var(--surface);
+  box-shadow: var(--overlay);
+  animation: reminder-time-in var(--fast) var(--ease);
+  overscroll-behavior: contain;
+  scroll-padding-block: 4px;
+}
+
+.reminder-time-menu[data-side="top"] {
+  transform-origin: bottom center;
+  animation-name: reminder-time-in-top;
+}
+
+.reminder-time-option {
+  display: flex;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  align-items: center;
+  border-radius: 5px;
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+.reminder-time-option:hover,
+.reminder-time-option.active {
+  background: var(--surface-sunken);
+  outline: none;
+}
+
+.reminder-time-option[aria-selected="true"] {
+  background: var(--green-soft);
+  color: var(--ink);
+}
+
+.reminder-time-error {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  width: max-content;
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: var(--overlay);
+  color: var(--red-text);
+  font-size: var(--fs-small);
+  line-height: 17px;
+}
+
+@keyframes reminder-time-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes reminder-time-in-top {
+  from { opacity: 0; transform: translateY(4px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reminder-time-menu {
+    animation: fade var(--fast) var(--ease);
+  }
+  .reminder-time-chevron { transition: none; }
+}
+

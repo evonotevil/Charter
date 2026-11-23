@@ -14,7 +14,7 @@ export function dragOver(x: number, y: number) {
 }
 export function dragEnd() { current?.dispatchEvent(new CustomEvent("charter-dragleave")); current = null; }
 
-export function useDropTarget(onDrop: (paths: string[]) => void) {
+export function useDropTarget(onDrop?: (paths: string[]) => void) {
   const ref = useRef<HTMLDivElement>(null);
   const [targeted, setTargeted] = useState(false);
   const cb = useRef(onDrop);
@@ -22,7 +22,7 @@ export function useDropTarget(onDrop: (paths: string[]) => void) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const drop = (e: Event) => { setTargeted(false); cb.current((e as CustomEvent<string[]>).detail); };
+    const drop = (e: Event) => { setTargeted(false); cb.current?.((e as CustomEvent<string[]>).detail); };
     const enter = () => setTargeted(true);
     const leave = () => setTargeted(false);
     el.addEventListener("charter-drop", drop);
@@ -34,12 +34,13 @@ export function useDropTarget(onDrop: (paths: string[]) => void) {
 }
 
 /** 包住一块区域：拖入时描 2px 黑框、内容轻微内缩，顶部出一行提示（#20）。 */
-export function DropTarget({ message, onDrop, children, style }: { message: string; onDrop: (paths: string[]) => void; children: ReactNode; radius?: number; style?: CSSProperties }) {
+export function DropTarget({ message, onDrop, children, style }: { message?: string; onDrop?: (paths: string[]) => void; children: ReactNode; radius?: number; style?: CSSProperties }) {
   const { ref, targeted } = useDropTarget(onDrop);
+  const showTarget = !!onDrop && targeted;
   return (
-    <div ref={ref} data-drop className="drop-host" data-targeted={targeted || undefined} style={{ position: "relative", ...style }}>
+    <div ref={ref} data-drop={onDrop ? true : undefined} className="drop-host" data-targeted={showTarget || undefined} style={{ position: "relative", ...style }}>
       {children}
-      {targeted && <div className="drop-tip" role="status">{message}</div>}
+      {showTarget && <div className="drop-tip" role="status">{message}</div>}
     </div>
   );
 }

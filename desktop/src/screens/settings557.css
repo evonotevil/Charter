@@ -20,6 +20,10 @@
   overflow: auto;
 }
 
+.settings-page-557 .settings > .settings-pane-scroll-557 {
+  scrollbar-gutter: stable;
+}
+
 .settings-page-557 .settings > .settings-pane-fixed-557 {
   overflow: hidden;
 }

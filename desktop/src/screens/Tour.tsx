@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useApp } from "../state/hooks";
 import type { Router } from "../state/router";
 import type { Store } from "../state/store";
-import { finishTour, isDemo } from "../state/demo";
+import { exitDemo, finishTour, isDemo, isTourDemo } from "../state/demo";
 import { platform } from "../platform/platform";
 import { Button, Note } from "../ui/kit";
 
@@ -16,12 +16,12 @@ const sampleCompany = (s: Store) => s.data.companies.find((c) => c.name.includes
 
 export function tourSteps(): Step[] {
   return [
-    { title: "欢迎使用 Charter", label: "入门 · 约 2 分钟", body: "用一套虚构的远澜集团档案，带你认识界面和常用操作。演示中的修改不会保存，随时可以跳过。", go: (r) => r.go("companies") },
+    { title: "欢迎使用 Charter", body: "用一套虚构的远澜集团档案，带你认识界面和常用操作。演示中的修改不会保存，随时可以跳过。", go: (r) => r.go("companies") },
     { title: "侧栏：切换工作区", body: `公司总览、申报日历、股权结构、文件、人员与中介都在这里。${mod()}1–5 直接切换，${mod()}K 搜索公司或人。`, go: (r) => r.go("companies"), target: () => document.querySelector("aside.side") },
     { title: "公司总览：先看要处理的事", body: "每家公司的下一项申报、我负责的材料齐全度和状态一眼看完。点一行打开公司。", go: (r) => r.go("companies"), target: () => document.querySelector(".tour-companies") },
     { title: "公司页：资料与关系", body: "名称下面的法域、实体类型、集团都可以直接点开修改，改动记入历史、可以撤销。", go: (r, s) => { const c = sampleCompany(s); if (c) r.openCompany(c.id, 0) }, target: () => document.querySelector(".page-head") },
     { title: "股权结构：从集团看到最终持有人", body: "已核实的持股是实线，待核实的是虚线。点一家公司，高亮它上下的持股链。", go: (r) => r.go("structure"), target: () => document.querySelector(".chart-canvas")?.parentElement ?? null },
-    { title: "申报日历：到期不漏", body: "按日期排好的待办。做完点右侧圆圈标为完成；到期前 60、30、7 天会提醒。", go: (r) => r.go("due"), target: () => document.querySelector(".tour-due") },
+    { title: "申报日历：到期不漏", body: "按日期排好的待办。做完点右侧圆圈标为完成；Charter 会按设置中的提前天数和时间提醒。", go: (r) => r.go("due"), target: () => document.querySelector(".tour-due") },
     { title: "文件：上传、核对、对外发送", body: "把文件拖到公司页即可归档，Charter 识别类型和日期。需要对外提供时，点右上角“准备文件包”。", go: (r, s) => { const c = sampleCompany(s); if (c) r.openCompany(c.id, 2) }, target: () => document.querySelector(".tour-files") },
     { title: "开始建立你的档案", body: "演示数据会清空。可以新建公司、拖入文件，或选择一个已有的数据文件夹。设置里随时可以重新看教程。", go: (r) => r.go("companies") },
   ];
@@ -30,7 +30,7 @@ export function tourSteps(): Step[] {
 /** 顶部横幅：演示中 · 修改不会保存。 */
 export function DemoBanner() {
   if (!isDemo()) return null;
-  return <div className="demo-banner"><Note tone="info" action={<Button size="small" onClick={() => finishTour()}>退出演示</Button>}>演示中 · 这是一套虚构的远澜集团档案，修改不会保存。</Note></div>;
+  return <div className="demo-banner"><Note tone="info" action={<Button size="small" onClick={() => isTourDemo() ? finishTour() : exitDemo()}>退出演示</Button>}>演示中 · 这是一套虚构的远澜集团档案，修改不会保存。</Note></div>;
 }
 
 type Rect = { x: number; y: number; w: number; h: number };

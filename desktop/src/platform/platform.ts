@@ -118,8 +118,15 @@ export function extname(path: string): string {
   return i > 0 ? b.slice(i + 1) : "";
 }
 
-export interface CalendarEvent { key: string; title: string; date: string; notes: string }
-export interface CalendarSyncInput { name: string; calendarId?: string; checkOnly?: boolean; chunks?: [number, number][]; events: CalendarEvent[] }
+export interface CalendarEvent {
+  key: string;
+  title: string;
+  date: string;
+  notes: string;
+  /** 本地时区中的提醒时刻，格式为 YYYY-MM-DDTHH:mm。 */
+  reminders?: string[];
+}
+export interface CalendarSyncInput { name: string; calendarId?: string; checkOnly?: boolean; requestAccess?: boolean; clearOnly?: boolean; chunks?: [number, number][]; events: CalendarEvent[] }
 export type CalendarSyncResult =
   | { ok: true; calendarId?: string; added?: number; updated?: number; removed?: number }
-  | { ok?: undefined; error: "denied" | "writeOnly" | "noOutlook" | "unsupported" | "failed" | "noSource" | "createCalendar" | "commit" | "outlook"; message?: string };
+  | { ok?: undefined; error: "denied" | "restricted" | "writeOnly" | "notDetermined" | "permissionPending" | "permissionFailed" | "noOutlook" | "unsupported" | "failed" | "noSource" | "createCalendar" | "commit" | "outlook"; message?: string };

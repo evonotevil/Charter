@@ -124,7 +124,15 @@ export function openObligations(all: Obligation[]): Obligation[] {
 }
 
 export function reminderDays(o: Obligation, settings: SharedSettings): Day[] {
-  return [...(o.rule.reminders ?? settings.reminderDays).map((n) => D.addDays(o.due, -n)), o.due];
+  const offsets = o.rule.reminders ?? settings.reminderDays;
+  const days = offsets.map((offset) => D.addDays(o.due, -offset));
+  return [...new Set([...days, o.due])];
+}
+
+export function reminderLocalDateTime(day: Day, settings: SharedSettings): string {
+  const hour = String(settings.notificationHour).padStart(2, "0");
+  const minute = String(settings.notificationMinute).padStart(2, "0");
+  return `${day}T${hour}:${minute}`;
 }
 
 export function ruleTrust(rule: RuleTemplate, company: Company, today: Day): RuleTrust {

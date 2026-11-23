@@ -29,7 +29,7 @@ export async function writePDF(title: string, subtitle: string, sections: PDFSec
   const bytes = brand ? null : await cjk();
   let font: PDFFont, bold: PDFFont;
   let ascii = false;
-  if (brand) { font = await doc.embedFont(brand, { subset: false }); bold = font; }
+  if (brand) { font = await doc.embedFont(brand, { subset: true }); bold = font; }
   else if (bytes) {
     font = await doc.embedFont(bytes, { subset: true });
     bold = font;

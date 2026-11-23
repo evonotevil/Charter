@@ -36,6 +36,26 @@ describe("5.3 材料范围", () => {
     expect(custodyFromMark("external")).toBe("agent");
   });
 
+  it("横幅逐份统计同类现行文件，排除旧版、保管范围外的文件和申报事项", async () => {
+    const s = await sample();
+    s.today = "2026-11-20";
+    const c = s.data.companies[0], owner = ref("company", c.id);
+    const base = { ...s.data.documents[0], owner, typeID: "common.passport", needsUpdate: false, supersededBy: undefined };
+    s.commit((data) => {
+      data.documents = [
+        { ...base, id: "soon-a", expiryDate: "2026-11-25" },
+        { ...base, id: "soon-b", expiryDate: "2026-12-01" },
+        { ...base, id: "late", expiryDate: "2026-11-01" },
+        { ...base, id: "old", expiryDate: "2025-01-01", supersededBy: "soon-a" },
+      ];
+    });
+    expect(s.companyFileAlerts(c)).toEqual({ expired: 1, expiring: 2, needsUpdate: 0, unknown: 0, fileMissing: 0 });
+    s.missingFiles = new Set(["soon-a"]);
+    expect(s.companyFileAlerts(c)).toMatchObject({ expired: 1, expiring: 1, fileMissing: 1 });
+    s.setCustody([owner], [base.typeID], "outOfScope");
+    expect(s.companyFileAlerts(s.company(c.id)!)).toEqual({ expired: 0, expiring: 0, needsUpdate: 0, unknown: 0, fileMissing: 0 });
+  });
+
   it("设置范围后公司变为已配置，可撤销", async () => {
     const s = await sample();
     const c = s.data.companies[0];

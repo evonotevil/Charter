@@ -1,6 +1,6 @@
 [package]
 name = "charter"
-version = "5.5.8"
+version = "5.5.9"
 description = "Charter：海外子公司档案管理"
 edition = "2021"
 

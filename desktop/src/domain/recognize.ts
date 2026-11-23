@@ -37,8 +37,8 @@ export function confidenceOf(r: Recognition, textLength: number): number {
   return Math.min(Math.max(c, 0), 1);
 }
 
-export function recognizeText(pages: string[], fileName: string, usedOCR: boolean, ctx: RecognitionContext): Recognition {
-  const r = heuristic(pages, fileName, ctx);
+export function recognizeText(pages: string[], fileName: string, usedOCR: boolean, ctx: RecognitionContext, source: "document" | "workbook" = "document"): Recognition {
+  const r = heuristic(pages, fileName, ctx, source);
   r.text = pages.join("\n");
   r.usedOCR = usedOCR;
   if (usedOCR) r.evidence.push("扫描件，经文字识别（OCR）");
@@ -48,7 +48,7 @@ export function recognizeText(pages: string[], fileName: string, usedOCR: boolea
   return r;
 }
 
-export function heuristic(pages: string[], fileName: string, ctx: RecognitionContext): Recognition {
+export function heuristic(pages: string[], fileName: string, ctx: RecognitionContext, source: "document" | "workbook" = "document"): Recognition {
   const r: Recognition = { text: "", evidence: [], confidence: 0, typeFromContent: false, usedOCR: false };
   const text = pages.join("\n");
   const lowerPages = pages.map((p) => p.toLowerCase());
@@ -78,8 +78,12 @@ export function heuristic(pages: string[], fileName: string, ctx: RecognitionCon
   if (best?.keyword) {
     if (best.page !== undefined) {
       r.typeFromContent = true;
-      const head = [...lowerPages[best.page]].slice(0, 300).join("");
-      r.evidence.push(`第 ${best.page + 1} 页${head.includes(best.keyword.toLowerCase()) ? "标题" : "正文"}含“${best.keyword}”`);
+      if (source === "workbook") {
+        r.evidence.push(`工作表中含“${best.keyword}”`);
+      } else {
+        const head = [...lowerPages[best.page]].slice(0, 300).join("");
+        r.evidence.push(`第 ${best.page + 1} 页${head.includes(best.keyword.toLowerCase()) ? "标题" : "正文"}含“${best.keyword}”`);
+      }
     } else if (lowerName.includes(best.keyword.toLowerCase())) {
       r.evidence.push(`从文件名推断（含“${best.keyword}”）`);
     }

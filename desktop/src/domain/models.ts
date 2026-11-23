@@ -81,7 +81,12 @@ export const newPerson = (name: string): Person => ({ id: uuid(), name, aliases:
 // MARK: 持股与任职
 
 export type NodeKind = "company" | "person";
-export interface NodeRef { kind: NodeKind; id: string }
+export interface NodeRef {
+  kind: NodeKind;
+  id: string;
+  /** 文件保留原归属时记录公司删除前的注册名。 */
+  formerCompanyName?: string;
+}
 export const ref = (kind: NodeKind, id: string): NodeRef => ({ kind, id });
 export const sameRef = (a?: NodeRef | null, b?: NodeRef | null) => !!a && !!b && a.kind === b.kind && a.id === b.id;
 export const refKey = (r: NodeRef) => `${r.kind}:${r.id}`;
@@ -327,12 +332,14 @@ export interface SharedSettings {
   calendarEnabled: boolean;
   calendarName: string;
   notificationHour: number;
+  /** 提醒时间的分钟部分。旧数据没有此字段时按 0 处理。 */
+  notificationMinute: number;
   complianceEnabled?: boolean;
   /** 5.3 材料范围方案。 */
   scopePresets?: { id: string; name: string; kind: "company" | "person"; plan: Record<string, Custody> }[];
 }
 export const defaultSettings = (): SharedSettings => ({
-  reminderDays: [30, 7, 1], calendarEnabled: true, calendarName: "Charter", notificationHour: 9,
+  reminderDays: [30, 7, 1], calendarEnabled: true, calendarName: "Charter", notificationHour: 9, notificationMinute: 0,
 });
 
 // MARK: 模板

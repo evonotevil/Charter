@@ -1,0 +1,213 @@
+.reminder-settings-559 {
+  gap: 16px;
+}
+
+.reminder-settings-559 .s4-card {
+  overflow: visible;
+}
+
+.reminder-status-559 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reminder-status-559 > .pill {
+  margin-inline-start: auto;
+}
+
+.next-reminder-559,
+.calendar-status-559 {
+  padding: 16px 20px;
+}
+
+.next-reminder-559 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 20px;
+  align-items: center;
+}
+
+.next-reminder-559.has-reminder {
+  border-color: var(--green-soft-line);
+  background: var(--green-soft);
+}
+
+.next-reminder-559.empty .next-reminder-time-559 {
+  color: var(--ink);
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+
+.next-reminder-copy-559 {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.next-reminder-time-559 {
+  color: var(--green-text);
+  font-size: var(--fs-title);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.next-reminder-item-559 {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.next-reminder-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 6px 0 0;
+}
+
+.next-reminder-dates dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.next-reminder-dates > :first-child dd {
+  color: var(--green-text);
+}
+
+.calendar-path-559 {
+  max-width: min(460px, 52vw);
+  overflow-wrap: anywhere;
+}
+
+.reminder-more-559 {
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 4px;
+}
+
+.reminder-days-editor-559 {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.reminder-days-controls-559 {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.reminder-days-controls-559 .v4-chip {
+  height: 24px;
+  overflow: visible;
+}
+
+.v4-chip .reminder-day-remove-559 {
+  width: 24px;
+  height: 24px;
+  margin: 0 -9px 0 -4px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.v4-chip .reminder-day-remove-559:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.reminder-day-error-559 {
+  color: var(--red-text);
+  font-size: var(--fs-small);
+  line-height: 17px;
+}
+
+.calendar-status-559 {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.calendar-status-559.warn {
+  border-color: var(--amber-line);
+  background: var(--amber-soft);
+}
+
+.calendar-status-icon-559,
+.permission-icon-559 {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 10px;
+  background: var(--band);
+  color: var(--ink);
+}
+
+.calendar-status-copy-559 {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.permission-explainer-559 {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 2px solid var(--line);
+  border-radius: var(--r-control);
+  background: var(--band);
+}
+
+.permission-actions-559 {
+  display: grid;
+  grid-template-columns: repeat(2, 152px);
+  gap: 8px;
+}
+
+.permission-actions-559 .btn {
+  width: 152px;
+}
+
+@container (max-width: 719px) {
+  .next-reminder-559 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .next-reminder-559 .btn {
+    justify-self: start;
+  }
+
+  .calendar-path-559 {
+    max-width: 100%;
+  }
+
+  .calendar-status-559 {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .calendar-status-559 > .btn {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .permission-actions-559 {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .permission-actions-559 .btn {
+    width: auto;
+  }
+}

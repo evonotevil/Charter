@@ -4,16 +4,16 @@ import { companyTint } from "../ui/uistyle";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
 import {
-  type ArchiveItem, type ArchiveState, type Company, type Document, type DocumentType, type GroupRow, type NodeRef,
-  archiveItemName, changeKindLabel, companyStatusLabel, hasFile, isActiveOn, isNotApplicable, itemMarkLabel, itemMarks, ref, stateNeedsAttention, latinPad, latinPadStart, archiveCounts, inView } from "../domain/models";
-import { daysLeft, expiryLabel, obligationDone, percentLabel } from "../domain/engine";
+  type ArchiveItem, type Company, type Document, type DocumentType, type GroupRow, type NodeRef,
+  archiveItemName, changeKindLabel, companyStatusLabel, hasFile, isActiveOn, isNotApplicable, itemMarkLabel, itemMarks, ref, latinPad, latinPadStart, archiveCounts } from "../domain/models";
+import { type Obligation, daysLeft, expiryLabel, obligationDone, percentLabel } from "../domain/engine";
 import { isMember, sourceLabel } from "../domain/groups";
 import { useApp } from "../state/hooks";
 import { nonArchiveTypeIDs, ungrouped } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import {
-  ActionMenu, Avatar, Banner, Button, Card, Checkbox, CountBadge, EmptyStateView, Metrics, PageHeader, ProgressTrack, FieldRow, FormGroup, JurisdictionBadge, type MenuEntry, Modal, Pill,
+  hasActiveModal, ActionMenu, Avatar, Banner, Button, Card, Checkbox, CountBadge, EmptyStateView, Metrics, PageHeader, ProgressTrack, FieldRow, FormGroup, JurisdictionBadge, type MenuEntry, Modal, Pill,
   Popover, ProgressCapsule, RadioGroup, Segmented, SelectField, SheetScaffold, Switch, TextField, divider, header, item, useContextMenu,
 } from "../ui/kit";
 import { DropTarget, DropZone, useDropTarget } from "../ui/drop";
@@ -26,6 +26,7 @@ import { CompanyPage } from "./CompanyPage";
 
 const isForming = (c: Company) => c.status === "forming";
 const searchText = (c: Company) => [c.name, ...c.formerNames, ...c.aliases, c.registrationNumber].join(" ").toLowerCase();
+let companyRowFocusReturn: string | null = null;
 
 /** 集团筛选：公司总览、股权结构、文件共用 router.groupFilter。集团色只出现在圆点上。 */
 export function GroupFilter() {
@@ -60,7 +61,7 @@ export function CompaniesView() {
   return <Overview />;
 }
 
-type Health = { c: Company; severity: 0 | 1 | 2; next?: ReturnType<ReturnType<typeof useApp>["store"]["openObligations"]["find"]>; held: number; total: number; configured: boolean; agent: number; text: string };
+type Health = ReturnType<typeof alertInfo> & { c: Company; next?: Obligation; held: number; total: number; configured: boolean; agent: number };
 
 function Overview() {
   const { store, router } = useApp();
@@ -73,19 +74,27 @@ function Overview() {
   const active = live.filter((c) => c.status !== "dissolved" && c.status !== "redomiciled");
   const q = query.trim().toLowerCase();
   const rows: Health[] = useMemo(() => live.map((c) => {
-    const { severity, text } = alertInfo(store, c);
     const cnt = store.companyCounts(c);
     const next = store.openObligations.filter((o) => o.company.id === c.id).sort((a, b) => (a.due < b.due ? -1 : 1))[0];
-    return { c, severity, next, held: cnt.held, total: cnt.total, configured: cnt.configured, agent: cnt.agent, text };
-  }), [store.data, store.today, f]);
+    return { c, next, held: cnt.held, total: cnt.total, configured: cnt.configured, agent: cnt.agent, ...alertInfo(store, c, next) };
+  }), [store.data, store.today, store.missingFiles, f]);
   const shown = rows.filter((r) => !q || searchText(r.c).includes(q) || store.jurisdictionName(r.c.jurisdiction).toLowerCase().includes(q))
     .sort((a, b) => sort === "name" ? a.c.name.localeCompare(b.c.name, "zh")
       : sort === "due" ? (a.next?.due ?? "9999").localeCompare(b.next?.due ?? "9999")
       : b.severity - a.severity || (a.next?.due ?? "9999").localeCompare(b.next?.due ?? "9999") || a.c.name.localeCompare(b.c.name, "zh"));
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); } };
+    const h = (e: KeyboardEvent) => { if (!hasActiveModal() && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
+  }, []);
+  useEffect(() => {
+    const id = companyRowFocusReturn;
+    if (!id) return;
+    const frame = requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>(`[data-company-row-open="${CSS.escape(id)}"]`)?.focus();
+      companyRowFocusReturn = null;
+    });
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   const obligations = store.openObligations.filter((o) => !scope || scope.has(o.company.id));
@@ -97,18 +106,23 @@ function Overview() {
   const unconfigured = rows.length - conf.length;
   const held = conf.reduce((s, r) => s + r.held, 0), total = conf.reduce((s, r) => s + r.total, 0);
   const pct = total ? Math.round((held / total) * 100) : null;
-  const bad = rows.filter((r) => r.severity === 2).length, warn = rows.filter((r) => r.severity === 1).length;
+  const countFiles = (kind: keyof Health["files"]) => rows.reduce((sum, r) => sum + r.files[kind], 0);
+  const expired = countFiles("expired"), expiring = countFiles("expiring");
+  const unavailable = countFiles("fileMissing"), needsUpdate = countFiles("needsUpdate"), undated = countFiles("unknown");
   // 只有逾期、过期、待核实、缺件、未配置都为 0 时才算“没有待办”；按紧急程度列出
   const todo: { text: string; go: () => void; label: string }[] = [
     overdue ? { text: `${overdue} 件申报已逾期`, go: () => router.go("due"), label: "打开申报日历" } : null,
-    bad ? { text: `${bad} 家公司有文件过期`, go: () => router.go("files"), label: "查看文件" } : null,
+    expired ? { text: `${expired} 份文件已逾期`, go: () => router.go("files"), label: "查看文件" } : null,
     unv ? { text: `${unv} 条股权或任职待核实`, go: () => router.go("verify"), label: "去核实" } : null,
     soon ? { text: `30 天内有 ${soon} 件要申报`, go: () => router.go("due"), label: "打开申报日历" } : null,
     miss.companies ? { text: `${miss.companies} 家公司缺我负责的文件（共 ${miss.items} 项）`, go: () => router.go("files"), label: "查看缺的文件" } : null,
-    warn ? { text: `${warn} 家公司有文件快到期`, go: () => router.go("files"), label: "查看文件" } : null,
+    expiring ? { text: `${expiring} 份文件即将到期`, go: () => router.go("files"), label: "查看文件" } : null,
+    unavailable ? { text: `${unavailable} 份文件的源文件不可用`, go: () => router.go("files"), label: "查看文件" } : null,
+    needsUpdate ? { text: `${needsUpdate} 份文件需更新`, go: () => router.go("files"), label: "查看文件" } : null,
+    undated ? { text: `${undated} 份文件日期待补`, go: () => router.go("files"), label: "查看文件" } : null,
     unconfigured ? { text: `${unconfigured} 家公司未配置材料范围`, go: () => router.open({ kind: "scope", ownerKind: "company", owners: rows.filter((r) => !r.configured).map((r) => r.c.id) }), label: "设置材料范围" } : null,
   ].filter((x): x is { text: string; go: () => void; label: string } => !!x);
-  const tone = overdue || bad ? "bad" : "warn";
+  const tone = overdue || expired ? "bad" : "warn";
 
   if (!store.data.companies.length) return (
     <div className="page"><div className="page-inner">
@@ -167,7 +181,13 @@ function Overview() {
       </Card>
     </div></div>
   );
-  return group ? <DropTarget message={`松开即可归档到${latinPadStart(group.name)}`} onDrop={(paths) => router.startImport(paths, { kind: "group", id: group.id })} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{page}</DropTarget> : page;
+  return (
+    <DropTarget message={group && `松开即可归档到${latinPadStart(group.name)}`}
+      onDrop={group ? (paths) => router.startImport(paths, { kind: "group", id: group.id }) : undefined}
+      style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      {page}
+    </DropTarget>
+  );
 }
 
 function OverviewRow({ h }: { h: Health }) {
@@ -184,16 +204,18 @@ function OverviewRow({ h }: { h: Health }) {
   ];
   const statusPill = c.status !== "active" ? <Pill text={companyStatusLabel[c.status]} kind="neutral" />
     : severity === 2 ? <Pill text="需处理" kind="bad" /> : severity === 1 ? <Pill text="留意" kind="warn" /> : <Pill text="正常" kind="valid" />;
+  const open = () => { companyRowFocusReturn = c.id; router.openCompany(c.id); };
   return (
-    <tr className="click company-row" onClick={() => router.openCompany(c.id)} onContextMenu={(e) => ctx.open(e, menu)} title={h.text || c.name}>
+    <tr className="click company-row" onClick={open} onContextMenu={(e) => ctx.open(e, menu)} title={h.text || c.name}>
       <td>
-        <span className="row gap12">
+        <button type="button" className="row gap12 company-row-open" data-company-row-open={c.id}
+          title={`打开公司：${c.name}`} onClick={(e) => { e.stopPropagation(); open(); }}>
           <JurisdictionBadge code={c.jurisdiction} size={34} tint={companyTint(store, c.id)} />
           <span className="col" style={{ minWidth: 0 }}>
             <span className="t-row name-2">{c.name}</span>
             <span className="t-meta muted row gap6">{gs.map((g) => <span key={g.id} className="gdot" style={{ background: store.brandColor(g) }} title={g.name} />)}{store.jurisdictionName(c.jurisdiction)}{c.registrationNumber ? ` · ${c.registrationNumber}` : ""}</span>
           </span>
-        </span>
+        </button>
       </td>
       <td>{next && left !== null ? <span className="col company-deadline"><span className="ellipsis" style={{ maxWidth: 240, fontWeight: 600 }}>{next.rule.name}</span>
         <span className="t-meta num" style={{ color: left < 0 ? "var(--red-text)" : left <= 30 ? "var(--amber-text)" : "var(--muted)", fontWeight: left <= 30 ? 700 : 400 }}>{D.short(next.due)} · {left < 0 ? `逾期 ${-left} 天` : left === 0 ? "今天" : `${left} 天后`}</span></span>
@@ -206,19 +228,19 @@ function OverviewRow({ h }: { h: Health }) {
   );
 }
 
-function alertInfo(store: ReturnType<typeof useApp>["store"], c: Company): { severity: 0 | 1 | 2; text: string } {
+function alertInfo(store: ReturnType<typeof useApp>["store"], c: Company, next?: Obligation) {
   const alerts: string[] = [];
-  const o = store.complianceOn ? store.openObligations.find((x) => x.company.id === c.id) : undefined;
+  const o = store.complianceOn ? next : undefined;
   const left = o ? daysLeft(o, store.today) : 999;
   if (o && left <= 30) alerts.push(left < 0 ? `合规事项“${o.rule.name}”已逾期` : `合规事项“${o.rule.name}”${left} 天后到期`);
-  const items = store.archive(c).filter((i) => inView(i.custody));
-  const n = (k: ArchiveState["kind"]) => items.filter((i) => i.state.kind === k).length;
-  if (n("expired")) alerts.push(`${n("expired")} 份已过期`);
-  if (n("needsUpdate")) alerts.push(`${n("needsUpdate")} 份需更新`);
-  if (n("expiring")) alerts.push(`${n("expiring")} 份即将到期`);
-  if (n("noDate")) alerts.push(`${n("noDate")} 份日期待核对`);
-  const severity = left < 0 || n("expired") ? 2 : items.some((i) => stateNeedsAttention(i.state)) || left <= 30 ? 1 : 0;
-  return { severity, text: alerts.join("，") };
+  const files = store.companyFileAlerts(c);
+  if (files.expired) alerts.push(`${files.expired} 份文件已逾期`);
+  if (files.needsUpdate) alerts.push(`${files.needsUpdate} 份文件需更新`);
+  if (files.expiring) alerts.push(`${files.expiring} 份文件即将到期`);
+  if (files.unknown) alerts.push(`${files.unknown} 份文件日期待补`);
+  if (files.fileMissing) alerts.push(`${files.fileMissing} 份文件的源文件不可用`);
+  const severity = left < 0 || files.expired ? 2 : alerts.length ? 1 : 0;
+  return { severity, text: alerts.join("，"), files };
 }
 
 export function ChangeRowMenu({ companyID, appointmentID, holdingID }: { companyID: string; appointmentID?: string; holdingID?: string }) {

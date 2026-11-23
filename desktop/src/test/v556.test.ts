@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { MemoryPlatform } from "../platform/memory";
 import { setPlatform } from "../platform/platform";
@@ -46,6 +46,7 @@ describe("5.5.6 文字识别", () => {
 
 import { Store, localCalendarName } from "../state/store";
 import { installSampleData } from "../state/sample";
+import { newParty } from "../domain/models";
 
 async function sharedSample() {
   const p = new MemoryPlatform(templates);
@@ -109,7 +110,7 @@ describe("5.5.6 多台电脑共用", () => {
   });
 });
 
-import { DemoPlatform, shouldStartTour } from "../state/demo";
+import { DemoPlatform, shouldStartSampleDemo, shouldStartTour } from "../state/demo";
 
 describe("5.5.6 入门教程", () => {
   const desk = () => { const m = new MemoryPlatform(templates); (m as { os: string }).os = "mac"; return m; };
@@ -135,6 +136,87 @@ describe("5.5.6 入门教程", () => {
     expect(d.copyTree).toBeUndefined();
     await d.writeText("/Charter/x.json", "{}");
     expect((await real.stat("/Charter/x.json")).exists).toBe(false);
+  });
+
+  it("股权示例请求只消费一次；已有中介但没有公司的真实档案不会被示例替换", async () => {
+    const real = desk();
+    real.prefSet("sampleDemoRequested", "1");
+    expect(shouldStartSampleDemo(real)).toBe(true);
+    expect(shouldStartSampleDemo(real)).toBe(false);
+
+    setPlatform(real);
+    const actual = new Store("/Actual");
+    await actual.load();
+    actual.upsertParty(newParty("现有中介"));
+    await actual.flushWrites();
+    expect(actual.data.companies).toHaveLength(0);
+
+    const demo = new DemoPlatform(real, templates);
+    setPlatform(demo);
+    const sample = new Store("/Charter");
+    await sample.load();
+    await installSampleData(sample, { quiet: true });
+    expect(sample.data.companies.length).toBeGreaterThan(0);
+
+    setPlatform(real);
+    const reopened = new Store("/Actual");
+    await reopened.load();
+    expect(reopened.data.companies).toHaveLength(0);
+    expect(reopened.data.parties.map((party) => party.name)).toEqual(["现有中介"]);
+  });
+
+  it("设置里显式载入示例前保存仅有中介和设置的真实档案，并可从快照恢复", async () => {
+    const real = desk();
+    setPlatform(real);
+    const actual = new Store("/Actual");
+    await actual.load();
+    actual.upsertParty(newParty("唯一中介"));
+    actual.commit((data) => { data.settings.reminderDays = [45, 5]; });
+    await actual.flushWrites();
+    expect((await real.listDir("/Actual/data")).map((entry) => entry.name)).toEqual(expect.arrayContaining(["parties.json", "settings.json"]));
+
+    expect(await installSampleData(actual, { quiet: true, requireSnapshot: true })).toBe(true);
+    expect(actual.data.companies.length).toBeGreaterThan(0);
+    const snapshot = actual.snapshots.find((item) => item.reason === "载入示例数据前");
+    expect(snapshot).toBeTruthy();
+    expect((await real.listDir(real.join(snapshot!.folder, "data"))).map((entry) => entry.name)).toContain("parties.json");
+    expect((await real.stat(real.join(snapshot!.folder, "data", "companies.json"))).exists).toBe(false);
+    expect(actual.isImporting).toBe(false);
+    expect(actual.isLoading).toBe(false);
+
+    await actual.restoreFromSnapshot(snapshot!);
+    expect(actual.errorMessage).toBeNull();
+    expect((await real.stat("/Actual/data/companies.json")).exists).toBe(false);
+    expect(actual.data.companies).toEqual([]);
+    expect(actual.data.parties.map((party) => party.name)).toEqual(["唯一中介"]);
+    expect(actual.data.settings.reminderDays).toEqual([45, 5]);
+    const reopened = new Store("/Actual");
+    await reopened.load();
+    expect(reopened.data.companies).toEqual([]);
+    expect(reopened.data.parties.map((party) => party.name)).toEqual(["唯一中介"]);
+    expect(reopened.data.settings.reminderDays).toEqual([45, 5]);
+  });
+
+  it("设置里显式载入示例的快照失败时中止，真实档案完全不动", async () => {
+    const real = desk();
+    setPlatform(real);
+    const actual = new Store("/Actual");
+    await actual.load();
+    actual.upsertParty(newParty("不能丢的中介"));
+    await actual.flushWrites();
+    const before = actual.data;
+    const copyFile = real.copyFile.bind(real);
+    vi.spyOn(real, "copyFile").mockImplementation(async (from, to) => {
+      if (to.includes("/snapshots/")) throw new Error("模拟快照目录不可写");
+      await copyFile(from, to);
+    });
+
+    expect(await installSampleData(actual, { quiet: true, requireSnapshot: true })).toBe(false);
+    expect(actual.data).toBe(before);
+    expect(actual.data.companies).toEqual([]);
+    expect(actual.data.parties.map((party) => party.name)).toEqual(["不能丢的中介"]);
+    expect(actual.errorMessage).toContain("真实档案没有改动");
+    expect(actual.snapshots.some((item) => item.reason === "载入示例数据前")).toBe(false);
   });
 });
 

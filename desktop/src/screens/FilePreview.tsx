@@ -5,7 +5,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import { loadPdfReader } from "../services/extract";
-import { platform } from "../platform/platform";
+import { officeDocumentExtensions } from "../domain/importFormats";
+import { extname, platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { PreviewPager } from "../ui/PreviewPager";
 import { Button } from "../ui/kit";
@@ -15,7 +16,7 @@ const MAX_PIXELS = 4_000_000;
 const PAGE_GUTTER = 16;
 
 type RenderTask = { cancel: () => void; promise: Promise<unknown> };
-type PreviewState = "loading" | "ok" | "missing";
+type PreviewState = "loading" | "ok" | "missing" | "locked" | "unreadable";
 
 export function releaseCanvas(c: HTMLCanvasElement | null | undefined) {
   if (!c) return;
@@ -25,7 +26,9 @@ export function releaseCanvas(c: HTMLCanvasElement | null | undefined) {
 }
 
 export function FilePreview({ path, onOpenOriginal, onRelocate, onReissue }: { path: string; onOpenOriginal?: () => void; onRelocate?: () => void; onReissue?: () => void }) {
-  const pdf = path.toLowerCase().endsWith(".pdf");
+  const ext = extname(path).toLowerCase();
+  const pdf = ext === "pdf";
+  const office = officeDocumentExtensions.includes(ext);
   const [state, setState] = useState<PreviewState>("loading");
   const [pages, setPages] = useState(0);
   const [current, setCurrent] = useState(1);
@@ -39,6 +42,11 @@ export function FilePreview({ path, onOpenOriginal, onRelocate, onReissue }: { p
     setCurrent(1);
     (async () => {
       try {
+        if (office) {
+          const file = await platform().stat(path);
+          if (!cancelled) setState(file.exists && !file.isDir ? "ok" : "missing");
+          return;
+        }
         const bytes = await platform().readBytes(path);
         if (cancelled) return;
         if (!pdf) {
@@ -56,8 +64,14 @@ export function FilePreview({ path, onOpenOriginal, onRelocate, onReissue }: { p
         docRef.current = doc;
         setPages(doc.numPages);
         setState("ok");
-      } catch {
-        if (!cancelled) setState("missing");
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof Error && error.name === "PasswordException") {
+          setState("locked");
+        } else {
+          const file = await platform().stat(path).catch(() => null);
+          if (!cancelled) setState(file && (!file.exists || file.isDir) ? "missing" : "unreadable");
+        }
       }
     })();
     return () => {
@@ -65,8 +79,16 @@ export function FilePreview({ path, onOpenOriginal, onRelocate, onReissue }: { p
       docRef.current = null;
       void task?.destroy().catch(() => undefined);
     };
-  }, [path, pdf]);
+  }, [path, pdf, office]);
 
+  if (state === "locked" || state === "unreadable") return (
+    <div className="file-preview"><div className="file-preview-stage col gap8">
+      <Icon name="doc.text" size={28} className="muted" />
+      <span className="t-row">{state === "locked" ? "这份 PDF 需要密码" : "无法预览这份文件"}</span>
+      <span className="t-meta muted">{state === "locked" ? "打开原件后，在阅读器里输入密码。" : "可尝试用系统应用打开原件。"}</span>
+      {onOpenOriginal && <Button size="small" onClick={onOpenOriginal}>打开原件</Button>}
+    </div></div>
+  );
   if (state === "missing") return (
     <div className="col gap8 muted" style={{ height: "100%", padding: 24, textAlign: "center", alignItems: "center", justifyContent: "center" }}>
       <Icon name="doc.text" size={28} />
@@ -78,6 +100,15 @@ export function FilePreview({ path, onOpenOriginal, onRelocate, onReissue }: { p
       </span>
     </div>
   );
+  if (office) return state === "ok" ? (
+    <div className="file-preview">
+      <div className="file-preview-stage col gap8">
+        <Icon name="doc.text" size={28} className="muted" />
+        <span className="t-row">{ext === "xlsx" ? "Excel 工作簿" : "Word 文档"}</span>
+        {onOpenOriginal && <Button size="small" onClick={onOpenOriginal}>打开原件</Button>}
+      </div>
+    </div>
+  ) : null;
   if (!pdf) return state === "ok" ? <img className="file-preview-image" src={platform().fileURL(path)} alt="文件图像预览" /> : null;
 
   return (

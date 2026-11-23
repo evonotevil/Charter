@@ -4,9 +4,9 @@ import type { ArchiveState, Document, DocumentType } from "../domain/models";
 import type { Freshness } from "../domain/engine";
 import { Icon } from "../ui/Icon";
 
-export type StatusKey = "fileMissing" | "held" | "expiring" | "expired" | "noDate" | "needsUpdate" | "missing" | "unverifiedMark" | "notApplicable" | "external" | "restricted" | "superseded";
+export type StatusKey = "fileMissing" | "held" | "expiring" | "expired" | "noDate" | "needsUpdate" | "missing" | "unfiled" | "unverifiedMark" | "notApplicable" | "external" | "restricted" | "superseded";
 
-export interface StatusView { key: StatusKey; text: string; icon: string; cls: string; hint: string }
+export interface StatusView { key: StatusKey; text: string; icon?: string; cls: string; hint: string }
 
 export function statusOfArchive(s: ArchiveState): StatusView {
   switch (s.kind) {
@@ -41,8 +41,8 @@ export function statusOfFreshness(f: Freshness): StatusView {
 }
 
 export function StatusTag({ s, showIcon = true }: { s: StatusView; showIcon?: boolean }) {
-  const risk = s.key === "expiring" || s.key === "expired" || (s.key === "missing" && s.cls === "warn-o");
-  return <span className={`st ${s.cls}${risk ? " risk-pill" : ""}`} data-status={s.key} title={s.hint}>{showIcon && <Icon name={s.icon} size={risk ? 12 : 11} strokeWidth={2.4} />}{s.text}</span>;
+  const risk = s.key === "expiring" || s.key === "expired" || (s.key === "missing" && s.cls === "warn");
+  return <span className={`st ${s.cls}${risk ? " risk-pill" : ""}`} data-status={s.key} title={s.hint}>{showIcon && s.icon && <Icon name={s.icon} size={risk ? 12 : 11} strokeWidth={2.4} />}{s.text}</span>;
 }
 
 /** 附加标签：已签署 / 待签署（类型要求签署时）、已核实（与原件核对过）。 */

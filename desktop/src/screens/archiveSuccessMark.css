@@ -1,0 +1,58 @@
+.archive-success-mark {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-control);
+  background: var(--green-soft);
+  pointer-events: none;
+}
+
+.archive-success-mark > span { position: absolute; display: grid; place-items: center; }
+.archive-success-mark [data-part="paper"] { left: 13px; top: -5px; opacity: 0; color: var(--ink); }
+.archive-success-mark [data-part="tray"] { left: 10px; top: 19px; opacity: 0; color: var(--green-text); }
+.archive-success-mark [data-part="seal"] {
+  inset: 8px;
+  border-radius: 50%;
+  background: var(--green);
+}
+.archive-success-mark [data-part="check"] { inset: 12px; color: var(--on-green); }
+.archive-success-mark [data-part^="spark-"] { color: var(--green-text); opacity: 0; }
+.archive-success-mark [data-part="spark-top"] { left: 38px; top: -4px; }
+.archive-success-mark [data-part="spark-left"] { left: -5px; top: 10px; }
+.archive-success-mark [data-part="spark-dot"] {
+  left: 41px; top: 38px; width: 4px; height: 4px; border-radius: 50%; background: var(--green);
+}
+
+/* Figma's three transitions finish at 520, 820 and 1320 ms. */
+@media (prefers-reduced-motion: no-preference) {
+  .archive-success-mark > span { animation-duration: 1320ms; animation-timing-function: ease-out; }
+  .archive-success-mark [data-part="paper"] { animation-name: archive-paper-drop; }
+  .archive-success-mark [data-part="tray"] { animation-name: archive-tray-receive; }
+  .archive-success-mark [data-part="seal"] { --imprint-size: 1.1875; animation-name: archive-stamp; }
+  .archive-success-mark [data-part="check"] { --imprint-size: 1.167; animation-name: archive-stamp; }
+  .archive-success-mark [data-part="spark-top"] { --spark-x: 6px; --spark-y: -4px; animation-name: archive-glint; }
+  .archive-success-mark [data-part="spark-left"] { --spark-x: -5px; --spark-y: -4px; animation-name: archive-glint; }
+  .archive-success-mark [data-part="spark-dot"] { --spark-x: 5px; --spark-y: 4px; animation-name: archive-glint; }
+}
+@keyframes archive-paper-drop {
+  0%, 18.18% { transform: none; opacity: 1; }
+  39.39%, 46.97% { transform: translateY(19px) scale(.73); opacity: .26; }
+  62.12%, 100% { transform: translateY(23px) scale(.64); opacity: 0; }
+}
+@keyframes archive-tray-receive {
+  0%, 18.18% { transform: none; opacity: 1; }
+  39.39%, 46.97% { transform: scale(1.07, .93); opacity: 1; }
+  62.12%, 100% { transform: translateY(-3px) scale(.86); opacity: 0; }
+}
+@keyframes archive-stamp {
+  0%, 46.97% { transform: translateY(2px) scale(.25); opacity: 0; }
+  62.12%, 75.76% { transform: scale(var(--imprint-size)); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes archive-glint {
+  0%, 46.97% { transform: translate(calc(-1 * var(--spark-x)), calc(-1 * var(--spark-y))) scale(.45); opacity: 0; }
+  62.12%, 75.76% { transform: none; opacity: 1; }
+  100% { transform: translate(var(--spark-x), var(--spark-y)); opacity: 0; }
+}

@@ -1,14 +1,14 @@
 {
   "name": "charter-desktop",
   "private": true,
-  "version": "5.5.8",
+  "version": "5.5.9",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "tauri": "tauri",
-    "electron": "vite build && electron .",
+    "electron": "node scripts/build-calendar.cjs && vite build && electron .",
     "dist": "node scripts/release.mjs"
   },
   "devDependencies": {

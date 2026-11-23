@@ -50,7 +50,7 @@ interface ChangeEffect { kind: EffectKind; text: string }
 export interface ConfigBundle {
   version: number;
   exportedAt: string;
-  settings: { reminderDays: number[]; notificationHour: number; calendarEnabled: boolean; calendarName: string; complianceEnabled?: boolean };
+  settings: { reminderDays: number[]; notificationHour: number; notificationMinute?: number; calendarEnabled: boolean; calendarName: string; complianceEnabled?: boolean };
   library: TemplateLibrary;
 }
 export const configVersion = 1;
@@ -59,7 +59,7 @@ export function configBundle(s: Store): ConfigBundle {
   const st = s.data.settings;
   return {
     version: configVersion, exportedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
-    settings: { reminderDays: st.reminderDays, notificationHour: st.notificationHour, calendarEnabled: st.calendarEnabled, calendarName: st.calendarName, complianceEnabled: st.complianceEnabled },
+    settings: { reminderDays: st.reminderDays, notificationHour: st.notificationHour, notificationMinute: st.notificationMinute, calendarEnabled: st.calendarEnabled, calendarName: st.calendarName, complianceEnabled: st.complianceEnabled },
     library: s.data.library,
   };
 }
@@ -124,7 +124,11 @@ export function configImportDiff(s: Store, b: ConfigBundle, mode: "merge" | "rep
   const st = s.data.settings, bs = b.settings;
   const days = (x: number[]) => [...x].sort((m, n) => n - m).join("、");
   if (bs.reminderDays.length && days(bs.reminderDays) !== days(st.reminderDays)) { lines.push(`到期提醒：${days(st.reminderDays)} 天 → ${days(bs.reminderDays)} 天`); changes++; }
-  if (bs.notificationHour !== st.notificationHour) { lines.push(`提醒时间：${st.notificationHour}:00 → ${bs.notificationHour}:00`); changes++; }
+  const minute = bs.notificationMinute ?? 0;
+  if (bs.notificationHour !== st.notificationHour || minute !== st.notificationMinute) {
+    const time = (h: number, m: number) => `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    lines.push(`提醒时间：${time(st.notificationHour, st.notificationMinute)} → ${time(bs.notificationHour, minute)}`); changes++;
+  }
   if (!!bs.complianceEnabled !== !!st.complianceEnabled) { lines.push(`合规模块：${bs.complianceEnabled ? "打开" : "关闭"}`); changes++; }
   if (bs.calendarName !== st.calendarName || bs.calendarEnabled !== st.calendarEnabled) { lines.push("日历设置有变化"); changes++; }
   if (mode === "replace") {
@@ -165,6 +169,7 @@ export async function applyConfig(s: Store, b: ConfigBundle, mode: "merge" | "re
     d.library = lib as any;
     d.settings.reminderDays = b.settings.reminderDays.length ? b.settings.reminderDays : d.settings.reminderDays;
     d.settings.notificationHour = b.settings.notificationHour;
+    d.settings.notificationMinute = b.settings.notificationMinute ?? 0;
     d.settings.calendarEnabled = b.settings.calendarEnabled;
     d.settings.calendarName = b.settings.calendarName;
     d.settings.complianceEnabled = b.settings.complianceEnabled;

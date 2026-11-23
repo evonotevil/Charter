@@ -107,6 +107,30 @@ describe("store", () => {
     expect(s.company(hk.id)).toBeDefined();
   });
 
+  it("keeps deleted company file owners identifiable, including after reload, and can transfer them atomically", async () => {
+    const { s } = await fresh();
+    await installSampleData(s);
+    const doc = s.data.documents.find((d) => d.owner.kind === "company" && !d.supersededBy)!;
+    const original = s.company(doc.owner.id)!;
+    const target = { ...original, id: "transfer-target", name: "接收公司" };
+    s.upsertCompany(target);
+    s.deleteCompany(original);
+    const kept = s.data.documents.find((d) => d.id === doc.id)!;
+    expect(s.nameOf(kept.owner)).toBe(original.name + "（已删除）");
+    expect(kept.filePath).toBe(doc.filePath);
+    s.undo();
+    expect(s.nameOf(s.data.documents.find((d) => d.id === doc.id)!.owner)).toBe(original.name);
+    s.deleteCompany(original, target.id);
+    expect(s.data.documents.find((d) => d.id === doc.id)).toMatchObject({ owner: { id: target.id }, filePath: doc.filePath });
+    s.undo();
+    expect(s.company(original.id)).toBeDefined();
+    s.deleteCompany(original);
+    await s.flushWrites();
+    const reopened = new Store("/Charter");
+    await reopened.load();
+    expect(reopened.nameOf(reopened.data.documents.find((d) => d.id === doc.id)!.owner)).toBe(original.name + "（已删除）");
+  });
+
   it("computes obligations when compliance is on", async () => {
     const { s } = await fresh();
     await installSampleData(s);

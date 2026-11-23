@@ -29,7 +29,34 @@ describe("结构图布局", () => {
     const t = layoutTree({ nodes, holdings, collapsed: new Set(["company:C"]), names });
     expect(t.nodes.has("company:E")).toBe(false);
     expect(t.nodes.has("company:D")).toBe(true); // 仍经 B 可达
-    expect(t.nodes.get("company:C")!.hiddenBelow).toBe(2);
+    expect(t.nodes.get("company:C")!.hiddenBelow).toBe(1);
+    expect(t.edges.map((e) => e.id)).not.toContain("5");
+  });
+
+  it("顶层收起会隐藏后代；重新展开时保留下级原有的折叠", () => {
+    const nested = layoutTree({ nodes, holdings, collapsed: new Set(["company:A", "company:C"]), names });
+    expect([...nested.nodes.keys()].sort()).toEqual(["company:A", "person:p"]);
+    expect(nested.nodes.get("company:A")!.hiddenBelow).toBe(3); // C 已收起，E 仍不显示
+    const restored = layoutTree({ nodes, holdings, collapsed: new Set(["company:C"]), names });
+    expect(restored.nodes.size - nested.nodes.size).toBe(3);
+  });
+
+  it("共有子公司始终可从开放的上级抵达，只收起连线也允许展开", () => {
+    const one = layoutTree({ nodes, holdings, collapsed: new Set(["company:B"]), names });
+    expect(one.nodes.get("company:B")).toMatchObject({ folded: true, hiddenBelow: 0 });
+    expect(one.nodes.get("company:D")!.parents).toEqual(["company:C"]);
+    const both = layoutTree({ nodes, holdings, collapsed: new Set(["company:B", "company:C"]), names });
+    expect(both.nodes.has("company:D")).toBe(false);
+    expect(both.nodes.get("company:B")!.hiddenBelow).toBe(1);
+  });
+
+  it("正常链与独立环共存时，环的下属不会被当成新的入口", () => {
+    const cycle = [h("1", ["company", "B"], "C"), h("2", ["company", "C"], "B"), h("3", ["company", "C"], "A")];
+    const t = layoutTree({ nodes, holdings: cycle, collapsed: new Set(["company:B"]), names });
+    expect(t.roots).toContain("company:B");
+    expect(t.nodes.has("company:C")).toBe(false);
+    expect(t.nodes.has("company:A")).toBe(false);
+    expect(t.nodes.get("company:B")!.hiddenBelow).toBe(2);
   });
 
   it("以某公司为中心只保留上下游", () => {

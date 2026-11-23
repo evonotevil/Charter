@@ -3,10 +3,13 @@
 export type PacketPreset = { wm?: import("../domain/models").PacketWatermark; stripMeta: boolean };
 
 import * as D from "../domain/day";
+import type { InboxImportBatch, InboxImportBatchResult, InboxImportOutcome, InboxImportProgress } from "../domain/inboxImport";
+import { directImportExtensions, inboxImportExtensions } from "../domain/importFormats";
 import type { Day } from "../domain/day";
-import type { ChangeKind, NodeKind, NodeRef, ObligationStatus } from "../domain/models";
+import { type ChangeKind, type NodeRef, type ObligationStatus, uuid } from "../domain/models";
 import { platform } from "../platform/platform";
 import { ungrouped } from "./store";
+import { FilesBrowseSession } from "./filesBrowse";
 
 export type Section = "structure" | "due" | "agents" | "overview" | "companies" | "files" | "people" | "parties" | "verify" | "sync" | "settings";
 /** 侧栏：五个工作页面（⌘1–⌘5），下面是工作区（设备与同步、设置）。 */
@@ -44,7 +47,7 @@ export type ImportContext = { kind: "company"; id: string } | { kind: "group"; i
 
 export type SettingsPane = "sync" | "reminders" | "appearance" | "about" | "groups" | "archiveItems" | "scope" | "purposes" | "rules" | "backup" | "privacy";
 export const settingsPanes: SettingsPane[] = ["reminders", "appearance", "about", "groups", "archiveItems", "scope", "purposes", "rules", "backup", "privacy"];
-export const settingsPaneTitle: Record<SettingsPane, string> = { sync: "数据与同步", reminders: "提醒", appearance: "外观", about: "关于与更新", groups: "集团", archiveItems: "档案清单", purposes: "文件包用途", rules: "合规规则", backup: "备份与恢复", scope: "材料范围", privacy: "隐私与本地处理" };
+export const settingsPaneTitle: Record<SettingsPane, string> = { sync: "数据与同步", reminders: "到期提醒", appearance: "外观", about: "关于与更新", groups: "集团", archiveItems: "档案清单", purposes: "文件包用途", rules: "合规规则", backup: "备份与恢复", scope: "材料范围", privacy: "隐私与本地处理" };
 export const settingsPaneSymbol: Record<SettingsPane, string> = { sync: "icloud", reminders: "bell", appearance: "slider.horizontal.3", about: "info.circle", groups: "square.stack.3d.up", archiveItems: "list.bullet.rectangle", purposes: "shippingbox", rules: "calendar.badge.clock", backup: "clock.arrow.circlepath", scope: "checklist", privacy: "lock.circle" };
 export const settingsGroups = (): { title: string; panes: SettingsPane[] }[] => [
   { title: "常规", panes: ["reminders", "appearance", "about"] },
@@ -71,12 +74,20 @@ export class Router {
   /** 从证据关联跳回的具体持股或任职；公司页会滚动并高亮这一条。 */
   evidenceRecordFocus: EvidenceRecordFocus | null = null;
   filesFilter = 0;
-  filesOwnerKind: NodeKind | null = null;
+  filesBrowse = new FilesBrowseSession();
   filesHorizon = 30;
   /** 文件页的分页：文件 / 待整理 / 废纸篓。 */
   filesPane: "files" | "inbox" | "trash" = "files";
-  /** 等待加入待整理的路径（由文件页消费）。 */
-  inboxPaths: string[] = [];
+  /** 每次拖入或选择是一批；串行消费时仍保留边界，结果才能逐批追溯。 */
+  private inboxPendingBatches: { id: string; paths: string[] }[] = [];
+  get inboxPaths() { return this.inboxPendingBatches.flatMap((batch) => batch.paths); }
+  private inboxDataRoot: string | null = null;
+  private inboxImportResults: InboxImportBatchResult[] = [];
+  private activeInboxImport: InboxImportBatch | null = null;
+  /** 待整理导入由文件页串行消费，避免连续拖入的批次相互覆盖。 */
+  inboxImporting = false;
+  inboxImportStatus: string | null = null;
+  inboxImportProgress: InboxImportProgress | null = null;
   companiesMode: CompaniesMode = "list";
   structureCheck = false;
   structureUpward: string | null = null;
@@ -124,15 +135,77 @@ export class Router {
   startImport(paths: string[], context: ImportContext | null) {
     if (!paths.length) return;
     // 5.3：没有明确目标的导入先进“待整理”，不直接进正式档案
-    if (!context) { this.inboxPaths = [...this.inboxPaths, ...paths]; this.sheet = null; this.section = "files"; this.filesPane = "inbox"; this.emit(); return; }
+    if (!context) {
+      this.inboxPendingBatches.push({ id: uuid(), paths: [...paths] });
+      if (!this.inboxImporting) this.inboxImportStatus = `已收到 ${paths.length} 项，正在准备…`;
+      if (!this.inboxImporting) this.inboxImportProgress = { phase: "preparing", files: [], total: paths.length, completed: 0 };
+      this.sheet = null; this.section = "files"; this.filesPane = "inbox"; this.emit(); return;
+    }
     this.importContext = context;
     this.sheet = { kind: "importFiles", paths };
     this.emit();
   }
+  /** 待整理里已经有副本时直接打开向导，不能再次走“加入待整理”的队列。 */
+  openImportWizard(paths: string[], context: ImportContext | null = null) {
+    const unique = [...new Set(paths)];
+    if (!unique.length) return;
+    this.importContext = context;
+    this.sheet = { kind: "importFiles", paths: unique };
+    this.emit();
+  }
+  /** 数据根是待整理队列的一部分；切换后旧根的未开始批次不得落入新根。 */
+  syncInboxDataRoot(dataRoot: string) {
+    if (this.inboxDataRoot === dataRoot) return;
+    const wasBound = this.inboxDataRoot !== null;
+    this.inboxDataRoot = dataRoot;
+    if (!wasBound) return;
+    this.inboxPendingBatches = [];
+    this.activeInboxImport = null;
+    this.inboxImportResults = [];
+    this.inboxImporting = false;
+    this.inboxImportStatus = null;
+    this.inboxImportProgress = null;
+    this.emit();
+  }
+  beginInboxImport(dataRoot: string): InboxImportBatch | null {
+    this.syncInboxDataRoot(dataRoot);
+    if (this.inboxImporting || !this.inboxPendingBatches.length) return null;
+    const pending = this.inboxPendingBatches.shift()!;
+    if (this.inboxImportResults.some((result) => result.dataRoot !== dataRoot)) this.inboxImportResults = [];
+    this.inboxImporting = true;
+    this.activeInboxImport = { ...pending, dataRoot };
+    this.inboxImportStatus = `正在准备 ${pending.paths.length} 项…`;
+    this.inboxImportProgress = { phase: "preparing", files: [], total: pending.paths.length, completed: 0 };
+    this.emit();
+    return this.activeInboxImport;
+  }
+  updateInboxImportStatus(batch: InboxImportBatch, progress: InboxImportProgress) {
+    if (this.activeInboxImport?.id !== batch.id || this.activeInboxImport.dataRoot !== batch.dataRoot) return;
+    this.inboxImportProgress = progress;
+    this.inboxImportStatus = progress.phase === "recognizing" && progress.currentIndex !== undefined
+      ? `正在识别 ${progress.currentIndex + 1}/${progress.total}：${progress.files[progress.currentIndex] ?? ""}`
+      : progress.detail ?? (progress.phase === "saving" ? `正在保存 ${progress.completed} 份…` : `正在准备 ${progress.total} 项…`);
+    this.emit();
+  }
+  finishInboxImport(batch: InboxImportBatch, outcome?: InboxImportOutcome) {
+    if (this.activeInboxImport?.id !== batch.id || this.activeInboxImport.dataRoot !== batch.dataRoot) return;
+    if (outcome) this.inboxImportResults = [{
+      id: batch.id, dataRoot: batch.dataRoot, finishedAt: Date.now(), ...outcome,
+    }, ...this.inboxImportResults.filter((result) => result.dataRoot === batch.dataRoot)];
+    this.activeInboxImport = null;
+    this.inboxImporting = false;
+    this.inboxImportStatus = this.inboxPaths.length ? `已排队 ${this.inboxPaths.length} 项，接着处理…` : null;
+    this.inboxImportProgress = this.inboxPaths.length
+      ? { phase: "preparing", files: [], total: this.inboxPaths.length, completed: 0, detail: "接着处理下一批文件" }
+      : null;
+    this.emit();
+  }
+  inboxResultsFor(dataRoot: string) { return this.inboxImportResults.filter((result) => result.dataRoot === dataRoot); }
   get isImportOpen() { return this.sheet?.kind === "importFiles" || this.sheet?.kind === "resumeImport"; }
 
   async chooseFiles(context: ImportContext | null) {
-    const paths = await platform().pickFiles({ multiple: true, extensions: ["pdf", "png", "jpg", "jpeg", "heic", "tif", "tiff"], title: "选择要上传的材料" });
+    const extensions = context ? directImportExtensions : inboxImportExtensions;
+    const paths = await platform().pickFiles({ multiple: true, extensions, title: "选择要上传的材料" });
     if (paths.length) this.startImport(paths, context);
   }
 
@@ -143,8 +216,9 @@ export class Router {
   }
 
   resetSelection() {
+    this.inboxPendingBatches = []; this.activeInboxImport = null; this.inboxImporting = false; this.inboxImportStatus = null; this.inboxImportProgress = null; this.inboxImportResults = [];
     this.sheet = null; this.calendarPreset = null; this._selectedCompanyID = null; this.selectedPersonID = null; this.groupFilter = null;
-    this.filesOwnerKind = null; this.filesFilter = 0; this.companyTab = 0; this.evidenceRecordFocus = null; this.companiesMode = "list"; this.showCalendar = false; this.section = "companies"; this.companyOpen = false;
+    this.filesBrowse = new FilesBrowseSession(); this.filesFilter = 0; this.companyTab = 0; this.evidenceRecordFocus = null; this.companiesMode = "list"; this.showCalendar = false; this.section = "companies"; this.companyOpen = false;
     this.emit();
   }
 

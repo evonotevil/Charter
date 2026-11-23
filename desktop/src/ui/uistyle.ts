@@ -4,6 +4,8 @@
 import type React from "react";
 import { useSyncExternalStore } from "react";
 
+export const isNarrowWindow = () => window.innerWidth < 1100;
+
 /** 法域徽章：用集团色描一圈细边，底色不变。 */
 export function groupRing(color: string | null | undefined): React.CSSProperties | undefined {
   return color ? ({ "--g": color } as React.CSSProperties) : undefined;

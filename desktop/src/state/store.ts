@@ -9,7 +9,7 @@ import {
   type Document, type DocumentRequest, type InboxItem, type TrashEntry, type SendRecord, type DocumentType, type GroupRow, type HandoffAction, type Holding, type ItemMark,
   type Jurisdiction, type NodeRef, type ObligationRecord, type Party, type Person, type RuleTemplate, type RuleTrust,
   type RuleVerification, type Schedule, type Evidence, type Provenance, type SharedSettings, type TemplateLibrary,
-  archiveCounts, type Custody, type EvidenceLink, custodyFromMark, custodyLabel, changeKindLabel, companyStatusLabel, emptyArchive, hasFile, isActiveOn, isHandedOff, isNotApplicable, itemMarkLabel,
+  archiveCounts, type Custody, type EvidenceLink, custodyFromMark, custodyLabel, changeKindLabel, companyStatusLabel, emptyArchive, hasFile, inView, isActiveOn, isHandedOff, isNotApplicable, itemMarkLabel,
   latinPad, newPerson, normalizedStatus, pendingTypeIDs, ref, refKey, sameRef, typeAppliesTo, uuid, latinPadStart, brandPalette } from "../domain/models";
 import {
   type Chain, type Freshness, type Obligation, type OwnershipBreakdown, adjustDay, breakdown, chainPaths, computeObligations,
@@ -23,7 +23,7 @@ import {
 import {
   normAppointment, normChange, normCompany, normDocument, normGroup, normHolding, normParty, normPerson, normRecord, normRequest, normSettings,
 } from "../domain/normalize";
-import { platform, type CloudKind } from "../platform/platform";
+import { platform, type CalendarSyncResult, type CloudKind } from "../platform/platform";
 import { sha256File } from "../services/hash";
 import { roleByID } from "../domain/roles";
 
@@ -58,7 +58,7 @@ const fileOf: Record<Exclude<Part, "library">, string> = {
 
 const emptyData = (): Data => ({
   companies: [], people: [], holdings: [], appointments: [], parties: [], documents: [], records: [], changes: [], groups: [],
-  settings: { reminderDays: [30, 7, 1], calendarEnabled: true, calendarName: "Charter", notificationHour: 9 },
+  settings: { reminderDays: [30, 7, 1], calendarEnabled: true, calendarName: "Charter", notificationHour: 9, notificationMinute: 0 },
   library: { version: 1, jurisdictions: [], documentTypes: [], rules: [], packets: [] }, requests: [], inbox: [], trash: [], sends: [],
 });
 
@@ -77,7 +77,12 @@ export const invalidTargetError = () => new ArchiveError("材料类别与归属�
 export interface ArchiveRequest {
   path: string; typeID: string; owner: NodeRef; issued?: Day; expiry?: Day; form?: string; note?: string; keepBoth?: boolean;
   /** 5.3：原始位置（记录用）与证据关联。 */
-  source?: string; links?: EvidenceLink[]; sha256?: string;
+  source?: string; originalFileName?: string; links?: EvidenceLink[]; sha256?: string;
+}
+
+export interface ArchiveBatchOptions {
+  /** 与归档记录同批落盘移除的待整理行；文件副本暂留，供同会话撤销恢复。 */
+  removeInboxIDs?: string[];
 }
 
 /** 导入列表的一行。 */
@@ -106,6 +111,8 @@ export class Store {
   folder: FolderStore;
   today: Day = D.today();
   errorMessage: string | null = null;
+  calendarAction: { phase: "authorizing" | "checking" | "syncing" | "clearing" } | null = null;
+  calendarConnectionIssue: Extract<CalendarSyncResult, { error: string }> | null = null;
   toast: Toast | null = null;
   loadFailed = false;
   isLoading = false;
@@ -122,6 +129,8 @@ export class Store {
   private listeners = new Set<() => void>();
   private lastLoaded: Record<string, number | null> = {};
   private writeQueue: Promise<void> = Promise.resolve();
+  /** 快照串行执行，避免启动时每日快照和用户操作在同一秒写进同一目录。 */
+  private snapshotQueue: Promise<void> = Promise.resolve();
   private loadGeneration = 0;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   /** 派生数据缓存，按数据引用失效。 */
@@ -330,7 +339,7 @@ export class Store {
     try {
       await this.loadPendingImport();
       await this.pruneUndoArea();
-      if (await needsDailySnapshot(this.folder)) { try { await makeSnapshot(this.folder, "每日自动备份"); } catch { /* 忽略 */ } }
+      if (await needsDailySnapshot(this.folder)) { try { await this.createSnapshot("每日自动备份"); } catch { /* 忽略 */ } }
       this.snapshots = await listSnapshots(this.folder);
       this.emit();
     } catch { /* 忽略 */ }
@@ -523,6 +532,7 @@ export class Store {
 
   get canUndo() { return this.undoStack.length > 0; }
   get canRedo() { return this.redoStack.length > 0; }
+  hasUndoID(id: string) { return this.undoStack.some((entry) => entry.id === id); }
 
   private applyState(state: Data, ps: Part[]) {
     const next = { ...this.data };
@@ -553,21 +563,22 @@ export class Store {
   }
 
   /** 提示条上的“撤销”：只撤销那一步；之后有改动碰过同样的数据时，请用户逐步撤销。 */
-  undoID(id: string) {
+  undoID(id: string): boolean {
+    if (this.isImporting || this.isLoading) return false;
     const index = this.undoStack.findIndex((e) => e.id === id);
-    if (index < 0) { this.showToast("这一步已经无法撤销。", undefined, "撤销", "failure"); return; }
-    if (index === this.undoStack.length - 1) { this.undo(); return; }
+    if (index < 0) { this.showToast("这一步已经无法撤销。", undefined, "撤销", "failure"); return false; }
+    if (index === this.undoStack.length - 1) { this.undo(); return true; }
     const entry = this.undoStack[index];
     const later = this.undoStack.slice(index + 1);
     if (!later.every((e) => e.parts.every((p) => !entry.parts.includes(p)))) {
       this.showToast("之后还有相关改动，请用 Ctrl/⌘+Z 逐步撤销。", undefined, "撤销", "failure");
-      return;
+      return false;
     }
-    if (this.isImporting || this.isLoading) return;
     this.undoStack.splice(index, 1);
     this.applyState(entry.before, entry.parts);
     void this.moveCreatedFiles(entry, true);
     this.showToast(`已撤销${entry.label}。`);
+    return true;
   }
 
   private async moveCreatedFiles(entry: UndoEntry, toTrash: boolean) {
@@ -640,8 +651,17 @@ export class Store {
     return this.cached("types", [this.data.library.documentTypes], () => new Map(this.data.library.documentTypes.map((t) => [t.id, t])));
   }
 
-  nameOf = (r: NodeRef): string =>
-    r.kind === "company" ? this.company(r.id)?.name ?? "未知公司" : this.person(r.id)?.name ?? "未知";
+  nameOf = (r: NodeRef): string => {
+    if (r.kind === "person") return this.person(r.id)?.name ?? "未知";
+    const current = this.company(r.id);
+    if (current) return current.name;
+    if (r.formerCompanyName) return `${r.formerCompanyName}（已删除）`;
+    // 旧档案没有保留注册名。历史目录名只能作为查找文件的线索。
+    const doc = this.data.documents.find((x) => sameRef(x.owner, r));
+    if (doc?.owner.formerCompanyName) return `${doc.owner.formerCompanyName}（已删除）`;
+    const folder = doc?.filePath.replaceAll("\\", "/").match(/^files\/([^/]+)\/[^/]+$/)?.[1];
+    return folder ? `已删除公司（原件目录：${folder}）` : `已删除公司（${r.id.slice(0, 8)}）`;
+  };
 
   freshness = (d: Document): Freshness => (this.missingFiles.has(d.id) && !d.supersededBy ? { kind: "fileMissing" } : freshnessOf(d, this.docType(d.typeID), this.today));
 
@@ -908,8 +928,42 @@ export class Store {
     });
   }
 
-  deleteCompany(c: Company) {
+  companyRemovalDocuments(id: string) {
+    const owner = ref("company", id);
+    return [
+      ...this.data.documents.filter((doc) => sameRef(doc.owner, owner)),
+      ...this.data.trash.flatMap((entry) => entry.document && sameRef(entry.document.owner, owner) ? [entry.document] : []),
+    ];
+  }
+
+  companyTransferError(sourceID: string, targetID: string) {
+    const target = this.company(targetID);
+    if (!target || sourceID === targetID) return "请选择另一家现有公司。";
+    const activeTypes = new Set(this.data.documents.filter((doc) => !doc.supersededBy && sameRef(doc.owner, ref("company", targetID))).map((doc) => doc.typeID));
+    for (const doc of this.companyRemovalDocuments(sourceID)) {
+      const type = this.docType(doc.typeID);
+      if (!type || !typeAppliesTo(type, target.jurisdiction)) return `“${type?.name ?? doc.originalFileName}”不适用于接收公司的法域。请选择其他公司，或保留原归属。`;
+      if (!doc.supersededBy && activeTypes.has(doc.typeID)) return `接收公司已有“${type.name}”。请先核对版本，或保留原归属。`;
+    }
+    return null;
+  }
+
+  deleteCompany(c: Company, transferTo?: string) {
+    if (!this.company(c.id)) return;
+    if (transferTo) {
+      const error = this.companyTransferError(c.id, transferTo);
+      if (error) throw new Error(error);
+    }
+    const source = ref("company", c.id);
+    const newOwner: NodeRef = transferTo ? ref("company", transferTo) : { ...source, formerCompanyName: c.name };
     this.performUndoable("删除公司", `已删除“${c.name}”。`, (d) => {
+      for (const doc of d.documents) if (sameRef(doc.owner, source)) doc.owner = { ...newOwner };
+      for (const entry of d.trash) if (entry.document && sameRef(entry.document.owner, source)) entry.document.owner = { ...newOwner };
+      for (const group of d.groups) {
+        group.tops = group.tops.filter((r) => !sameRef(r, source));
+        group.extraCompanyIDs = group.extraCompanyIDs.filter((id) => id !== c.id);
+        if (group.excludedCompanyIDs) group.excludedCompanyIDs = group.excludedCompanyIDs.filter((id) => id !== c.id);
+      }
       d.companies = d.companies.filter((x) => x.id !== c.id);
       d.holdings = d.holdings.filter((h) => h.companyID !== c.id && !sameRef(h.holder, ref("company", c.id)));
       d.appointments = d.appointments.filter((a) => a.companyID !== c.id);
@@ -1067,6 +1121,20 @@ export class Store {
   }
   /** 公司“档案 x/y”与完整度：只算“我负责”。 */
   companyCounts(c: Company) { return archiveCounts(this.archive(c), this.scopeConfigured(ref("company", c.id))); }
+  companyFileAlerts(c: Company) {
+    const archive = this.archive(c);
+    return this.cached(`fileAlerts:${c.id}`, [archive], () => {
+      const counts = { expired: 0, expiring: 0, needsUpdate: 0, unknown: 0, fileMissing: 0 };
+      for (const item of archive) {
+        if (!item.document || !inView(item.custody)) continue;
+        for (const doc of [item.document, ...item.others]) {
+          const { kind } = this.freshness(doc);
+          if (kind !== "valid" && kind !== "superseded") counts[kind]++;
+        }
+      }
+      return counts;
+    });
+  }
   personCounts(personID: string) { return archiveCounts(this.personArchive(personID), this.scopeConfigured(ref("person", personID))); }
 
   /** 法定应有的个人材料（建议）：护照或身份证件、住址证明；在任董事加董事同意书。 */
@@ -1303,10 +1371,11 @@ export class Store {
   }
   attentionCount = (filter: string | null) => this.attentionCompanyDocuments(filter).length;
   /** 缺件统计（与公司页“档案 x/y”同一口径）：范围内缺件的公司数和条目数。 */
-  missingSummary(filter: string | null) {
+  missingSummary(filter: string | null, companyID?: string) {
     const scope = this.companyIDsForFilter(filter);
     let companies = 0, items = 0;
     for (const c of this.data.companies) {
+      if (companyID !== undefined && c.id !== companyID) continue;
       if (scope && !scope.has(c.id)) continue;
       if (c.status === "dissolved" || c.status === "redomiciled" || c.status === "forming") continue;
       const m = this.companyCounts(c).missing;
@@ -2191,7 +2260,7 @@ export class Store {
   }
 
   /** 把一批文件复制进数据文件夹并一次写入记录；失败时删除这次复制的文件。 */
-  async archiveBatch(reqs: ArchiveRequest[], newCompanies: Company[] = []): Promise<Document[]> {
+  async archiveBatch(reqs: ArchiveRequest[], newCompanies: Company[] = [], options: ArchiveBatchOptions = {}): Promise<Document[]> {
     if (this.loadFailed || this.isLoading || this.isImporting) throw unavailableError();
     if (!reqs.length) return [];
     this.isImporting = true; this.emit();
@@ -2213,7 +2282,7 @@ export class Store {
           const path = await this.folder.archive(r.path, ownerName, r.owner, this.docType(r.typeID)!.name, r.issued);
           const doc: Document = {
             id: uuid(), typeID: r.typeID, owner: r.owner, issueDate: r.issued, expiryDate: r.expiry, form: r.form ?? "扫描件",
-            filePath: path, originalFileName: (r.source ?? r.path).split(/[\\/]/).pop() ?? "", needsUpdate: false, addedOn: this.today, notes: r.note ?? "",
+            filePath: path, originalFileName: r.originalFileName ?? (r.source ?? r.path).split(/[\\/]/).pop() ?? "", needsUpdate: false, addedOn: this.today, notes: r.note ?? "",
             sourcePath: r.source, links: r.links?.length ? r.links : undefined,
             sha256: r.sha256 ?? await sha256File(this.folder.abs(path)).catch(() => undefined),
           };
@@ -2225,15 +2294,21 @@ export class Store {
         throw e;
       }
       const next = copies.reduce((acc, d) => Store.insertingVersion(d, acc, keepBoth.has(d.id)), this.data.documents);
+      const removeInboxIDs = new Set(options.removeInboxIDs ?? []);
+      const nextInbox = removeInboxIDs.size ? this.data.inbox.filter((item) => !removeInboxIDs.has(item.id)) : this.data.inbox;
       try {
-        await this.persistCollections(newCompanies.length ? { documents: next, companies: proposed } : { documents: next });
+        await this.persistCollections({
+          documents: next,
+          ...(newCompanies.length ? { companies: proposed } : {}),
+          ...(removeInboxIDs.size ? { inbox: nextInbox } : {}),
+        });
       } catch (e) {
         if (!(e instanceof CollectionSaveError && e.rollbackFailures.length)) {
           for (const d of copies) { try { await p.removeFile(this.folder.abs(d.filePath)); } catch { /* 忽略 */ } }
         }
         throw e;
       }
-      this.data = { ...this.data, documents: next, companies: proposed };
+      this.data = { ...this.data, documents: next, companies: proposed, inbox: nextInbox };
       this.afterChange();
       return copies.map((c) => next.find((d) => d.id === c.id)!).filter(Boolean);
     } finally {
@@ -2249,9 +2324,9 @@ export class Store {
     if (!type) throw new Error("所选文件类型已经不存在，请选择其他类型。");
     if (edited.owner.kind === "company") {
       const c = this.company(edited.owner.id);
-      if (!c) throw new Error("所选归属对象已经不存在，请选择其他公司或人员。");
+      if (!c && !sameRef(this.data.documents[idx].owner, edited.owner)) throw new Error("所选归属对象已经不存在，请选择其他公司或人员。");
       if (type.owner !== "company") throw new Error("这个文件类型与归属对象不匹配。公司文件只能归属公司，人员文件只能归属人员。");
-      if (!typeAppliesTo(type, c.jurisdiction)) throw new Error("这个文件类型不适用于所选公司的法域，请选择适用的类型。");
+      if (c && !typeAppliesTo(type, c.jurisdiction)) throw new Error("这个文件类型不适用于所选公司的法域，请选择适用的类型。");
     } else {
       if (!this.person(edited.owner.id)) throw new Error("所选归属对象已经不存在，请选择其他公司或人员。");
       if (type.owner !== "person") throw new Error("这个文件类型与归属对象不匹配。公司文件只能归属公司，人员文件只能归属人员。");
@@ -2307,11 +2382,21 @@ export class Store {
 
   // MARK: 备份
 
+  /** 同一 Store 的快照排队创建；调用时固定目标文件夹，切换数据根不会串写。 */
+  async createSnapshot(reason: string): Promise<DataSnapshot> {
+    const folder = this.folder;
+    let result: DataSnapshot | undefined;
+    const run = this.snapshotQueue.then(async () => { result = await makeSnapshot(folder, reason); });
+    this.snapshotQueue = run.then(() => undefined, () => undefined);
+    await run;
+    return result!;
+  }
+
   async snapshotBeforeChange(reason: string): Promise<DataSnapshot | null> {
     if (this.loadFailed || this.isLoading) return null;
     try {
       await this.flushWrites();
-      const snap = await makeSnapshot(this.folder, reason);
+      const snap = await this.createSnapshot(reason);
       this.snapshots = await listSnapshots(this.folder);
       return snap;
     } catch (e) {
@@ -2326,7 +2411,7 @@ export class Store {
     if (this.loadFailed || this.isLoading) { this.setError("数据还没有正常载入，暂不能备份。"); return; }
     try {
       await this.flushWrites();
-      await makeSnapshot(this.folder, "手动备份");
+      await this.createSnapshot("手动备份");
       await this.refreshSnapshots();
       this.showToast("已备份当前数据。");
     } catch (e) {
@@ -2339,7 +2424,7 @@ export class Store {
     if (this.isLoading) return;
     try {
       await this.flushWrites();
-      if (!this.loadFailed) await makeSnapshot(this.folder, `恢复到 ${snapshotTitle(s.date)} 之前`);
+      if (!this.loadFailed) await this.createSnapshot(`恢复到 ${snapshotTitle(s.date)} 之前`);
       await restoreSnapshot(s, this.folder);
     } catch (e) {
       this.setError(`恢复失败：${(e instanceof Error ? e.message : String(e))}。当前数据没有被覆盖，或已在“备份与配置”里留有恢复前的快照。`);
@@ -2373,7 +2458,7 @@ export class Store {
     // 清空前的快照连同归档文件一起保存，恢复这份快照就能完整找回。快照写不成就不清空。
     let snap: DataSnapshot;
     if (!(await this.ensureSaved("清空数据"))) return;
-    try { snap = await makeSnapshot(this.folder, "清空所有数据前"); }
+    try { snap = await this.createSnapshot("清空所有数据前"); }
     catch (e) { this.setError(`清空前的备份没有写成，数据没有改动：${(e instanceof Error ? e.message : String(e))}。请确认数据文件夹可写入后重试。`); return; }
     this.undoStack = []; this.redoStack = [];
     const files = this.data.documents.map((d) => this.fileURL(d));

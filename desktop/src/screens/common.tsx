@@ -2,7 +2,7 @@
 
 import { TicketStub } from "../ui/TicketStub";
 import { companyTint } from "../ui/uistyle";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import * as D from "../domain/day";
 import type { Day } from "../domain/day";
 import {
@@ -17,6 +17,7 @@ import type { Store } from "../state/store";
 import { type StagedFile, commitStaged, discardStaged, stage } from "../state/actions";
 import { copyMessage, copyHandoff, packetItems, packetMissing, packetItemTitle, packetReason } from "../services/packets";
 import { getOcrStatus, subscribeOcrStatus, thumbnail } from "../services/extract";
+import { inboxImportExtensions } from "../domain/importFormats";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import {
@@ -42,7 +43,7 @@ export function statePill(s: ArchiveState): PillKind {
     case "noDate": case "expiring": case "needsUpdate": return "warn";
     case "expired": case "fileMissing": return "bad";
     case "marked": return s.mark === "notObtained" || s.mark === "restricted" ? "outline" : s.mark === "unverified" ? "warn" : "neutral";
-    case "missing": return "outline";
+    case "missing": return "neutral";
   }
 }
 export const stateColor = (s: ArchiveState) => (s.kind === "expired" ? "var(--danger)" : s.kind === "expiring" || s.kind === "needsUpdate" ? "var(--amber-text)" : "var(--muted)");
@@ -153,7 +154,7 @@ export function useStageFile(): [(opts: { typeID?: string; owner?: NodeRef; repl
   const [file, setFile] = useState<StagedFile | null>(null);
   const [busy, setBusy] = useState(false);
   const start = async (opts: { typeID?: string; owner?: NodeRef; replaces?: Document; form?: string; onArchived?: (d: Document) => void; path?: string }) => {
-    const path = opts.path ?? (await platform().pickFiles({ multiple: false, extensions: ["pdf", "png", "jpg", "jpeg", "heic", "tif", "tiff", "eml", "msg", "txt"] }))[0];
+    const path = opts.path ?? (await platform().pickFiles({ multiple: false, extensions: [...inboxImportExtensions, "eml", "msg", "txt"] }))[0];
     if (!path) return;
     setBusy(true);
     try { setFile(await stage(store, path, opts)); }
@@ -362,27 +363,37 @@ const cacheGet = (k: string) => { if (!thumbCache.has(k)) return undefined; cons
 const cacheSet = (k: string, v: string | null) => { thumbCache.delete(k); thumbCache.set(k, v); while (thumbCache.size > THUMB_MAX) thumbCache.delete(thumbCache.keys().next().value!); };
 export const clearThumbCache = () => thumbCache.clear();
 
-export function FileThumb({ doc, alert, width = 34, height = 42 }: { doc: Document; alert?: boolean; width?: number; height?: number }) {
+export function FileThumb({ doc, alert, width = 34, height = 42, startDelayMs = 0 }: { doc: Document; alert?: boolean; width?: number; height?: number; startDelayMs?: number }) {
   const { store } = useApp();
   const path = store.fileURL(doc);
   const key = path + "|" + width;
   const [src, setSrc] = useState<string | null | undefined>(() => cacheGet(key));
   const [visible, setVisible] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
+  const needsThumbnail = src === undefined;
   // 只给进入可见区域（含上下 400px 预读）的缩略图排队解析
   useEffect(() => {
-    const el = box.current; if (!el || visible) return;
+    const el = box.current; if (!el || visible || !needsThumbnail) return;
     const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { setVisible(true); io.disconnect(); } }, { rootMargin: "400px 0px" });
     io.observe(el); return () => io.disconnect();
-  }, [visible]);
-  useEffect(() => {
+  }, [visible, needsThumbnail]);
+  useLayoutEffect(() => {
     const hit = cacheGet(key);
-    if (hit !== undefined) { setSrc(hit); return; }
-    if (!visible) return;
-    const sig = { cancelled: false };
-    void thumbnail(path, width, sig).then((s) => { if (sig.cancelled) return; cacheSet(key, s); setSrc(s); });
-    return () => { sig.cancelled = true; };
-  }, [key, visible]);
+    setSrc(hit);
+    if (hit !== undefined || !visible) return;
+    const controller = new AbortController();
+    const load = () => void thumbnail(path, width, controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      cacheSet(key, result);
+      setSrc(result);
+    });
+    const timer = startDelayMs > 0 ? window.setTimeout(load, startDelayMs) : undefined;
+    if (timer === undefined) load();
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [key, path, width, visible, startDelayMs]);
   const frame = { width, height, borderRadius: 6, flex: "none", boxShadow: `0 2px 6px rgba(0,0,0,.12), 0 0 0 ${alert ? 1.5 : 0.5}px ${alert ? "var(--danger)" : "rgba(0,0,0,.12)"}` } as const;
   if (src === undefined && width >= 80) return <span ref={box} style={{ display: "inline-flex" }}><Skeleton width={width} height={height} /></span>;
   if (src) return <img src={src} alt="" decoding="async" style={{ ...frame, objectFit: "cover", objectPosition: "top", background: "#fff" }} />;
@@ -449,8 +460,8 @@ export function DocumentRow({ d, showOwner = true, extraMenu, selected, onSelect
         </div>
       </div>
       <span style={{ width: FileColumns.state, flex: "none" }}><Pill text={freshnessLabel(f)} kind={freshnessPill(f)} /></span>
-      <span className="mono" style={{ width: FileColumns.date, flex: "none", fontSize: 12.5, color: d.issueDate ? "var(--ink)" : "var(--muted)" }}>{d.issueDate ?? "—"}</span>
-      <span className="mono" style={{ width: FileColumns.date, flex: "none", fontSize: 12.5, color: freshnessPill(f) === "bad" && expiry ? "var(--danger)" : expiry ? "var(--ink)" : "var(--muted)" }}>{expiryLabel(d, t)}</span>
+      <span className="num" style={{ width: FileColumns.date, flex: "none", fontSize: 13, color: d.issueDate ? "var(--ink)" : "var(--muted)" }}>{d.issueDate ?? "—"}</span>
+      <span className="num" style={{ width: FileColumns.date, flex: "none", fontSize: 13, color: freshnessPill(f) === "bad" && expiry ? "var(--danger)" : expiry ? "var(--ink)" : "var(--muted)" }}>{expiryLabel(d, t)}</span>
       </button>
       <span className="row gap6" style={{ width: FileColumns.actions, flex: "none", justifyContent: "flex-end" }}>
         {busy ? <Spinner /> : f.kind === "fileMissing" ? <Button size="small" onClick={() => void store.relocateDocument(d)}>重新定位…</Button>
@@ -626,9 +637,9 @@ export { isHandedOff };
 /** 人或公司（NodeRef）选项：分“人员 / 公司”两组，人用头像，公司用法域徽章。 */
 export function refInfo(store: Store, r: NodeRef | null | undefined): OptionInfo | undefined {
   if (!r) return undefined;
-  if (r.kind === "person") { const p = store.person(r.id); return { group: "人员", lead: <Avatar name={p?.name ?? "?"} size={22} />, sub: p ? store.personHint(p.id) : undefined }; }
+  if (r.kind === "person") { const p = store.person(r.id); return { group: "人员", lead: <Avatar name={p?.name ?? "?"} size={28} />, sub: p ? store.personHint(p.id) : undefined }; }
   const c = store.company(r.id);
-  return c ? { group: "公司", lead: <JurisdictionBadge code={c.jurisdiction} size={22} tint={companyTint(store, c.id)} />, sub: store.jurisdictionName(c.jurisdiction) } : undefined;
+  return c ? { group: "公司", lead: <JurisdictionBadge code={c.jurisdiction} size={28} tint={companyTint(store, c.id)} />, sub: store.jurisdictionName(c.jurisdiction) } : undefined;
 }
 /** 只有公司的选项（值是公司 id）。 */
 export const companyInfo = (store: Store, id: string | null | undefined) => { const i = id ? refInfo(store, ref("company", id)) : undefined; return i && { ...i, group: undefined }; };

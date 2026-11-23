@@ -9,11 +9,13 @@ const path = require("node:path");
 const { execFile } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
 const { SYNC_SCRIPT, OCR_SCRIPT } = require("./jxa.cjs");
-const { MAC_SCRIPT: CAL_MAC, WIN_SCRIPT: CAL_WIN } = require("./calendar.cjs");
+const { WIN_SCRIPT: CAL_WIN } = require("./calendar.cjs");
 const share = require("./share.cjs");
 
 const isMac = process.platform === "darwin";
 const isWin = process.platform === "win32";
+// Windows 的通知使用安装程序写入开始菜单快捷方式的应用 ID。
+if (isWin) app.setAppUserModelId("app.charter.desktop");
 // 5.3.3：菜单和“关于”里显示 Charter，而不是包名 charter-desktop。
 // 改名会让 userData 换目录（数据文件夹位置等设置存在那里），所以先记下原路径再改回去。
 { const ud = app.getPath("userData"); app.setName("Charter"); app.setPath("userData", ud); }
@@ -283,18 +285,26 @@ $pages = foreach ($p in $args) {
 
 // 5.4：同步到系统日历（Mac：EventKit；Windows：桌面版 Outlook）。数据经临时 JSON 文件传入，结束后删除。
 async function calendarSync(input) {
-  if (!isMac && !isWin) return { error: "unsupported" };
+  if (isMac) {
+    try {
+      const modulePath = app.isPackaged ? path.join(process.resourcesPath, "charter-calendar.node") : path.join(__dirname, "../build/charter-calendar.node");
+      const result = JSON.parse(await require(modulePath).sync(JSON.stringify(input)));
+      if (result.error) log("warn", "日历同步", result.error, result.message || "");
+      else if (!input.checkOnly) log("info", "日历同步完成", JSON.stringify({ added: result.added, updated: result.updated, removed: result.removed }));
+      return result;
+    } catch (error) {
+      log("warn", "EventKit 无法运行", String(error));
+      return { error: "failed", message: String(error) };
+    }
+  }
+  if (!isWin) return { error: "unsupported" };
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "charter-cal-"));
   try {
     const file = path.join(dir, "events.json");
     await fsp.writeFile(file, JSON.stringify(input), "utf8");
-    let out;
-    if (isMac) out = await run("/usr/bin/osascript", ["-l", "JavaScript", "-e", CAL_MAC, file], { timeout: 180000 });
-    else {
-      const script = path.join(dir, "cal.ps1");
-      await fsp.writeFile(script, "\uFEFF" + CAL_WIN, "utf8");
-      out = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, file], { timeout: 180000 });
-    }
+    const script = path.join(dir, "cal.ps1");
+    await fsp.writeFile(script, "\uFEFF" + CAL_WIN, "utf8");
+    const out = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, file], { timeout: 180000 });
     if (out === null) { log("warn", "日历同步脚本失败"); return { error: "failed" }; }
     try { const r = JSON.parse(out.split("\n").pop()); if (r.error) log("warn", "日历同步", r.error, r.message || ""); else log("info", "日历同步完成", JSON.stringify({ added: r.added, updated: r.updated, removed: r.removed })); return r; }
     catch { log("warn", "日历同步输出无法解析"); return { error: "failed" }; }

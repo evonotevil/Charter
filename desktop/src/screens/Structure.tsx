@@ -8,15 +8,16 @@ import type { Day } from "../domain/day";
 import * as D from "../domain/day";
 import { type Company, type Holding, type NodeRef, isActiveOn, ref, refKey, latinPad } from "../domain/models";
 import { percentLabel, portfolio } from "../domain/engine";
+import { safeName } from "../domain/folder";
 import { buildSnapshot, focusChain, timelineStops } from "../domain/graph";
 import { NODE_H, NODE_W, type TreeLayout, chainOf, layoutTree, pathLength } from "../domain/tree";
 import { useApp } from "../state/hooks";
 import type { ShareholderStatus, Store } from "../state/store";
 import { platform } from "../platform/platform";
-import { installSampleData } from "../state/sample";
+import { requestSampleDemo } from "../state/demo";
 import { reducedMotion } from "../ui/motion";
 import { Icon } from "../ui/Icon";
-import { ActionMenu, Avatar, shortcutLabel, Button, Card, EmptyStateView, JurisdictionBadge, PageHeader, Pill, item, divider , Segmented , Note } from "../ui/kit";
+import { hasActiveModal, ActionMenu, Avatar, shortcutLabel, Button, Card, EmptyStateView, JurisdictionBadge, PageHeader, Pill, item, divider , Segmented , Note } from "../ui/kit";
 import { companyTint } from "../ui/uistyle";
 import { tok } from "../ui/lighttokens";
 import { CompanyChips } from "./PropChips";
@@ -94,13 +95,31 @@ export function StructureView() {
   const jump = (k: string) => {
     // 被折叠藏起来的：展开它的上级；不在“以它为中心”范围内的：退出中心模式
     if (centerKey && !chainOf(centerKey, snapshot.activeHoldings).has(k)) setCenter(null);
-    setCollapsed((s) => { const n = new Set(s); for (const h of snapshot.activeHoldings) if ("company:" + h.companyID === k) n.delete(refKey(h.holder)); return n; });
+    if (collapsed.size && !layout.nodes.has(k)) {
+      const ancestors = new Set<string>([k]);
+      const parents = new Map<string, string[]>();
+      for (const h of snapshot.activeHoldings) {
+        const child = "company:" + h.companyID;
+        const holders = parents.get(child) ?? [];
+        holders.push(refKey(h.holder));
+        parents.set(child, holders);
+      }
+      const expanded = new Set(collapsed);
+      for (const child of ancestors) {
+        for (const holder of parents.get(child) ?? []) {
+          if (holder === k) continue;
+          expanded.delete(holder);
+          ancestors.add(holder);
+        }
+      }
+      setCollapsed(expanded);
+    }
     select(k);
     requestAnimationFrame(() => requestAnimationFrame(() => chartApi.current?.centerOn(k)));
   };
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); search.current?.select(); } };
+    const h = (e: KeyboardEvent) => { if (!hasActiveModal() && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); search.current?.select(); } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
@@ -110,7 +129,7 @@ export function StructureView() {
       <PageHeader title="股权结构" />
       <Card>
         <EmptyStateView symbol="point.3.connected.trianglepath.dotted" title="还没有公司" message="从最上层的控股公司开始建，下面的公司选它做股东，结构图会自己连起来。" actionTitle="新建公司" action={() => router.open({ kind: "newCompany" })} />
-        <div className="row" style={{ justifyContent: "center" }}><Button onClick={() => void installSampleData(store)}>先看示例数据</Button></div>
+        <div className="row" style={{ justifyContent: "center" }}><Button onClick={() => requestSampleDemo(platform())}>先看示例数据</Button></div>
       </Card>
     </div></div>
   );
@@ -144,8 +163,8 @@ export function StructureView() {
           ...(centerKey ? [item("显示全部", "arrow.up.left.and.arrow.down.right", () => setCenter(null))] : []),
           ...(collapsed.size ? [item("全部展开", "chevron.down", () => setCollapsed(new Set()))] : []),
           divider,
-          item("导出图片（PNG）…", "square.and.arrow.up", () => void exportChart(store, layout, store.filterName(group), false)),
-          item("导出 PDF…", "doc.text", () => void exportChart(store, layout, store.filterName(group), true)),
+          item("导出图片（PNG）…", "square.and.arrow.up", () => void exportChart(store, layout, store.filterName(group), asOf, false)),
+          item("导出 PDF…", "doc.text", () => void exportChart(store, layout, store.filterName(group), asOf, true)),
         ]} />
       </div>
       {showHistory && stops.length > 1 && <Segmented ariaLabel="历史年份" className="seg-scroll" value={asOf} onChange={(d) => setStopIndex(stops.indexOf(d))} options={stops.map((d) => [d, <span className="num">{d === store.today ? "今天" : D.year(d)}</span>])} />}
@@ -176,11 +195,18 @@ type ChartProps = {
 
 function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFold, matches, checkOn, asOf, totals, api, isToday }: ChartProps) {
   const wrap = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 500 });
   const [xf, setXf] = useState<Xf>({ x: 0, y: 0, k: 1 });
   const [animating, setAnimating] = useState(false);
+  const animatingRef = useRef(false);
+  const animationTimer = useRef<number>();
+  const compositingTimer = useRef<number>();
   const userMoved = useRef(false);
-  const xfRef = useRef(xf); xfRef.current = xf;
+  const xfRef = useRef(xf);
+  const scrollPad = Math.max(size.w, size.h) + 64;
+  const scrollPadRef = useRef(scrollPad);
+  const commitXf = (next: Xf) => { xfRef.current = next; setXf(next); };
 
   useLayoutEffect(() => {
     const el = wrap.current; if (!el) return;
@@ -190,11 +216,45 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
     return () => ro.disconnect();
   }, []);
 
-  const smooth = (next: Xf) => {
-    if (reducedMotion()) { setXf(next); return; }
-    setAnimating(true); setXf(next);
-    window.setTimeout(() => setAnimating(false), 340);
+  const stopSmooth = (keepRenderedPosition: boolean) => {
+    if (!animatingRef.current) return;
+    if (animationTimer.current !== undefined) window.clearTimeout(animationTimer.current);
+    animationTimer.current = undefined;
+    if (keepRenderedPosition && canvas.current) {
+      const matrix = new DOMMatrixReadOnly(getComputedStyle(canvas.current).transform);
+      const rendered = { x: scrollPad - (wrap.current?.scrollLeft ?? scrollPad), y: scrollPad - (wrap.current?.scrollTop ?? scrollPad), k: matrix.a };
+      commitXf(rendered);
+    }
+    animatingRef.current = false;
+    setAnimating(false);
   };
+  const beginDirectManipulation = () => {
+    if (compositingTimer.current !== undefined) window.clearTimeout(compositingTimer.current);
+    compositingTimer.current = undefined;
+    wrap.current?.setAttribute("data-directing", "true");
+  };
+  const finishDirectManipulation = () => {
+    if (compositingTimer.current !== undefined) window.clearTimeout(compositingTimer.current);
+    compositingTimer.current = window.setTimeout(() => {
+      compositingTimer.current = undefined;
+      wrap.current?.removeAttribute("data-directing");
+    }, 180);
+  };
+  const smooth = (next: Xf) => {
+    if (reducedMotion()) { stopSmooth(false); commitXf(next); return; }
+    if (animationTimer.current !== undefined) window.clearTimeout(animationTimer.current);
+    animatingRef.current = true;
+    setAnimating(true); commitXf(next);
+    animationTimer.current = window.setTimeout(() => {
+      animationTimer.current = undefined;
+      animatingRef.current = false;
+      setAnimating(false);
+    }, 340);
+  };
+  useEffect(() => () => {
+    if (animationTimer.current !== undefined) window.clearTimeout(animationTimer.current);
+    if (compositingTimer.current !== undefined) window.clearTimeout(compositingTimer.current);
+  }, []);
   const fitXf = (): Xf => {
     // 太大的图不缩到看不清：最小 55%，从顶层居中开始，其余拖动或滚动查看
     const k = Math.max(0.7, clampK(Math.min((size.w - 48) / layout.width, (size.h - 72) / layout.height, 1.1)));
@@ -203,7 +263,7 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
       : size.w / 2 - (top.length ? (Math.min(...top.map((n) => n.x)) + Math.max(...top.map((n) => n.x))) / 2 : layout.width / 2) * k;
     return { k, x: Math.min(24, Math.max(size.w - layout.width * k - 24, cx)) === cx ? cx : Math.min(24, Math.max(size.w - layout.width * k - 24, cx)), y: Math.max(36, (size.h - layout.height * k) / 2) };
   };
-  const fit = (anim = true) => { userMoved.current = false; anim ? smooth(fitXf()) : setXf(fitXf()); };
+  const fit = (anim = true) => { userMoved.current = false; anim ? smooth(fitXf()) : commitXf(fitXf()); };
   const centerOn = (k: string) => {
     const n = layout.nodes.get(k); if (!n) return;
     const z = Math.max(xfRef.current.k, 0.8);
@@ -215,22 +275,9 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
   // 筛选、切换中心后自动缩放到合适视野；用户手动缩放或拖动过就不再自动调整（直到下次筛选）。
   const lastKey = useRef<string | null>(null);
   useLayoutEffect(() => {
-    if (lastKey.current !== snapshotKey) { lastKey.current = snapshotKey; userMoved.current = false; setXf(fitXf()); return; }
-    if (!userMoved.current) setXf(fitXf());
+    if (lastKey.current !== snapshotKey) { lastKey.current = snapshotKey; userMoved.current = false; commitXf(fitXf()); return; }
+    if (!userMoved.current) commitXf(fitXf());
   }, [snapshotKey, layout, size.w, size.h]);
-
-  // 5.3.1：选中节点后（右侧摘要打开、画布变窄），把节点和左右一段关系留在安全区内；只平移，不改缩放
-  useLayoutEffect(() => {
-    if (!selectedKey || !size.w) return;
-    const n = layout.nodes.get(selectedKey); if (!n) return;
-    // 同一次提交里上面的自动适配刚算过新视野：没手动动过时以它为基准
-    const { k, x, y } = userMoved.current ? xfRef.current : fitXf();
-    const padX = 150 * k + 32, padY = 70 * k + 32;
-    const sx = x + n.x * k, sy = y + n.y * k;
-    const dx = sx < padX ? padX - sx : sx > size.w - padX ? size.w - padX - sx : 0;
-    const dy = sy < padY ? padY - sy : sy > size.h - padY ? size.h - padY - sy : 0;
-    if (dx || dy) smooth({ k, x: x + dx, y: y + dy });
-  }, [selectedKey, size.w, size.h]);
 
   // 生长动画：首次打开和切换集团后整棵树按层生长；之后只让新增的节点和连线生长。
   const [grow, setGrow] = useState<Map<string, number> | null>(null);
@@ -252,46 +299,203 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
     return () => window.clearTimeout(t);
   }, [layout]);
 
-  // 滚轮：按住 ⌘/Ctrl 或双指捏合缩放（以鼠标为锚点），否则平移。
+  // 普通双指滚动由浏览器合成器原生平移。只有指针位于图内且 ⌘/Ctrl
+  // 有效时，才临时安装可取消的 wheel 监听，避免缩放整个应用。没有修饰键时
+  // 始终只有 passive 监听，不会把普通滚动变成等待主线程的阻塞区域。
   useEffect(() => {
     const el = wrap.current; if (!el) return;
-    const wheel = (e: WheelEvent) => {
-      e.preventDefault();
+    let pointerInside = false;
+    let modifierDown = false;
+    let blocking = false;
+    let gestureTimer: number | undefined;
+    const zoomWheel = (e: WheelEvent) => {
       userMoved.current = true;
-      if (e.ctrlKey || e.metaKey) {
-        const r = el.getBoundingClientRect(), ax = e.clientX - r.left, ay = e.clientY - r.top;
-        const factor = Math.exp(-e.deltaY * 0.01);
-        setXf((cur) => {
-          const k = clampK(cur.k * factor);
-          return { k, x: ax - ((ax - cur.x) / cur.k) * k, y: ay - ((ay - cur.y) / cur.k) * k };
-        });
-      } else setXf((cur) => ({ ...cur, x: cur.x - e.deltaX, y: cur.y - e.deltaY }));
+      stopSmooth(true);
+      beginDirectManipulation();
+      finishDirectManipulation();
+      const r = el.getBoundingClientRect(), ax = e.clientX - r.left, ay = e.clientY - r.top;
+      const cur = xfRef.current, factor = Math.exp(-e.deltaY * 0.01), k = clampK(cur.k * factor);
+      commitXf({ k, x: ax - ((ax - cur.x) / cur.k) * k, y: ay - ((ay - cur.y) / cur.k) * k });
     };
-    el.addEventListener("wheel", wheel, { passive: false });
-    return () => el.removeEventListener("wheel", wheel);
-  }, []);
-  const zoomBy = (f: number) => { userMoved.current = true; const k = clampK(xf.k * f); smooth({ k, x: size.w / 2 - ((size.w / 2 - xf.x) / xf.k) * k, y: size.h / 2 - ((size.h / 2 - xf.y) / xf.k) * k }); };
+    const blockedWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      zoomWheel(e);
+      if (!modifierDown) refreshGestureTrap();
+    };
+    const removeBlocker = () => {
+      if (!blocking) return;
+      blocking = false;
+      el.removeEventListener("wheel", blockedWheel);
+    };
+    const installBlocker = () => {
+      if (blocking || !pointerInside) return;
+      blocking = true;
+      el.addEventListener("wheel", blockedWheel, { passive: false });
+    };
+    function refreshGestureTrap() {
+      if (gestureTimer !== undefined) window.clearTimeout(gestureTimer);
+      installBlocker();
+      gestureTimer = window.setTimeout(() => {
+        gestureTimer = undefined;
+        if (!modifierDown) removeBlocker();
+      }, 180);
+    }
+    const passiveWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (blocking) return;
+        // Physical pinch can report Ctrl without a keyboard event. The first event
+        // reaches this passive path; Chromium's visual pinch remains at scale 1,
+        // then subsequent events in the gesture are locally cancelled.
+        zoomWheel(e);
+        refreshGestureTrap();
+        return;
+      }
+      userMoved.current = true;
+      stopSmooth(true);
+    };
+    const pointerState = (e: PointerEvent) => {
+      pointerInside = true;
+      modifierDown = e.ctrlKey || e.metaKey;
+      if (modifierDown) installBlocker(); else if (gestureTimer === undefined) removeBlocker();
+    };
+    const pointerLeave = () => {
+      pointerInside = false;
+      modifierDown = false;
+      if (gestureTimer !== undefined) window.clearTimeout(gestureTimer);
+      gestureTimer = undefined;
+      removeBlocker();
+    };
+    const keyDown = (e: KeyboardEvent) => {
+      if (!pointerInside || (e.key !== "Control" && e.key !== "Meta") && !e.ctrlKey && !e.metaKey) return;
+      modifierDown = true;
+      installBlocker();
+    };
+    const keyUp = (e: KeyboardEvent) => {
+      if (e.key !== "Control" && e.key !== "Meta") return;
+      modifierDown = e.ctrlKey || e.metaKey;
+      if (!modifierDown && gestureTimer === undefined) removeBlocker();
+    };
+    const blur = () => {
+      modifierDown = false;
+      if (gestureTimer !== undefined) window.clearTimeout(gestureTimer);
+      gestureTimer = undefined;
+      removeBlocker();
+    };
+    el.addEventListener("wheel", passiveWheel, { passive: true });
+    el.addEventListener("pointerenter", pointerState);
+    el.addEventListener("pointermove", pointerState);
+    el.addEventListener("pointerleave", pointerLeave);
+    window.addEventListener("keydown", keyDown);
+    window.addEventListener("keyup", keyUp);
+    window.addEventListener("blur", blur);
+    return () => {
+      if (gestureTimer !== undefined) window.clearTimeout(gestureTimer);
+      removeBlocker();
+      el.removeEventListener("wheel", passiveWheel);
+      el.removeEventListener("pointerenter", pointerState);
+      el.removeEventListener("pointermove", pointerState);
+      el.removeEventListener("pointerleave", pointerLeave);
+      window.removeEventListener("keydown", keyDown);
+      window.removeEventListener("keyup", keyUp);
+      window.removeEventListener("blur", blur);
+    };
+  }, [scrollPad]);
+
+  // State stores the chart position used by fit/center/zoom. Native scrolling updates
+  // the ref without rerendering the graph on every trackpad event.
+  useLayoutEffect(() => {
+    const el = wrap.current; if (!el) return;
+    if (scrollPadRef.current !== scrollPad) {
+      const previousPad = scrollPadRef.current;
+      scrollPadRef.current = scrollPad;
+      if (userMoved.current) {
+        const current = { ...xfRef.current,
+          x: previousPad - el.scrollLeft,
+          y: previousPad - el.scrollTop };
+        commitXf(current);
+        el.scrollTo({ left: scrollPad - current.x, top: scrollPad - current.y });
+      } else {
+        const desired = xfRef.current;
+        el.scrollTo({ left: scrollPad - desired.x, top: scrollPad - desired.y });
+      }
+      return;
+    }
+    el.scrollTo({ left: scrollPad - xf.x, top: scrollPad - xf.y,
+      behavior: animating && !reducedMotion() ? "smooth" : "auto" });
+  }, [xf, scrollPad, animating]);
+
+  // 5.3.1：pad/原生滚动位置迁移完成后，再把选中节点和左右一段关系留在安全区内；
+  // 只平移，不改缩放。这样右侧摘要改变 viewport 宽度时不会被 stale React state 覆盖。
+  useLayoutEffect(() => {
+    if (!selectedKey || !size.w) return;
+    const n = layout.nodes.get(selectedKey); if (!n) return;
+    const { k, x, y } = xfRef.current;
+    const padX = 150 * k + 32, padY = 70 * k + 32;
+    const sx = x + n.x * k, sy = y + n.y * k;
+    const dx = sx < padX ? padX - sx : sx > size.w - padX ? size.w - padX - sx : 0;
+    const dy = sy < padY ? padY - sy : sy > size.h - padY ? size.h - padY - sy : 0;
+    if (dx || dy) smooth({ k, x: x + dx, y: y + dy });
+  }, [selectedKey, size.w, size.h, scrollPad]);
+
+  const scrolled = () => {
+    const el = wrap.current; if (!el) return;
+    const cur = xfRef.current;
+    xfRef.current = { ...cur, x: scrollPad - el.scrollLeft, y: scrollPad - el.scrollTop };
+  };
+  const zoomBy = (f: number) => {
+    userMoved.current = true;
+    const cur = xfRef.current, k = clampK(cur.k * f);
+    smooth({ k, x: size.w / 2 - ((size.w / 2 - cur.x) / cur.k) * k, y: size.h / 2 - ((size.h / 2 - cur.y) / cur.k) * k });
+  };
 
   const panStart = (e: React.PointerEvent) => {
     if (e.button !== 0 || (e.target as HTMLElement).closest(".node, .chart-tools, .chart-legend")) return;
-    const sx = e.clientX, sy = e.clientY, start = xf;
+    const sx = e.clientX, sy = e.clientY;
+    stopSmooth(true);
+    const startLeft = wrap.current?.scrollLeft ?? 0, startTop = wrap.current?.scrollTop ?? 0;
     let moved = false;
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const move = (ev: PointerEvent) => {
       if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
+      if (!moved) beginDirectManipulation();
       moved = true; userMoved.current = true;
-      setXf({ ...start, x: start.x + ev.clientX - sx, y: start.y + ev.clientY - sy });
+      if (wrap.current) {
+        wrap.current.scrollLeft = startLeft - ev.clientX + sx;
+        wrap.current.scrollTop = startTop - ev.clientY + sy;
+      }
     };
-    const up = () => { el.removeEventListener("pointermove", move); el.removeEventListener("pointerup", up); if (!moved) select(null); };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", cancel);
+      el.removeEventListener("lostpointercapture", cancel);
+      if (moved) finishDirectManipulation(); else select(null);
+    };
+    const cancel = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", cancel);
+      el.removeEventListener("lostpointercapture", cancel);
+      if (moved) finishDirectManipulation();
+    };
     el.addEventListener("pointermove", move); el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", cancel); el.addEventListener("lostpointercapture", cancel);
   };
 
   // 键盘：↑ 上级、↓ 下级、← → 同层相邻；回车打开，Esc 取消选择，空格折叠。
   const onKey = (e: React.KeyboardEvent) => {
-    if ((e.target as HTMLElement).closest("input")) return;
+    if (e.target !== e.currentTarget) return;
     const cur = selectedKey ? layout.nodes.get(selectedKey) : undefined;
-    const go = (k?: string) => { if (!k) return; e.preventDefault(); select(k); const n = layout.nodes.get(k)!; const sx = xf.x + n.x * xf.k, sy = xf.y + n.y * xf.k; if (sx < 60 || sy < 60 || sx > size.w - 60 || sy > size.h - 60) centerOn(k); };
+    const go = (k?: string) => {
+      e.preventDefault();
+      if (!k) return;
+      select(k);
+      const n = layout.nodes.get(k)!, cur = xfRef.current;
+      const sx = cur.x + n.x * cur.k, sy = cur.y + n.y * cur.k;
+      if (sx < 60 || sy < 60 || sx > size.w - 60 || sy > size.h - 60) centerOn(k);
+    };
     if (!cur) { if (e.key.startsWith("Arrow")) go(layout.roots[0]); return; }
     const row = layout.layers[cur.layer];
     const near = (list: string[]) => list.sort((a, b) => Math.abs(layout.nodes.get(a)!.x - cur.x) - Math.abs(layout.nodes.get(b)!.x - cur.x))[0];
@@ -300,17 +504,24 @@ function Chart({ layout, snapshotKey, chain, selectedKey, select, open, toggleFo
     else if (e.key === "ArrowLeft") go(row[row.indexOf(cur.key) - 1]);
     else if (e.key === "ArrowRight") go(row[row.indexOf(cur.key) + 1]);
     else if (e.key === "Enter") { e.preventDefault(); open(cur.key); }
-    else if (e.key === " ") { e.preventDefault(); if (cur.children.length || cur.hiddenBelow) toggleFold(cur.key); }
+    else if (e.key === " ") { e.preventDefault(); if (cur.children.length || cur.folded) toggleFold(cur.key); }
     else if (e.key === "Escape") { e.preventDefault(); select(null); }
   };
 
   const focusing = !!selectedKey;
   return (
-    <div ref={wrap} className={`chart-wrap ${animating ? "animating" : ""} ${focusing ? "focusing" : ""} ${xf.k < 0.6 ? "lod" : ""}`} tabIndex={0} onKeyDown={onKey} onPointerDown={panStart}
-      role="application" aria-label="股权结构图。方向键在节点间移动，回车打开，空格折叠。" style={{ cursor: "grab", ["--k" as any]: xf.k }}>
-      <div className="chart-canvas" style={{ width: layout.width, height: layout.height, transform: `translate(${xf.x}px, ${xf.y}px) scale(${xf.k})` }}>
-        <ChartDrawing layout={layout} chain={chain} selectedKey={selectedKey} select={select} open={open} toggleFold={toggleFold}
-          matches={matches} checkOn={checkOn} asOf={asOf} totals={totals} isToday={isToday} wrap={wrap} grow={grow} />
+    <div className={`chart-wrap ${animating ? "animating" : ""} ${focusing ? "focusing" : ""} ${xf.k < 0.6 ? "lod" : ""}`} style={{ ["--k" as any]: xf.k }}>
+      <div ref={wrap} className="chart-viewport" tabIndex={0} onScroll={scrolled} onKeyDown={onKey} onPointerDown={panStart}
+        role="application" aria-label="股权结构图。方向键在节点间移动，回车打开，空格折叠。">
+        <div className="chart-scroll-space" style={{
+          width: Math.max(size.w + scrollPad * 2, layout.width * xf.k + scrollPad * 2),
+          height: Math.max(size.h + scrollPad * 2, layout.height * xf.k + scrollPad * 2),
+        }}>
+          <div ref={canvas} className="chart-canvas" style={{ left: scrollPad, top: scrollPad, width: layout.width, height: layout.height, transform: `scale(${xf.k})` }}>
+            <ChartDrawing layout={layout} chain={chain} selectedKey={selectedKey} select={select} open={open} toggleFold={toggleFold}
+              matches={matches} checkOn={checkOn} asOf={asOf} totals={totals} isToday={isToday} wrap={wrap} grow={grow} />
+          </div>
+        </div>
       </div>
       <div className="chart-legend" aria-hidden><span><i />已核实</span><span><i className="pending" />待核实</span><span><i className="nominee" />代持</span></div>
       <div className="chart-tools">
@@ -327,7 +538,6 @@ const ChartDrawing = memo(function ChartDrawing({ layout, chain, selectedKey, se
   Omit<ChartProps, "snapshotKey" | "api"> & { wrap: React.RefObject<HTMLDivElement>; grow: Map<string, number> | null }) {
   const { store } = useApp();
   const focusing = !!selectedKey;
-  const hasKids = (k: string) => layout.nodes.get(k)!.children.length > 0 || layout.nodes.get(k)!.hiddenBelow > 0;
   const lvl = (k: string) => grow?.get(k);
   return (
     <>
@@ -355,13 +565,13 @@ const ChartDrawing = memo(function ChartDrawing({ layout, chain, selectedKey, se
         const sel = n.key === selectedKey;
         const l = lvl(n.key);
         return (
-          <div key={n.key} className={`node ${chain.nodes.has(n.key) && focusing ? "chain" : ""} ${matches.has(n.key) ? "match" : ""} ${l !== undefined ? "grow" : ""}`} aria-selected={sel}
+          <div key={n.key} className={`node ${chain.nodes.has(n.key) && focusing ? "chain" : ""} ${matches.has(n.key) ? "match" : ""} ${l !== undefined ? "grow" : ""}`} aria-current={sel || undefined}
             role="group" aria-label={store.nameOf(n.ref)} title={store.nameOf(n.ref)}
             style={{ left: n.x - NODE_W / 2, top: n.y - NODE_H / 2, width: NODE_W, height: NODE_H, ...(l !== undefined ? { animationDelay: `${l * LEVEL_MS}ms` } : null) }}
             onClick={(e) => { e.stopPropagation(); select(n.key); wrap.current?.focus({ preventScroll: true }); }} onDoubleClick={() => open(n.key)}>
             <NodeBody n={n.ref} isToday={isToday} />
-            {hasKids(n.key) && <button className="fold" title={n.hiddenBelow ? `展开下面 ${n.hiddenBelow} 家` : "收起下级"} aria-label={n.hiddenBelow ? "展开" : "收起"}
-              onClick={(e) => { e.stopPropagation(); toggleFold(n.key); }}>{n.hiddenBelow ? <><Icon name="plus" size={8} strokeWidth={3} />{n.hiddenBelow}</> : <Icon name="minus" size={8} strokeWidth={3} />}</button>}
+            {(n.folded || n.children.length > 0) && <button className="fold" title={n.folded ? (n.hiddenBelow ? `展开下面 ${n.hiddenBelow} 家` : "展开下属连线") : "收起下级"} aria-label={n.folded ? "展开" : "收起"}
+              onDoubleClick={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleFold(n.key); }}><Icon name={n.folded ? "plus" : "minus"} size={8} strokeWidth={3} />{n.hiddenBelow || null}</button>}
             {checkOn && n.ref.kind === "company" && (() => { const c = store.company(n.ref.id); if (!c || !store.shareholderCheckApplies(c)) return null; const st = store.shareholderStatus(c.id, asOf);
               return st.kind !== "complete" && <span className={`pill ${holderStatusTone(st)}`} style={{ position: "absolute", right: -8, top: -11, height: 20 }}>{holderStatusLabel(st)}</span>; })()}
             {n.ref.kind === "company" && (totals.get(n.ref.id) ?? 0) > 100.005 && <span style={{ position: "absolute", left: 0, right: 0, bottom: -24, display: "flex", justifyContent: "center" }}><Pill text={`合计 ${percentLabel(totals.get(n.ref.id) ?? 0)}`} kind="bad" /></span>}
@@ -430,8 +640,12 @@ function TreeList({ layout, holdings, collapsed, toggleFold, selectedKey, select
           <div key={r.path} role="treeitem" aria-selected={r.key === selectedKey} aria-expanded={kids && !r.repeat ? !collapsed.has(r.key) : undefined} tabIndex={0}
             className="tree-row" style={{ ["--depth" as any]: r.depth, cursor: "pointer", background: matches.has(r.key) && r.key !== selectedKey ? "var(--blue-soft)" : undefined }}
             onClick={() => select(r.key)} onDoubleClick={() => open(r.key)}
-            onKeyDown={(e) => { if (e.key === "Enter") open(r.key); if (e.key === " " && kids) { e.preventDefault(); toggleFold(r.key); } }}>
-            {kids && !r.repeat ? <button className="tw" aria-label={collapsed.has(r.key) ? "展开" : "收起"} onClick={(e) => { e.stopPropagation(); toggleFold(r.key); }}>
+            onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === "Enter") open(r.key);
+              if (e.key === " " && kids && !r.repeat) { e.preventDefault(); toggleFold(r.key); }
+            }}>
+            {kids && !r.repeat ? <button className="tw" aria-label={collapsed.has(r.key) ? "展开" : "收起"} onDoubleClick={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); toggleFold(r.key); }}>
               <Icon name="chevron.right" size={11} className={`chev ${collapsed.has(r.key) ? "" : "open"}`} /></button> : <span className="tw" />}
             {n.kind === "company" ? <JurisdictionBadge code={c?.jurisdiction ?? ""} size={28} tint={companyTint(store, n.id)} /> : <Avatar name={store.nameOf(n)} size={28} />}
             <span className="col" style={{ minWidth: 0 }}>
@@ -570,19 +784,22 @@ function jpegPDF(jpeg: Uint8Array, w: number, h: number, pageW: number, pageH: n
   return out;
 }
 
-async function exportChart(store: Store, layout: TreeLayout, title: string, pdf: boolean) {
+async function exportChart(store: Store, layout: TreeLayout, title: string, asOf: Day, pdf: boolean) {
   const p = platform();
-  const name = `${title} 股权结构 ${store.today}.${pdf ? "pdf" : "png"}`;
+  const heading = `${title} 股权结构`;
+  const snapshotDate = `截至 ${asOf}`;
+  const name = `${safeName(heading)} ${snapshotDate}.${pdf ? "pdf" : "png"}`;
   const path = await p.saveDialog({ defaultName: name, extensions: [pdf ? "pdf" : "png"], title: "导出结构图" });
   if (!path) return;
-  const head = 64, scale = 2;
+  const head = 80, scale = 2;
   const W = layout.width, H = layout.height + head;
   const cv = document.createElement("canvas"); cv.width = W * scale; cv.height = H * scale;
   const g = cv.getContext("2d")!; g.scale(scale, scale);
   const sans = 'Inter, "PingFang SC", "Microsoft YaHei UI", sans-serif', display = 'Nunito, "PingFang SC", "Microsoft YaHei UI", sans-serif';
   g.fillStyle = tok("surface"); g.fillRect(0, 0, W, H);
   g.fillStyle = tok("line"); for (let x = 10; x < W; x += 20) for (let y = head + 10; y < H; y += 20) { g.beginPath(); g.arc(x, y, 1.2, 0, Math.PI * 2); g.fill(); }
-  g.fillStyle = tok("ink"); g.font = `900 22px ${display}`; g.fillText(name.replace(/\.(png|pdf)$/, ""), 48, 40);
+  g.fillStyle = tok("ink"); g.font = `900 22px ${display}`; g.fillText(heading, 48, 38, W - 96);
+  g.fillStyle = tok("muted"); g.font = `14px ${sans}`; g.fillText(snapshotDate, 48, 61);
   g.translate(0, head);
   for (const e of layout.edges) {
     g.strokeStyle = e.holding.isNominee ? tok("amber") : tok("line-strong"); g.lineWidth = 2; g.lineCap = "round"; g.setLineDash(e.holding.verified ? [] : [6, 5]);

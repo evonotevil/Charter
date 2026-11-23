@@ -15,8 +15,11 @@ export function AgentsView() {
   const { store, router } = useApp();
   const parties = [...store.data.parties].sort((a, b) => (a.kind === "agent" ? 0 : 1) - (b.kind === "agent" ? 0 : 1) || a.name.localeCompare(b.name));
   const sel = store.party(router.selectedAgentID) ?? parties[0];
+  const lastAddRequest = useRef(router.newPartyRequest);
   useEffect(() => {
-    if (router.newPartyRequest) add();
+    if (lastAddRequest.current === router.newPartyRequest) return;
+    lastAddRequest.current = router.newPartyRequest;
+    add();
   }, [router.newPartyRequest]);
   const add = () => {
     const p = { ...newParty("新中介"), contacts: [newContact()] };

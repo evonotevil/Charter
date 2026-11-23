@@ -5,10 +5,13 @@ import type { Platform } from "../platform/platform";
 
 const seenKey = "tourSeen";
 const requestKey = "tourRequested";
+const sampleRequestKey = "sampleDemoRequested";
 
 let demo = false;
+let demoKind: "tour" | "sample" | null = null;
 let realPlatform: Platform | null = null;
 export const isDemo = () => demo;
+export const isTourDemo = () => demoKind === "tour";
 export const setRealPlatform = (p: Platform) => { realPlatform = p; };
 const real = () => realPlatform!;
 
@@ -38,8 +41,18 @@ export async function shouldStartTour(real: Platform, root: string): Promise<boo
   if (real.prefGet(seenKey)) return false;
   try { return !(await real.stat(real.join(root, "charter.json"))).exists; } catch { return false; }
 }
-export function enterDemo() { demo = true; }
+/** 股权结构空状态请求的示例浏览只消费一次，并且不影响教程是否看过。 */
+export function shouldStartSampleDemo(real: Platform): boolean {
+  if (!real.prefGet(sampleRequestKey)) return false;
+  real.prefSet(sampleRequestKey, null);
+  return true;
+}
+export function enterDemo(kind: "tour" | "sample" = "tour") { demo = true; demoKind = kind; }
+/** 退出普通示例浏览：不改变入门教程的已读状态。 */
+export function exitDemo() { location.reload(); }
 /** 看完或跳过：记下已看过，重新载入回到真实档案。 */
 export function finishTour() { real().prefSet(seenKey, "1"); location.reload(); }
 /** 设置里“重新看教程”。 */
 export function requestTour(p: Platform) { p.prefSet(requestKey, "1"); location.reload(); }
+/** 在独立的内存档案里浏览股权结构示例，不接触当前真实档案。 */
+export function requestSampleDemo(p: Platform) { p.prefSet(sampleRequestKey, "1"); location.reload(); }

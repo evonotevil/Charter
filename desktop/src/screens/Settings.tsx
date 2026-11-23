@@ -5,6 +5,7 @@ import { safeName } from "../domain/folder";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as D from "../domain/day";
 import { type CorporateGroup, type DateAdjust, type DocumentType, type NodeKind, type NodeRef, type RuleTemplate, type ValidityKind, brandPalette, isHexColor, isStatusLike, dateAdjustLabel, ref, refKey, uuid, validityKinds, validityLabel } from "../domain/models";
+import { reminderDays } from "../domain/engine";
 import { snapshotKeep, snapshotTitle, type DataSnapshot } from "../domain/folder";
 import { sourceLabel } from "../domain/groups";
 import { useApp } from "../state/hooks";
@@ -17,7 +18,8 @@ import { ShareCard } from "./Share";
 import { nonArchiveTypeIDs } from "../state/store";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { autoSyncOn, autoSyncPref, autoSyncStatus, autoSyncSupported, describeError, runCalendarSync } from "../services/calendarSync";
+import { autoSyncOn, autoSyncPref, autoSyncStatus, autoSyncSupported, describeError, disableCalendarSync, remindersEnabled, runCalendarSync, setRemindersEnabled } from "../services/calendarSync";
+import { writeCalendarFile } from "../services/packets";
 import { useChildMotion } from "../ui/motion";
 import { companyTint, groupRing, setDensity, useDensity } from "../ui/uistyle";
 import { Avatar, Banner, Card, PageHeader, Button, Segmented, Checkbox, ConfirmSheet, EmptyStateView, FieldRow, FormGroup, ListField, Modal, Pill, Popover, RadioGroup, SelectField, SheetScaffold, Switch, TextField, Note } from "../ui/kit";
@@ -25,7 +27,10 @@ import { ScheduleEditor } from "./common";
 import { ArchiveItemFields, type ItemDraft, newItemDraft } from "./Companies";
 import { PurposeEditor } from "./Packet";
 import { InlineText } from "./Agents";
+import { ReminderTimeField } from "../ui/ReminderTimeField";
+import { addReminderDayValue } from "./reminderDays";
 import "./settings557.css";
+import "./reminders559.css";
 
 export function SettingsView() {
   const { router } = useApp();
@@ -170,13 +175,18 @@ function ListItem({ mid, on, onClick, lead, title, sub, trailing }: { mid?: stri
 
 const paneDetail: Partial<Record<SettingsPane, string>> = {
   sync: "档案保存在哪个文件夹，以及是否在同步。",
-  reminders: "到期事项什么时候提醒、由哪台电脑提醒、写进哪个日历。",
+  reminders: "同步后，申报事项显示在日历的截止日。系统日历会按设定的时间提前通知。",
   backup: "完整备份、配置迁移和快照。会删除数据的操作在最下面。",
 };
 
 function AppearanceSettings() {
   const density = useDensity();
-  const initial = (() => { try { return localStorage.getItem("charter.theme") ?? "system"; } catch { return "system"; } })();
+  const initial = (() => {
+    try {
+      const stored = localStorage.getItem("charter.theme");
+      return stored === "light" || stored === "dark" ? stored : "system";
+    } catch { return "system"; }
+  })();
   const [theme, setThemeState] = useState(initial);
   const setTheme = (value: string) => {
     setThemeState(value);
@@ -209,10 +219,27 @@ function AppearanceChoice<V extends string>({ ariaLabel, options, value, onChang
   value: V;
   onChange: (value: V) => void;
 }) {
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const move = (index: number) => {
+    const option = options[index]?.[0];
+    if (option === undefined) return;
+    onChange(option);
+    optionRefs.current[index]?.focus({ preventScroll: true });
+  };
   return (
     <div className="appearance-choice" role="radiogroup" aria-label={ariaLabel} style={{ "--choice-count": options.length } as React.CSSProperties}>
-      {options.map(([option, label, preview]) => (
-        <button key={option} type="button" className={option === value ? "on" : ""} role="radio" aria-checked={option === value} onClick={() => onChange(option)}>
+      {options.map(([option, label, preview], index) => (
+        <button key={option} ref={(node) => { optionRefs.current[index] = node; }} type="button" className={option === value ? "on" : ""}
+          role="radio" aria-checked={option === value} tabIndex={option === value ? 0 : -1} onClick={() => onChange(option)} onKeyDown={(e) => {
+            let next: number | undefined;
+            if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (index + 1) % options.length;
+            else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (index - 1 + options.length) % options.length;
+            else if (e.key === "Home") next = 0;
+            else if (e.key === "End") next = options.length - 1;
+            if (next === undefined) return;
+            e.preventDefault();
+            move(next);
+          }}>
           {preview}
           <span>{label}</span>
         </button>
@@ -249,7 +276,14 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
   const [confirmFolder, setConfirmFolder] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [newDay, setNewDay] = useState("");
-  const [adding, setAdding] = useState(false);
+  const [editingReminderDays, setEditingReminderDays] = useState(false);
+  const [draftReminderDays, setDraftReminderDays] = useState<number[]>([]);
+  const [reminderDayError, setReminderDayError] = useState("");
+  const reminderDayInput = useRef<HTMLInputElement>(null);
+  const reminderDayEditButton = useRef<HTMLButtonElement>(null);
+  const wasEditingReminderDays = useRef(false);
+  const [showReminderMore, setShowReminderMore] = useState(false);
+  const calendarSync = useCalendarAutoSyncController();
   useEffect(() => { if (pane === "backup") void store.refreshSnapshots(); }, [pane]);
   const p = platform();
   const root = store.folder.root;
@@ -257,11 +291,25 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
   const cloud = s.kind !== "local";
   const finder = p.os === "windows" ? "在资源管理器中显示" : "在访达中显示";
   const settings = store.data.settings;
+  const reminderTime = `${String(settings.notificationHour).padStart(2, "0")}:${String(settings.notificationMinute ?? 0).padStart(2, "0")}`;
   const addDay = () => {
-    const d = parseInt(newDay.trim(), 10);
-    if (d > 0 && d <= 730 && !settings.reminderDays.includes(d)) store.saveSettings((x) => { x.reminderDays = [...x.reminderDays, d].sort((a, b) => b - a); });
-    setNewDay(""); setAdding(false);
+    const result = addReminderDayValue(draftReminderDays, newDay);
+    if (!result.ok) { setReminderDayError(result.message); return false; }
+    setDraftReminderDays(result.days);
+    setNewDay(""); setReminderDayError("");
+    return true;
   };
+  const closeReminderDaysEditor = () => {
+    setEditingReminderDays(false);
+    setDraftReminderDays([]);
+    setNewDay("");
+    setReminderDayError("");
+  };
+  useEffect(() => {
+    if (editingReminderDays) reminderDayInput.current?.focus({ preventScroll: true });
+    else if (wasEditingReminderDays.current) reminderDayEditButton.current?.focus({ preventScroll: true });
+    wasEditingReminderDays.current = editingReminderDays;
+  }, [editingReminderDays]);
   const chooseFolder = async () => {
     setConfirmFolder(false);
     const dir = await p.pickFolder({ title: "选择数据文件夹" });
@@ -273,31 +321,77 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
     <Scroll>
       <PaneHeader title={settingsPaneTitle[pane]} detail={paneDetail[pane]} />
       {pane === "reminders" && <>
-        <SGroup>
-          <SRow title="提前提醒" detail="到期前这些天各提醒一次。">
-            {[...settings.reminderDays].sort((a, b) => b - a).map((d) => (
-              <span key={d} className="v4-chip num">{d} 天{settings.reminderDays.length > 1 && <button aria-label={`移除 ${d} 天`} onClick={() => store.saveSettings((x) => { x.reminderDays = x.reminderDays.filter((y) => y !== d); })}><Icon name="xmark" size={8} /></button>}</span>
-            ))}
-            {adding ? <input className="field num" autoFocus value={newDay} onChange={(e) => setNewDay(e.target.value.replace(/\D/g, ""))} onBlur={addDay} onKeyDown={(e) => { if (e.key === "Enter") addDay(); if (e.key === "Escape") { e.stopPropagation(); setAdding(false); setNewDay(""); } }} placeholder="天数" aria-label="添加提醒天数" style={{ width: 64, height: 28 }} />
-              : <button className="v4-toggle" onClick={() => setAdding(true)}>+ 添加</button>}
+        <div className="col reminder-settings-559">
+          <SGroup scope="reminder-main">
+          <CalendarAutoSync view="toggle" controller={calendarSync} />
+          <SRow title="提前天数" detail="到期前按所选天数提醒。申报事项在截止当天也会提醒。">
+            {editingReminderDays ? <span className="reminder-days-editor-559" onKeyDownCapture={(e) => {
+              if (e.key !== "Escape") return;
+              e.preventDefault(); e.stopPropagation(); closeReminderDaysEditor();
+            }}>
+              <span className="reminder-days-controls-559">
+              {draftReminderDays.map((d) => (
+                <span key={d} className="v4-chip num">{d} 天{draftReminderDays.length > 1 &&
+                  <button className="reminder-day-remove-559" aria-label={`移除 ${d} 天`} onClick={() => { setDraftReminderDays((days) => days.filter((day) => day !== d)); setReminderDayError(""); }}><Icon name="xmark" size={8} /></button>}</span>
+              ))}
+              <input ref={reminderDayInput} className="field num" inputMode="numeric" value={newDay} onChange={(e) => { setNewDay(e.target.value); setReminderDayError(""); }} onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); addDay(); }
+              }} placeholder="天数" aria-label="添加提醒天数" aria-invalid={!!reminderDayError} aria-describedby={reminderDayError ? "reminder-day-error-559" : undefined} style={{ width: 64, height: 34 }} />
+              <Button size="small" onClick={closeReminderDaysEditor}>取消</Button>
+              <Button size="small" kind="primary" onClick={() => {
+                let next = draftReminderDays;
+                if (newDay) {
+                  const result = addReminderDayValue(draftReminderDays, newDay);
+                  if (!result.ok) { setReminderDayError(result.message); reminderDayInput.current?.focus({ preventScroll: true }); return; }
+                  next = result.days;
+                }
+                store.saveSettings((x) => { x.reminderDays = next; });
+                closeReminderDaysEditor();
+              }}>保存</Button>
+              </span>
+              {reminderDayError && <span id="reminder-day-error-559" className="reminder-day-error-559" role="alert">{reminderDayError}</span>}
+            </span> : <>
+              {[...settings.reminderDays].sort((a, b) => b - a).map((d) => <span key={d} className="v4-chip num">{d} 天</span>)}
+              <Button buttonRef={reminderDayEditButton} size="small" onClick={() => { setDraftReminderDays([...settings.reminderDays].sort((a, b) => b - a)); setReminderDayError(""); setEditingReminderDays(true); }}>编辑</Button>
+            </>}
           </SRow>
-          <SRow title="提醒时间" detail="系统通知和日历提醒都在这个时间。">
-            <SelectField options={Array.from({ length: 16 }, (_, i) => [i + 6, `${String(i + 6).padStart(2, "0")}:00`] as [number, string])} value={settings.notificationHour} onChange={(h) => store.saveSettings((x) => { x.notificationHour = h; })} minWidth={110} />
+          <SRow title="提醒时间" detail="本地时间">
+            <ReminderTimeField value={reminderTime} onChange={(time) => store.saveSettings((x) => {
+              const [hour, minute] = time.split(":").map(Number);
+              x.notificationHour = hour;
+              x.notificationMinute = minute;
+            })} />
           </SRow>
-          <SRow title="由这台电脑发通知" detail={!store.shared ? "只在这台电脑使用时，提醒总由这台电脑发出。" : store.isPrimaryDevice ? "多台电脑共用一个数据文件夹时，只让一台发，避免重复。" : `现在由“${settings.primaryDeviceName ?? "另一台电脑"}”发通知。`}>
-            <Switch ariaLabel="由这台电脑发通知" checked={store.isPrimaryDevice} disabled={!store.shared} onChange={(v) => store.saveSettings((x) => { if (v) { x.primaryDeviceID = store.deviceID; x.primaryDeviceName = store.deviceName; } else { x.primaryDeviceID = "none"; x.primaryDeviceName = undefined; } })} />
+          {store.shared && <SRow title="由这台电脑发通知" detail={store.isPrimaryDevice ? "多台电脑共用数据时，只让一台负责，避免重复。" : `现在由“${settings.primaryDeviceName ?? "另一台电脑"}”负责。`}>
+            <Switch ariaLabel="由这台电脑发通知" checked={store.isPrimaryDevice} onChange={(v) => store.saveSettings((x) => { if (v) { x.primaryDeviceID = store.deviceID; x.primaryDeviceName = store.deviceName; } else { x.primaryDeviceID = "none"; x.primaryDeviceName = undefined; } })} />
+          </SRow>}
+          </SGroup>
+          <NextReminder />
+          <CalendarAutoSync view="status" controller={calendarSync} />
+          <div className="reminder-more-559">
+            <Button kind="quiet" size="small" ariaExpanded={showReminderMore} ariaControls="reminder-more-options-559" onClick={() => setShowReminderMore((shown) => !shown)}>{showReminderMore ? "收起" : "更多"}<Icon name={showReminderMore ? "chevron.up" : "chevron.down"} size={11} /></Button>
+          </div>
+          {showReminderMore && <div id="reminder-more-options-559"><SGroup footer="这是给其他设备和不支持直接同步的日历应用使用的兼容方式。已开启系统日历同步时，这台电脑无需再订阅。">
+          <SRow title="日历订阅文件（.ics）" detail="生成一份可订阅的日历文件。打开文件夹后，用你的日历应用订阅它。">
+            <Button size="small" onClick={async () => {
+              try {
+                const path = await writeCalendarFile(store);
+                await p.reveal(path);
+                store.showToast("日历订阅文件已生成并显示。");
+              } catch (error) {
+                store.setError(`生成日历订阅文件失败：${error instanceof Error ? error.message : String(error)}。`);
+              }
+            }}>生成并显示</Button>
           </SRow>
-        </SGroup>
-        <CalendarAutoSync />
-        <SGroup footer="用 Apple 日历或 Outlook 订阅这个文件后，手机上也能看到到期事项。">
-          <SRow title="同步到日历" detail={`在数据文件夹里生成 ${settings.calendarName}.ics，事项变化时自动更新。`}>
-            <Switch ariaLabel="同步到日历" checked={settings.calendarEnabled} onChange={(v) => store.saveSettings((x) => { x.calendarEnabled = v; })} />
+          <SRow title="保持订阅文件更新" detail="事项新增、改期、完成或删除时，自动重写这份文件。">
+            <Switch ariaLabel="保持订阅文件更新" checked={settings.calendarEnabled} onChange={(v) => store.saveSettings((x) => { x.calendarEnabled = v; })} />
           </SRow>
-          {settings.calendarEnabled && <SRow title="订阅文件" detail={<span className="mono selectable">{icsPath}</span>}>
+          {settings.calendarEnabled && <SRow title="文件位置" detail={<span className="mono selectable calendar-path-559">{icsPath}</span>}>
             <Button size="small" onClick={() => void p.reveal(icsPath).catch(() => void p.openPath(root))}>{finder}</Button>
             <Button size="small" onClick={() => { void p.copyText(icsPath); store.showToast("路径已复制。"); }}>复制路径</Button>
           </SRow>}
-        </SGroup>
+          </SGroup></div>}
+        </div>
       </>}
       {pane === "backup" && <>
         {store.unsaved.size > 0 && <Note tone="warn" action={<Button size="small" onClick={() => void store.retrySave()}>重试保存</Button>}>
@@ -345,14 +439,14 @@ function GeneralSettings({ pane }: { pane: SettingsPane }) {
           ))}
         </SGroup>
         <SGroup>
-          <SRow title="载入示例数据" detail="一套虚构的远澜、明岸集团数据。会替换当前档案，建议先换一个空文件夹。"><Button size="small" onClick={() => setConfirmSample(true)}>载入…</Button></SRow>
+          <SRow title="载入示例数据" detail="一套虚构的远澜、明岸集团数据。会替换当前档案，建议先换一个空文件夹。"><Button size="small" disabled={store.isLoading || store.isImporting || store.loadFailed} onClick={() => setConfirmSample(true)}>载入…</Button></SRow>
           <SRow title="清空所有数据" danger detail="移除公司、集团、人员、中介、文件和事项，设置与模板库保留。清空前自动保存快照。">
             <Button kind="danger" size="small" disabled={store.isLoading || store.isImporting || store.loadFailed} onClick={() => setConfirmClear(true)}>清空…</Button>
           </SRow>
         </SGroup>
       </>}
       {confirmFolder && <ConfirmSheet title="更换数据文件夹？" message="Charter 会改用新文件夹里的档案；当前文件夹的内容原样保留，不会移动或删除。" confirmTitle="选择文件夹…" onClose={() => setConfirmFolder(false)} onConfirm={() => void chooseFolder()} />}
-      {confirmSample && <ConfirmSheet title="载入示例数据？" message="示例数据会替换当前档案。载入前会自动保存快照，可以恢复。" confirmTitle="载入" destructive onClose={() => setConfirmSample(false)} onConfirm={() => { setConfirmSample(false); void installSampleData(store); }} />}
+      {confirmSample && <ConfirmSheet title="载入示例数据？" message="示例数据会替换当前档案。载入前会自动保存快照，可以恢复。" confirmTitle="载入" destructive onClose={() => setConfirmSample(false)} onConfirm={() => { setConfirmSample(false); void installSampleData(store, { requireSnapshot: true }); }} />}
       {confirmClear && <ConfirmSheet title="清空所有数据？" message="清空前会自动保存一份快照（连同归档文件），需要时可在这里恢复。设置和模板库会保留。" details={store.clearSummaryLines}
         confirmTitle="清空" destructive onClose={() => setConfirmClear(false)} onConfirm={() => { setConfirmClear(false); void store.clearAllData(); }} />}
       {restoring && <ConfirmSheet title={`恢复到 ${snapshotTitle(restoring.date)} 的状态？`} message="当前状态会先自动保存一份快照，之后也可以再恢复回来。"
@@ -977,38 +1071,216 @@ function PrivacySettings() {
   );
 }
 
-// MARK: - 5.4 自动同步到系统日历
+// MARK: - 5.5.9 到期提醒与系统日历
 
-function CalendarAutoSync() {
+function NextReminder() {
+  const { store, router } = useApp();
+  const settings = store.data.settings;
+  const now = new Date();
+  const todayMinutes = store.today === D.today() ? now.getHours() * 60 + now.getMinutes() : -1;
+  const reminderMinutes = settings.notificationHour * 60 + (settings.notificationMinute ?? 0);
+  const next = store.openObligations
+    .flatMap((obligation) => reminderDays(obligation, settings).map((day) => ({
+      obligation,
+      day,
+      before: D.daysBetween(day, obligation.due),
+    })))
+    .filter((candidate) => candidate.day > store.today || (candidate.day === store.today && reminderMinutes >= todayMinutes))
+    .sort((a, b) => a.day.localeCompare(b.day) || a.obligation.due.localeCompare(b.obligation.due))[0];
+  const time = `${String(settings.notificationHour).padStart(2, "0")}:${String(settings.notificationMinute ?? 0).padStart(2, "0")}`;
+  const enabled = remindersEnabled();
+  return (
+    <section className={`s4-card next-reminder-559 ${enabled && next ? "has-reminder" : "empty"}`} aria-label="下次申报提醒">
+      <div className="next-reminder-copy-559">
+        <span className="t-label">下次申报提醒</span>
+        {!enabled ? <>
+          <span className="next-reminder-time-559">开启后，这里会显示下一次通知时间。</span>
+        </> : next ? <>
+          <strong className="next-reminder-item-559">{next.obligation.rule.name} · {next.obligation.company.name}</strong>
+          <dl className="next-reminder-dates">
+            <div>
+              <dt className="t-meta muted">通知时间{next.before ? `（提前 ${next.before} 天）` : "（截止当天）"}</dt>
+              <dd><time dateTime={`${next.day}T${time}`}>{D.long(next.day)} {time}</time></dd>
+            </div>
+            <div>
+              <dt className="t-meta muted">申报截止日</dt>
+              <dd><time dateTime={next.obligation.due}>{D.long(next.obligation.due)}</time></dd>
+            </div>
+          </dl>
+        </> : <>
+          <span className="next-reminder-time-559">当前没有安排新的申报提醒。</span>
+        </>}
+      </div>
+      {enabled && next && <Button size="small" onClick={() => router.openDue(next.obligation.key)}>查看事项</Button>}
+    </section>
+  );
+}
+
+function useCalendarAutoSyncController() {
   const { store } = useApp();
   const p = platform();
-  const [on, setOn] = useState(autoSyncOn());
-  const [busy, setBusy] = useState(false);
+  const [permissionOpen, setPermissionOpen] = useState(false);
   const st = autoSyncStatus();
   const name = store.data.settings.calendarName || "Charter";
-  if (!autoSyncSupported()) return null;
   const mac = p.os === "mac";
-  const toggle = async (v: boolean) => {
-    if (!v) { p.prefSet(autoSyncPref, "0"); setOn(false); return; }
-    setBusy(true);
-    try {
-      const r = await runCalendarSync(store, { checkOnly: true });
-      if (!r || !("ok" in r && r.ok)) { store.setError(`没有打开自动同步：${r ? describeError(r) : "同步不可用。"}`); return; }
-      // 5.4.1：先试同步一次，成功才算开启；失败时保持关闭并说明原因（runCalendarSync 已用 setError 提示）
-      p.prefSet(autoSyncPref, "1");
-      const r2 = await runCalendarSync(store, { manual: true });
-      if (r2 && "ok" in r2 && r2.ok) { setOn(true); store.showToast(`已开启：事项会同步到“${name}”日历（新增 ${r2.added ?? 0} 件）。`); }
-      else p.prefSet(autoSyncPref, "0");
-    } finally { setBusy(false); }
+  const calendarTitle = mac ? "Apple 日历" : "经典 Outlook 日历";
+  const supported = autoSyncSupported();
+  const calendarOn = autoSyncOn();
+  const on = remindersEnabled();
+  const phase = store.calendarAction?.phase;
+  const busy = !!phase;
+  const connectionIssue = store.calendarConnectionIssue;
+  const retryClear = calendarOn && st?.ok === false && st.clearing;
+  const failed = !busy && (!!connectionIssue || (calendarOn && st?.ok === false));
+  const progressText = phase === "authorizing" ? (mac ? "等待日历授权" : "正在连接 Outlook")
+    : phase === "checking" ? "正在检查权限" : phase === "syncing" ? "正在同步日历" : phase === "clearing" ? "正在移除已同步事项" : "";
+  const statusText = progressText || (!on ? "未开启" : failed ? "需要处理" : "已开启");
+  const statusKind: "neutral" | "warn" | "valid" = busy || !on ? "neutral" : failed ? "warn" : "valid";
+
+  // 设置页可在授权期间关闭。将当前操作挂在 store 上，重新进入仍可看到或取消同一次连接。
+  const begin = (initial: NonNullable<typeof store.calendarAction>["phase"]) => {
+    if (store.calendarAction || !store.isPrimaryDevice) return null;
+    const action = { phase: initial };
+    store.calendarAction = action;
+    store.calendarConnectionIssue = null;
+    store.emit();
+    return action;
   };
-  return (
-    <SGroup footer={`只写入名为“${name}”的日历，不会改动你其他日历里的事件。完成或删除的事项会从这本日历里删掉。${mac ? "第一次开启时 macOS 会询问日历权限。" : "需要桌面版 Outlook；新版 Outlook 和 Windows 自带日历不支持。"}`}>
-      <SRow title="自动同步到系统日历" detail={!store.isPrimaryDevice ? `这台电脑不发通知，不会同步；现在由“${store.data.settings.primaryDeviceName ?? "另一台电脑"}”负责。` : mac ? "申报事项和证件到期写进 Apple 日历，新增、改期、完成和删除都会自动更新。" : "申报事项和证件到期写进 Outlook 日历，新增、改期、完成和删除都会自动更新。"}>
-        <Switch ariaLabel="自动同步到系统日历" checked={on} disabled={busy || !store.isPrimaryDevice} onChange={(v) => void toggle(v)} />
-      </SRow>
-      {on && <SRow title="上次同步" detail={st ? `${new Date(st.at).toLocaleString()} · ${st.ok ? st.message : "失败：" + st.message}` : "还没有同步过"}>
-        <Button size="small" disabled={busy} onClick={async () => { setBusy(true); try { const r = await runCalendarSync(store, { manual: true }); if (r && "ok" in r && r.ok) store.showToast(`已同步：新增 ${r.added ?? 0}、更新 ${r.updated ?? 0}、删除 ${r.removed ?? 0}。`); } finally { setBusy(false); } }}>{busy ? "正在同步…" : "立即同步"}</Button>
-      </SRow>}
-    </SGroup>
-  );
+  const finish = (action: NonNullable<typeof store.calendarAction>) => {
+    if (store.calendarAction === action) { store.calendarAction = null; store.emit(); }
+  };
+  const cancelConnection = () => {
+    if (store.calendarAction?.phase === "authorizing" || store.calendarAction?.phase === "checking") {
+      store.calendarAction = null;
+      store.emit();
+    }
+  };
+
+  const removeAndDisable = async () => {
+    const result = await disableCalendarSync(store);
+    if (!remindersEnabled()) {
+      store.showToast(result?.ok ? "已关闭到期提醒，并从 Charter 日历移除已同步事项。" : "已关闭到期提醒。");
+    }
+  };
+  const disable = async () => {
+    const action = begin("clearing");
+    if (!action) return;
+    try { await removeAndDisable(); } finally { finish(action); }
+  };
+
+  const enableLocalOnly = (message: string) => {
+    setRemindersEnabled(true);
+    store.emit();
+    store.showToast(message);
+  };
+
+  const allowSystemCalendar = async (requestAccess = true) => {
+    setPermissionOpen(false);
+    const action = begin(requestAccess ? "authorizing" : "checking");
+    if (!action) return;
+    try {
+      const checked = await runCalendarSync(store, { checkOnly: true, requestAccess });
+      if (store.calendarAction !== action || !store.isPrimaryDevice) return;
+      if (!checked?.ok) {
+        if (checked?.error === "noOutlook") {
+          enableLocalOnly("已开启 Charter 运行期间的提醒；未连接经典 Outlook，退出后不会提醒。");
+        } else {
+          store.calendarConnectionIssue = checked ?? { error: "unsupported" };
+        }
+        return;
+      }
+      if (retryClear) {
+        action.phase = "clearing";
+        store.emit();
+        await removeAndDisable();
+        return;
+      }
+      action.phase = "syncing";
+      store.emit();
+      const synced = await runCalendarSync(store, { manual: true });
+      if (synced?.ok) {
+        p.prefSet(autoSyncPref, "1");
+        setRemindersEnabled(true);
+        store.showToast(`已开启：事项会同步到“${name}”日历（新增 ${synced.added ?? 0} 件）。`);
+      } else {
+        store.calendarConnectionIssue = synced ?? { error: "unsupported" };
+      }
+    } finally { finish(action); }
+  };
+
+  const syncNow = async () => {
+    const action = begin("syncing");
+    if (!action) return;
+    try {
+      const result = await runCalendarSync(store, { manual: true });
+      if (result?.ok) store.showToast(`已同步：新增 ${result.added ?? 0}、更新 ${result.updated ?? 0}、删除 ${result.removed ?? 0}。`);
+    } finally { finish(action); }
+  };
+
+  const permissionPrompt = permissionOpen && <Modal onClose={() => setPermissionOpen(false)}>
+    <SheetScaffold title={mac ? "日历完全访问" : "连接经典 Outlook"} width={560}
+      subtitle="让 Charter 在专用日历中添加事项和提醒，改期时一起更新。"
+      onCloseButton={() => setPermissionOpen(false)}
+      trailing={<div className="permission-actions-559">
+        <Button onClick={() => setPermissionOpen(false)}>暂不允许</Button>
+        <Button kind="primary" autoFocus onClick={() => void allowSystemCalendar()}>{mac ? "允许完全访问" : "连接 Outlook"}</Button>
+      </div>}>
+      <div className="permission-explainer-559">
+        <span className="permission-icon-559"><Icon name="calendar" size={20} /></span>
+        <div className="col gap6">
+          <strong>{mac ? "在 Apple 日历中建立“Charter”日历" : "在经典 Outlook 中建立“Charter”日历"}</strong>
+          <span className="t-meta muted">Charter 只管理自己写入的事项。关闭到期提醒时，会先移除这些事项；你的其他日历和日程不受影响。</span>
+        </div>
+      </div>
+    </SheetScaffold>
+  </Modal>;
+
+  const issueCode = connectionIssue?.error ?? (calendarOn && !st?.ok ? st?.error : undefined);
+  const inspect = mac && (issueCode === "permissionPending" || issueCode === "denied" || issueCode === "restricted" || issueCode === "writeOnly");
+  const askPermission = mac && (issueCode === "notDetermined" || issueCode === "permissionFailed");
+  const title = progressText || (failed ? (retryClear ? "未能移除已同步事项" : calendarOn ? "日历同步需要处理" : `${calendarTitle} 未连接`)
+    : !on ? "系统日历未连接" : !supported ? "仅在 Charter 运行时提醒" : calendarOn ? "日历同步已开启" : `${calendarTitle} 未连接`);
+  const detail = phase === "authorizing" ? (mac ? "请在 macOS 的权限提示中选择是否允许日历完全访问。" : "正在检查这台电脑上的经典 Outlook。")
+    : phase === "checking" ? "正在读取 macOS 当前的日历访问权限。"
+    : phase === "syncing" ? `正在将申报事项和文件到期提醒写入“${name}”日历。`
+    : phase === "clearing" ? `正在从“${name}”日历移除 Charter 写入的事项。`
+    : connectionIssue ? describeError(connectionIssue) : failed ? st!.message
+    : !on ? "开启到期提醒后，可以连接系统日历。" : !supported ? "当前环境不能连接系统日历；退出 Charter 后不会提醒。"
+    : calendarOn && st ? `${new Date(st.at).toLocaleString()} · ${st.message}` : calendarOn ? `事项会同步到“${name}”日历。` : "连接后，退出 Charter 也会提醒。";
+  const actionText = inspect ? "检查权限" : askPermission ? "允许完全访问" : failed ? "重试" : calendarOn ? "立即同步" : mac ? "允许完全访问" : "连接 Outlook";
+  const statusAction = () => {
+    if (inspect) void allowSystemCalendar(false);
+    else if (askPermission || (!calendarOn && !failed)) setPermissionOpen(true);
+    else if (retryClear) void disable();
+    else if (calendarOn) void syncNow();
+    else void allowSystemCalendar(false);
+  };
+  return { busy, on, supported, calendarOn, mac, failed, title, detail, statusText, statusKind, permissionPrompt,
+    primary: store.isPrimaryDevice, primaryName: store.data.settings.primaryDeviceName, actionText, statusAction,
+    canCancel: phase === "authorizing" || phase === "checking", cancelConnection,
+    openPermission: () => setPermissionOpen(true), disable, enableLocalOnly };
+}
+
+type CalendarAutoSyncController = ReturnType<typeof useCalendarAutoSyncController>;
+
+function CalendarAutoSync({ view, controller }: { view: "toggle" | "status"; controller: CalendarAutoSyncController }) {
+  if (view === "toggle") return <SRow title={<span className="reminder-status-559"><span>开启到期提醒</span><Pill text={controller.statusText} kind={controller.statusKind} /></span>}
+    detail={controller.busy ? controller.detail : !controller.primary ? `这台电脑不负责提醒；现在由“${controller.primaryName ?? "另一台电脑"}”负责。` : controller.calendarOn && controller.supported ? (controller.mac ? "退出 Charter 后，由 Apple 日历提醒。" : "退出 Charter 后，由经典 Outlook 日历提醒。") : "开启后，Charter 运行时会按设置提醒。"}>
+    <Switch ariaLabel="开启到期提醒" checked={controller.on} disabled={controller.busy || !controller.primary} onChange={(enabled) => {
+      if (!enabled) { void controller.disable(); return; }
+      if (controller.supported) { controller.openPermission(); return; }
+      controller.enableLocalOnly("已开启 Charter 运行期间的提醒；当前环境无法连接系统日历。");
+    }} />
+  </SRow>;
+
+  return <>
+    <section className={`s4-card calendar-status-559 ${controller.failed ? "warn" : ""}`} aria-label="系统日历状态">
+      <span className="calendar-status-icon-559"><Icon name="calendar" size={17} /></span>
+      <span className="calendar-status-copy-559" role="status"><strong>{controller.title}</strong><span className="t-meta muted">{controller.detail}</span></span>
+      {controller.canCancel ? <Button size="small" onClick={controller.cancelConnection}>取消连接</Button>
+        : !controller.busy && controller.primary && (controller.on || controller.failed) && controller.supported &&
+          <Button size="small" onClick={controller.statusAction}>{controller.actionText}</Button>}
+    </section>
+    {controller.permissionPrompt}
+  </>;
 }

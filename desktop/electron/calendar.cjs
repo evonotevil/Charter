@@ -1,79 +1,4 @@
-// 5.4：把申报事项和证件到期同步到系统日历。
-// Mac：EventKit（经 JXA 调用，第一次会弹出“Charter 想访问你的日历”）；Windows：桌面版 Outlook（COM）。
-// 只动名为“Charter”（可在设置里改名）的那一本日历；每个事件用 URL / 自定义属性记下 Charter 的键，
-// 再次同步时按键新增、修改、删除，不会重复，也不会碰其他日历里的事件。
-// 输入：JSON 文件 { name, calendarId?, checkOnly?, chunks?: [[fromDay, toDay]...]（相对今天的天数，每段 ≤ 3 年）, events: [{ key, title, date: "YYYY-MM-DD", notes }] }
-// 输出（stdout）：JSON { ok, calendarId, added, updated, removed } 或 { error: "denied" | "noOutlook" | ... , message? }
-
-const MAC_SCRIPT = String.raw`
-ObjC.import('Foundation'); ObjC.import('EventKit');
-function out(o) { return JSON.stringify(o); }
-function run(argv) {
-  var raw = $.NSString.stringWithContentsOfFileEncodingError(argv[0], $.NSUTF8StringEncoding, null);
-  var input = JSON.parse(ObjC.unwrap(raw));
-  var store = $.EKEventStore.alloc.init;
-  var status = Number($.EKEventStore.authorizationStatusForEntityType($.EKEntityTypeEvent));
-  // 0 未决定 1 受限 2 拒绝 3 完全访问（旧系统为“已授权”） 4 仅写入
-  if (status === 0) {
-    var state = { done: false, ok: false };
-    var cb = function (granted, err) { state.ok = !!granted; state.done = true; };
-    if (store.respondsToSelector('requestFullAccessToEventsWithCompletion:')) store.requestFullAccessToEventsWithCompletion(cb);
-    else store.requestAccessToEntityTypeCompletion($.EKEntityTypeEvent, cb);
-    var until = $.NSDate.dateWithTimeIntervalSinceNow(120);
-    while (!state.done && $.NSDate.date.compare(until) < 0) $.NSRunLoop.currentRunLoop.runModeBeforeDate($.NSDefaultRunLoopMode, $.NSDate.dateWithTimeIntervalSinceNow(0.2));
-    if (!state.ok) return out({ error: 'denied' });
-    store = $.EKEventStore.alloc.init;
-  } else if (status === 1 || status === 2) return out({ error: 'denied' });
-  else if (status === 4) return out({ error: 'writeOnly' });
-  if (input.checkOnly) return out({ ok: true });
-
-  var cals = store.calendarsForEntityType($.EKEntityTypeEvent), cal = null, i;
-  for (i = 0; i < cals.count; i++) { var c = cals.objectAtIndex(i); if (input.calendarId && ObjC.unwrap(c.calendarIdentifier) === input.calendarId) cal = c; }
-  if (!cal) for (i = 0; i < cals.count; i++) { var c2 = cals.objectAtIndex(i); if (ObjC.unwrap(c2.title) === input.name && c2.allowsContentModifications) { cal = c2; break; } }
-  if (!cal) {
-    cal = $.EKCalendar.calendarForEntityTypeEventStore($.EKEntityTypeEvent, store);
-    cal.title = input.name;
-    var def = store.defaultCalendarForNewEvents, src = (def && !def.isNil()) ? def.source : null;
-    // 没有默认日历时：优先 iCloud / CalDAV（2），其次“在我的 Mac 上”（0）
-    if (!src || src.isNil()) { var ss = store.sources; [2, 0].some(function (want) { for (i = 0; i < ss.count; i++) { if (Number(ss.objectAtIndex(i).sourceType) === want) { src = ss.objectAtIndex(i); return true; } } return false; }); }
-    if (!src || src.isNil()) return out({ error: 'noSource' });
-    cal.source = src;
-    var e1 = Ref();
-    if (!store.saveCalendarCommitError(cal, true, e1)) return out({ error: 'createCalendar', message: e1[0] && !e1[0].isNil() ? ObjC.unwrap(e1[0].localizedDescription) : '' });
-  }
-
-  var greg = $.NSCalendar.currentCalendar;
-  function day(s) { var p = s.split('-'); var dc = $.NSDateComponents.alloc.init; dc.year = +p[0]; dc.month = +p[1]; dc.day = +p[2]; dc.hour = 0; return greg.dateFromComponents(dc); }
-  function ymd(d) { var f = $.NSDateFormatter.alloc.init; f.dateFormat = 'yyyy-MM-dd'; return ObjC.unwrap(f.stringFromDate(d)); }
-  // 5.4.1：EventKit 单次查询最多 4 年，超出会被静默截断。查询窗口覆盖本次最早到最晚的事项（至少过去 800 天到未来 450 天，
-  // 以便找到以前同步过、现在要删掉的事件），按每段不超过 3 年分段查询再合并。
-  var DAY = 86400, existing = {};
-  var chunks = input.chunks && input.chunks.length ? input.chunks : [[-800, 295], [295, 450]];
-  chunks.forEach(function (c) {
-    var found = store.eventsMatchingPredicate(store.predicateForEventsWithStartDateEndDateCalendars($.NSDate.dateWithTimeIntervalSinceNow(c[0] * DAY), $.NSDate.dateWithTimeIntervalSinceNow(c[1] * DAY), $([cal])));
-    for (var j = 0; j < found.count; j++) {
-      var ev = found.objectAtIndex(j), u = ev.URL;
-      var k = (u && !u.isNil()) ? ObjC.unwrap(u.absoluteString) : '';
-      if (k.indexOf('charter://item/') === 0) existing[decodeURIComponent(k.slice(15))] = ev;
-    }
-  });
-  var added = 0, updated = 0, removed = 0, err = Ref();
-  input.events.forEach(function (e) {
-    var ev = existing[e.key];
-    if (ev) {
-      delete existing[e.key];
-      if (ObjC.unwrap(ev.title) === e.title && ymd(ev.startDate) === e.date && (ObjC.unwrap(ev.notes) || '') === e.notes) return;
-      updated++;
-    } else { ev = $.EKEvent.eventWithEventStore(store); ev.calendar = cal; ev.URL = $.NSURL.URLWithString('charter://item/' + encodeURIComponent(e.key)); added++; }
-    ev.title = e.title; ev.notes = e.notes; ev.allDay = true;
-    var d = day(e.date); ev.startDate = d; ev.endDate = d;
-    store.saveEventSpanCommitError(ev, 0, false, err);
-  });
-  Object.keys(existing).forEach(function (k) { store.removeEventSpanCommitError(existing[k], 0, false, err); removed++; });
-  if (!store.commit(err)) return out({ error: 'commit', message: err[0] && !err[0].isNil() ? ObjC.unwrap(err[0].localizedDescription) : '' });
-  return out({ ok: true, calendarId: ObjC.unwrap(cal.calendarIdentifier), added: added, updated: updated, removed: removed });
-}`;
-
+// Windows 经典 Outlook 日历同步。macOS 使用 native/calendar.m 中的 EventKit。
 const WIN_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -85,7 +10,11 @@ try {
   $root = $ns.GetDefaultFolder(9)
   if ($in.checkOnly) { Out @{ ok = $true }; exit }
   $cal = $null
-  foreach ($f in $root.Folders) { if ($f.Name -eq $in.name) { $cal = $f } }
+  foreach ($f in $root.Folders) {
+    if ($in.clearOnly) { if ($in.calendarId -and $f.EntryID -eq $in.calendarId) { $cal = $f } }
+    elseif ($f.Name -eq $in.name) { $cal = $f }
+  }
+  if ($in.clearOnly -and -not $cal) { Out @{ ok = $true; calendarId = $in.calendarId; added = 0; updated = 0; removed = 0 }; exit }
   if (-not $cal) { $cal = $root.Folders.Add($in.name, 9) }
   $existing = @{}
   foreach ($it in @($cal.Items)) { $p = $it.UserProperties.Find('CharterKey'); if ($p) { $existing[[string]$p.Value] = $it } }
@@ -95,20 +24,39 @@ try {
     $it = $existing[$e.key]
     if ($it) {
       $existing.Remove($e.key)
-      if ($it.Subject -eq $e.title -and $it.Start.Date -eq $start -and $it.Body -eq $e.notes) { continue }
-      $updated++
+      if ($it.Subject -eq $e.title -and $it.Start.Date -eq $start -and $it.Body -eq $e.notes -and -not $it.ReminderSet) { $it = $null }
+      else { $updated++ }
     } else {
       $it = $cal.Items.Add(1)
       $up = $it.UserProperties.Add('CharterKey', 1); $up.Value = $e.key
       $added++
     }
-    $it.Subject = $e.title; $it.Body = $e.notes; $it.AllDayEvent = $true
-    $it.Start = $start; $it.End = $start.AddDays(1); $it.ReminderSet = $false; $it.BusyStatus = 0
-    $it.Save()
+    if ($null -ne $it) {
+      $it.Subject = $e.title; $it.Body = $e.notes; $it.AllDayEvent = $true
+      $it.Start = $start; $it.End = $start.AddDays(1); $it.ReminderSet = $false; $it.BusyStatus = 0
+      $it.Save()
+    }
+    foreach ($raw in @($e.reminders)) {
+      $alarm = [datetime]::ParseExact([string]$raw, 'yyyy-MM-ddTHH:mm', [Globalization.CultureInfo]::InvariantCulture)
+      $rk = "$($e.key)|reminder|$raw"
+      $rit = $existing[$rk]
+      if ($rit) {
+        $existing.Remove($rk)
+        if ($rit.Subject -eq "提醒：$($e.title)" -and $rit.Start -eq $alarm -and $rit.Body -eq $e.notes -and $rit.ReminderSet -and $rit.ReminderMinutesBeforeStart -eq 0) { continue }
+        $updated++
+      } else {
+        $rit = $cal.Items.Add(1)
+        $rup = $rit.UserProperties.Add('CharterKey', 1); $rup.Value = $rk
+        $added++
+      }
+      $rit.Subject = "提醒：$($e.title)"; $rit.Body = $e.notes; $rit.AllDayEvent = $false
+      $rit.Start = $alarm; $rit.End = $alarm.AddMinutes(15); $rit.ReminderSet = $true; $rit.ReminderMinutesBeforeStart = 0; $rit.BusyStatus = 0
+      $rit.Save()
+    }
   }
   foreach ($k in @($existing.Keys)) { $existing[$k].Delete(); $removed++ }
   Out @{ ok = $true; calendarId = $cal.EntryID; added = $added; updated = $updated; removed = $removed }
 } catch { Out @{ error = 'outlook'; message = $_.Exception.Message } }
 `;
 
-module.exports = { MAC_SCRIPT, WIN_SCRIPT };
+module.exports = { WIN_SCRIPT };

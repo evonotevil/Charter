@@ -9,18 +9,22 @@ import "@fontsource/inter/800.css";
 import "@fontsource/nunito/800.css";
 import "@fontsource/nunito/900.css";
 import "./ui/styles.css";
-import { setPlatform, platform } from "./platform/platform";
+import { basename, setPlatform, platform } from "./platform/platform";
 import { Store, ungrouped } from "./state/store";
 import { Router } from "./state/router";
 import { SyncMonitor } from "./state/sync";
 import { Ctx, useApp } from "./state/hooks";
+import { hasActiveModal } from "./ui/kit";
 import { sectionShortcuts } from "./state/router";
 import { Shell } from "./screens/Shell";
 import { startReminderLoop, syncCalendarFile } from "./services/packets";
 import { scheduleCalendarSync } from "./services/calendarSync";
 import { installSampleData } from "./state/sample";
-import { DemoPlatform, enterDemo, setRealPlatform, shouldStartTour } from "./state/demo";
+import { DemoPlatform, enterDemo, setRealPlatform, shouldStartSampleDemo, shouldStartTour } from "./state/demo";
 import { dragEnd, dragOver } from "./ui/drop";
+import { addToInbox } from "./state/lifecycle";
+import { inboxResultFeedback } from "./screens/fileFeedback";
+import type { InboxImportOutcome } from "./domain/inboxImport";
 
 async function boot() {
   const inTauri = "__TAURI_INTERNALS__" in window;
@@ -41,8 +45,14 @@ async function boot() {
   document.documentElement.dataset.os = p.os;
   let root = p.prefGet("dataRoot") ?? (await p.defaultRoot());
   // 5.5.6：第一次打开（数据文件夹是空的）先进入演示和入门教程；示例档案只在内存里
-  const tour = await shouldStartTour(p, root);
-  if (tour) { setRealPlatform(p); setPlatform(new DemoPlatform(p, await p.bundledTemplates())); enterDemo(); p = platform(); root = "/Charter"; }
+  const sampleDemo = shouldStartSampleDemo(p);
+  const tour = !sampleDemo && await shouldStartTour(p, root);
+  if (tour || sampleDemo) {
+    setRealPlatform(p);
+    setPlatform(new DemoPlatform(p, await p.bundledTemplates()));
+    enterDemo(tour ? "tour" : "sample");
+    p = platform(); root = "/Charter";
+  }
   const store = new Store(root);
   const router = new Router();
   const sync = new SyncMonitor();
@@ -53,7 +63,8 @@ async function boot() {
     scheduleCalendarSync(s);
   };
   await store.load();
-  if (tour) await installSampleData(store, { quiet: true });
+  if (tour || sampleDemo) await installSampleData(store, { quiet: true });
+  if (sampleDemo) router.go("structure");
   if (!inTauri && !inElectron && store.data.companies.length === 0 && new URLSearchParams(location.search).has("sample")) {
     await installSampleData(store);
     if (new URLSearchParams(location.search).has("stress")) await (await import("./state/stress")).installStressData(store);
@@ -74,6 +85,37 @@ async function boot() {
 
 function App() {
   const { store, router, sync } = useApp();
+  const dataRoot = store.folder.root;
+  useEffect(() => router.syncInboxDataRoot(dataRoot), [dataRoot, router]);
+  // 无上下文的文件统一由常驻队列串行加入待整理。切走文件页也继续处理，
+  // 连续拖入的新批次会留在 inboxPaths，当前批次完成后再消费。
+  useEffect(() => {
+    if (store.isLoading || store.isImporting || store.loadFailed || router.inboxImporting || !router.inboxPaths.length) return;
+    const batch = router.beginInboxImport(dataRoot);
+    if (!batch) return;
+    // 复用正式归档的互斥标记，阻止处理中切换数据根、恢复或清空数据。
+    store.isImporting = true;
+    store.emit();
+    let outcome: InboxImportOutcome | undefined;
+    void addToInbox(store, batch.paths, (status) => router.updateInboxImportStatus(batch, status)).then((result) => {
+      outcome = result;
+      if (router.section !== "files" || router.filesPane !== "inbox") {
+        const feedback = inboxResultFeedback(result.added, result.duplicates, result.unsupported, result.failed, result.saveFailed);
+        store.showToast(feedback.text, undefined, "", feedback.kind);
+      }
+    })
+      .catch((e) => {
+        const detail = e instanceof Error ? e.message : String(e);
+        outcome = { added: 0, duplicates: 0, unsupported: 0, failed: batch.paths.length, saveFailed: 0,
+          issues: batch.paths.map((path) => ({ path, name: basename(path) || path, reason: "unreadable", detail })) };
+        store.setError(`加入待整理失败：${detail}`);
+      })
+      .finally(() => {
+        store.isImporting = false;
+        store.emit();
+        router.finishInboxImport(batch, outcome);
+      });
+  }, [dataRoot, router.inboxPaths.length, router.inboxImporting, store.isImporting, store.isLoading, store.loadFailed, store, router]);
   // 文件夹变化（其他设备同步过来）、回到前台时重新检查。5.5.6：只在多台电脑共用时做
   const shared = store.shared;
   useEffect(() => {
@@ -122,7 +164,9 @@ function App() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const cmd = e.metaKey || e.ctrlKey;
-      if (!cmd) return;
+      if (!cmd || e.defaultPrevented) return;
+      // 弹窗和教程自行处理快捷键；页面命令不能在它们后面打开另一张表单。
+      if (router.sheet || hasActiveModal()) return;
       const k = e.key.toLowerCase();
       const editing = (e.target as HTMLElement)?.closest("input, textarea, [contenteditable]");
       const blocked = store.isLoading || store.isImporting || store.loadFailed;
@@ -130,7 +174,6 @@ function App() {
       if (k === "y" && !editing && platform().os === "windows") { e.preventDefault(); store.redo(); return; }
       if (k === "k") { e.preventDefault(); router.open({ kind: "quickSearch" }); return; }
       if (k === ",") { e.preventDefault(); router.openSettings("reminders"); return; }
-      if (router.sheet) return;
       if (/^[1-5]$/.test(k)) { e.preventDefault(); router.go(sectionShortcuts[+k - 1]); return; }
       if (blocked) return;
       if (k === "n" && e.shiftKey) { e.preventDefault(); router.open({ kind: "newCompany" }); return; }

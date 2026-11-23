@@ -29,7 +29,7 @@ export function AboutSettings() {
     finally { setDownloading(false); }
   };
   return <Scroll><PaneHeader title="关于与更新" detail="当前版本、更新检查和更新内容。" /><div className="col" style={{ gap: 20 }}>
-    <div className="row gap16 panel" style={{ padding: 20 }}>
+    <div className="row gap16 s4-card about-version-card-559" style={{ padding: 20 }}>
       <LogoMark size={44} />
       <div className="col grow" style={{ gap: 4, minWidth: 0 }}>
         <div className="row gap8"><span className="t-title num">Charter {v}</span>{st.kind === "available" && <Pill text="有新版本" kind="valid" />}</div>

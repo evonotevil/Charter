@@ -10,6 +10,7 @@ import {
 } from "../domain/models";
 import { type Obligation, HoldingValidationError, obligationDone, obligationStatus, percentLabel, validateHoldings } from "../domain/engine";
 import { useApp } from "../state/hooks";
+import { DeleteCompanySheet } from "./DeleteCompanySheet";
 import { Store } from "../state/store";
 import { recognitionContext } from "../state/actions";
 import { recognizeFile } from "../services/extract";
@@ -26,6 +27,7 @@ const split = (s: string) => s.split(/[,，、]/).map((x) => x.trim()).filter(Bo
 export function CompanyEditor({ companyID, groupID: initialGroup, onClose }: { companyID?: string; groupID?: string; onClose: () => void }) {
   const { store, router } = useApp();
   const original = store.company(companyID);
+  const [deleting, setDeleting] = useState(false);
   const [draft, setDraft] = useState<Company>(() => original ? structuredClone(original) : newCompany("", store.data.library.jurisdictions.find((j) => j.code === "HK") ? "HK" : store.data.library.jurisdictions[0]?.code ?? "HK", store.today));
   const [holdings, setHoldings] = useState<Holding[]>(() => store.data.holdings.filter((h) => h.companyID === draft.id).map((h) => ({ ...h })));
   const [appointments, setAppointments] = useState<Appointment[]>(() => store.data.appointments.filter((a) => a.companyID === draft.id).map((a) => ({ ...a })));
@@ -170,7 +172,7 @@ export function CompanyEditor({ companyID, groupID: initialGroup, onClose }: { c
     <Modal onClose={onClose}>
       <SheetScaffold title={original ? "编辑公司资料" : "新建公司"} subtitle={original?.name} width={720} height={860} onSubmit={submit}
         leading={<>
-          {original && <Button onClick={() => { store.deleteCompany(original); router.set("selectedCompanyID", null); onClose(); }}>删除公司</Button>}
+          {original && <Button onClick={() => setDeleting(true)}>删除公司</Button>}
           {saveError && <span className="row gap6 amber-text t-meta" title={saveError} aria-label={`无法保存：${saveError}`}><Icon name="exclamationmark.triangle.fill" /><span className="ellipsis" style={{ maxWidth: 260 }}>{saveError}</span></span>}
         </>}
         trailing={<><Button onClick={onClose}>取消</Button><Button kind="primary" onClick={submit}>{original ? "保存" : "添加"}</Button></>}>
@@ -261,6 +263,10 @@ export function CompanyEditor({ companyID, groupID: initialGroup, onClose }: { c
         </div>
       </SheetScaffold>
       {askChange && <RecordChangePrompt changes={[...appointmentDiff, ...holdingDiff]} onClose={() => setAskChange(false)} onRecord={() => { setAskChange(false); save(true); }} onCorrect={() => { setAskChange(false); save(false); }} />}
+      {deleting && original && <DeleteCompanySheet company={original} onClose={() => setDeleting(false)} onDeleted={() => {
+        router.update((r) => { r.selectedCompanyID = null; r.companyOpen = false; });
+        onClose();
+      }} />}
     </Modal>
   );
 }

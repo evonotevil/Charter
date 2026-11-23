@@ -67,7 +67,8 @@ export function normSettings(r: Raw | null): SharedSettings {
     reminderDays: Array.isArray(r.reminderDays) ? r.reminderDays : d.reminderDays,
     calendarEnabled: typeof r.calendarEnabled === "boolean" ? r.calendarEnabled : d.calendarEnabled,
     calendarName: str(r.calendarName, d.calendarName),
-    notificationHour: typeof r.notificationHour === "number" ? r.notificationHour : d.notificationHour,
+    notificationHour: typeof r.notificationHour === "number" && r.notificationHour >= 0 && r.notificationHour <= 23 ? Math.trunc(r.notificationHour) : d.notificationHour,
+    notificationMinute: typeof r.notificationMinute === "number" && r.notificationMinute >= 0 && r.notificationMinute <= 59 ? Math.trunc(r.notificationMinute) : d.notificationMinute,
   } as SharedSettings;
 }
 

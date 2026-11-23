@@ -117,11 +117,37 @@
 
 .company-overview-grid > .card { height: 100%; }
 .overview-basics { grid-area: basics; }
+.overview-basics .cp-kv { min-height: var(--row-h); padding-block: var(--space-2); }
 .overview-next { grid-area: next; }
 .overview-people { grid-area: people; }
 .overview-horizon { grid-area: horizon; }
 .overview-archive { grid-area: archive; }
 .overview-agent { grid-area: agent; }
+
+/* 公司档案的申报页：概览专用 grid-area 不得生成隐式列；内容不足时先改单栏。 */
+.company-filings-layout > .overview-agent { grid-area: auto; }
+.company-filings-layout > .card { min-width: 0; }
+.company-filing-main { min-width: 0; }
+.company-filing-info { overflow: hidden; }
+.company-filing-deadline,
+.company-filing-confirm { flex: none; white-space: nowrap; }
+
+@container (max-width: 900px) {
+  .company-filings-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@container (max-width: 560px) {
+  .company-filing-row { align-items: flex-start; flex-wrap: wrap; }
+  .company-filing-main {
+    display: grid;
+    flex-basis: 100%;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+  .company-filing-info { grid-column: 2; }
+  .company-filing-deadline { grid-column: 2; justify-self: start; }
+  .company-filing-confirm { margin-left: auto; }
+}
 
 /* 选文件：两栏共用标题行和内容行，任一侧内容增多时两张卡片一起长高。 */
 .packet-files-layout {

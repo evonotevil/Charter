@@ -1,10 +1,12 @@
-// 文字提取：PDF 先读文字层；文字太少的页面渲染成图片，交给系统 OCR。图片直接 OCR。
+// 文字提取：PDF 先读文字层；文字太少的页面渲染成图片，交给系统 OCR。图片直接 OCR；DOCX 只读正文 XML。
 
-import type { PDFPageProxy } from "pdfjs-dist";
+import type { PDFPageProxy, RenderTask } from "pdfjs-dist";
 import workerURL from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { extname, platform } from "../platform/platform";
+import { basename, extname, platform } from "../platform/platform";
 import type { RecognitionContext, Recognition } from "../domain/recognize";
 import { recognizeText } from "../domain/recognize";
+import { officeDocumentExtensions } from "../domain/importFormats";
+import { xlsxText } from "./xlsxText";
 
 export async function loadPdfReader() {
   const reader = await import("pdfjs-dist");
@@ -20,6 +22,50 @@ const statusListeners = new Set<() => void>();
 function setOcrStatus(s: string | null) { if (s === ocrStatus) return; ocrStatus = s; statusListeners.forEach((l) => l()); }
 export const subscribeOcrStatus = (l: () => void) => { statusListeners.add(l); return () => { statusListeners.delete(l); }; };
 export const getOcrStatus = () => ocrStatus;
+
+/** 只读取 DOCX 的正文 XML，不解释字段、关系或嵌入对象。 */
+async function docxText(bytes: Uint8Array) {
+  const { default: JSZip } = await import("jszip");
+  const zip = await JSZip.loadAsync(bytes);
+  const document = zip.file("word/document.xml");
+  if (!document) return "";
+  const xml = await document.async("string");
+  if (xml.length > 8 * 1024 * 1024) return "";
+  const parsed = new DOMParser().parseFromString(xml, "application/xml");
+  const root = parsed.documentElement;
+  const wordNamespaces = new Set([
+    "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    "http://purl.oclc.org/ooxml/wordprocessingml/main",
+  ]);
+  if (!root || root.localName !== "document" || !wordNamespaces.has(root.namespaceURI ?? "")) return "";
+  const parts: string[] = [];
+  let remaining = 200_000;
+  const append = (text: string) => { if (remaining > 0) { parts.push(text.slice(0, remaining)); remaining -= text.length; } };
+  const stack: { node: globalThis.Node; exit: boolean }[] = [{ node: root, exit: false }];
+  while (stack.length && remaining > 0) {
+    const entry = stack.pop()!;
+    const node = entry.node;
+    if (node.nodeType !== 1) continue;
+    const element = node as Element;
+    const name = wordNamespaces.has(element.namespaceURI ?? "") ? element.localName : "";
+    if (entry.exit) {
+      if (name === "tc") append("\t");
+      else if (name === "p" || name === "tr") append("\n");
+      continue;
+    }
+    if (name === "t") { append(element.textContent ?? ""); continue; }
+    if (name === "tab") { append("\t"); continue; }
+    if (name === "br" || name === "cr") { append("\n"); continue; }
+    stack.push({ node, exit: true });
+    for (let i = node.childNodes.length - 1; i >= 0; i--) stack.push({ node: node.childNodes.item(i)!, exit: false });
+  }
+  return parts.join("")
+    .replace(/[ \f\v]+\n/g, "\n")
+    .replace(/\n+\t/g, "\t")
+    .replace(/\t+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 // 5.5.6：OCR 用 JPEG（编码比 PNG 快得多、文件小），长边 1800px 对证照类文字已经足够
 async function pageToImage(page: PDFPageProxy): Promise<Uint8Array> {
@@ -84,6 +130,11 @@ export async function extract(path: string): Promise<Extracted> {
       return { pages: [""], usedOCR: false };
     }
   }
+  if (ext === "docx") {
+    try { return { pages: [await docxText(bytes)], usedOCR: false }; }
+    catch { return { pages: [""], usedOCR: false }; }
+  }
+  if (ext === "xlsx") return { pages: await xlsxText(bytes), usedOCR: false };
   if (["png", "jpg", "jpeg", "heic", "tif", "tiff", "bmp", "gif", "webp"].includes(ext)) {
     try {
       // PNG / JPEG 系统 OCR 能直接读，不再先转码（5.5.6）
@@ -104,47 +155,121 @@ async function toPNG(bytes: Uint8Array, ext: string): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-export async function recognizeFile(path: string, ctx: RecognitionContext): Promise<Recognition> {
+export async function recognizeFile(path: string, ctx: RecognitionContext, sourceName = basename(path)): Promise<Recognition> {
   const ex = await extract(path);
-  const name = path.split(/[\\/]/).pop() ?? "";
-  return recognizeText(ex.pages, name.replace(/\.[^.]+$/, ""), ex.usedOCR, ctx);
+  return recognizeText(ex.pages, sourceName.replace(/\.[^.]+$/, ""), ex.usedOCR, ctx, extname(path).toLowerCase() === "xlsx" ? "workbook" : "document");
 }
 
-/** PDF 首页缩略图（data URL）。 */
-// 5.3.3：缩略图——同时最多解析 2 份；PDF 和图片都缩成小 JPEG（约 240px 宽），不再把原图当缩略图显示。
-const thumbQueue: (() => void)[] = [];
+// 文件列表、公司档案和导入预览共用两个缩略图生成名额。
+const thumbQueue = new Set<() => void>();
 let thumbActive = 0;
-const thumbSlot = () => new Promise<void>((res) => { if (thumbActive < 2) { thumbActive++; res(); } else thumbQueue.push(() => { thumbActive++; res(); }); });
-const thumbDone = () => { thumbActive--; thumbQueue.shift()?.(); };
 
-export async function thumbnail(path: string, width = 240, signal?: { cancelled: boolean }): Promise<string | null> {
-  await thumbSlot();
+function acquireThumbSlot(signal: AbortSignal): Promise<boolean> {
+  if (signal.aborted) return Promise.resolve(false);
+  if (thumbActive < 2) {
+    thumbActive++;
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    const start = () => {
+      thumbQueue.delete(start);
+      signal.removeEventListener("abort", cancel);
+      thumbActive++;
+      resolve(true);
+    };
+    const cancel = () => {
+      thumbQueue.delete(start);
+      resolve(false);
+    };
+    thumbQueue.add(start);
+    signal.addEventListener("abort", cancel, { once: true });
+  });
+}
+
+async function drawPdfThumbnail(canvas: HTMLCanvasElement, bytes: Uint8Array, width: number, signal: AbortSignal) {
+  const pdfjs = await loadPdfReader();
+  if (signal.aborted) return false;
+  // 缩略图画布在 CPU 上编码 JPEG。让 worker 传回像素，省去为原图创建 GPU 位图。
+  const loading = pdfjs.getDocument({ data: bytes.slice(), isOffscreenCanvasSupported: false });
+  let rendering: RenderTask | undefined;
+
+  const draw = async () => {
+    const doc = await loading.promise;
+    if (signal.aborted) return false;
+    const page = await doc.getPage(1);
+    if (signal.aborted) return false;
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: width / base.width });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    rendering = page.render({ canvasContext: ctx, viewport });
+    await rendering.promise;
+    return !signal.aborted;
+  };
+
+  // 加载中的 PDF 被销毁时，正在等待的加载 promise 可能不会结束。
+  // 取消直接唤醒调用方，同时终止已经开始绘制的那一页。
+  let finishAbort!: () => void;
+  const aborted = new Promise<false>((resolve) => { finishAbort = () => resolve(false); });
+  const cancel = () => { rendering?.cancel(); finishAbort(); };
+  signal.addEventListener("abort", cancel, { once: true });
   try {
-    if (signal?.cancelled) return null;
+    return await Promise.race([draw(), aborted]);
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    await loading.destroy();
+  }
+}
+
+async function thumbnailURL(canvas: HTMLCanvasElement, quality: number, signal: AbortSignal): Promise<string | null> {
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+  if (!blob || signal.aborted) return null;
+  const reader = new FileReader();
+  const cancel = () => reader.abort();
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    return await new Promise<string | null>((resolve) => {
+      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.readAsDataURL(blob);
+    });
+  } finally {
+    signal.removeEventListener("abort", cancel);
+  }
+}
+
+/** PDF 首页或图片的 JPEG 缩略图（data URL）。 */
+export async function thumbnail(path: string, width = 240, signal = new AbortController().signal): Promise<string | null> {
+  if (officeDocumentExtensions.includes(extname(path).toLowerCase())) return null;
+  if (!await acquireThumbSlot(signal)) return null;
+  let canvas: HTMLCanvasElement | undefined;
+  try {
+    if (signal.aborted) return null;
     const bytes = await platform().readBytes(path);
-    if (signal?.cancelled) return null;
+    if (signal.aborted) return null;
+    canvas = document.createElement("canvas");
     const out = Math.round(width * 2);
-    if (extname(path).toLowerCase() !== "pdf") {
+    const pdf = extname(path).toLowerCase() === "pdf";
+    if (pdf) {
+      if (!await drawPdfThumbnail(canvas, bytes, out, signal)) return null;
+    } else {
       const bmp = await createImageBitmap(new Blob([bytes.slice()]), { resizeWidth: out, resizeQuality: "medium" });
-      const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height;
-      c.getContext("2d")!.drawImage(bmp, 0, 0); bmp.close();
-      const url = c.toDataURL("image/jpeg", 0.8); c.width = c.height = 0;
-      return url;
+      try {
+        if (signal.aborted) return null;
+        canvas.width = bmp.width;
+        canvas.height = bmp.height;
+        canvas.getContext("2d", { willReadFrequently: true })!.drawImage(bmp, 0, 0);
+      } finally { bmp.close(); }
     }
-    const pdfjs = await loadPdfReader();
-    if (signal?.cancelled) return null;
-    const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
-    try {
-      const page = await doc.getPage(1);
-      const base = page.getViewport({ scale: 1 });
-      const vp = page.getViewport({ scale: out / base.width });
-      const canvas = document.createElement("canvas");
-      canvas.width = vp.width; canvas.height = vp.height;
-      const ctx = canvas.getContext("2d")!;
-      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      await page.render({ canvasContext: ctx, viewport: vp }).promise;
-      const url = canvas.toDataURL("image/jpeg", 0.82); canvas.width = canvas.height = 0;
-      return url;
-    } finally { await doc.destroy(); }
-  } catch { return null; } finally { thumbDone(); }
+    if (signal.aborted) return null;
+    return await thumbnailURL(canvas, pdf ? 0.82 : 0.8, signal);
+  } catch {
+    return null;
+  } finally {
+    if (canvas) canvas.width = canvas.height = 0;
+    thumbActive--;
+    thumbQueue.values().next().value?.();
+  }
 }

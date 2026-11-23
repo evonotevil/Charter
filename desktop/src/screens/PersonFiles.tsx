@@ -42,7 +42,8 @@ export function PersonFiles({ person }: { person: Person }) {
   };
   const line = (i: ArchiveItem, d: Document | undefined, k: number, n: number) => {
     const date = d ? (d.expiryDate ? `${d.expiryDate} 到期` : d.issueDate ? `${d.issueDate} 签发` : "") : "";
-    const fr = d && k > 0 ? store.freshness(d).kind : i.state.kind;
+    const status = d && k > 0 ? statusOfFreshness(store.freshness(d)) : itemStatus(i);
+    const fr = status.key;
     const tone = !d ? "missing" : fr === "expired" ? "bad" : fr === "expiring" || fr === "needsUpdate" ? "warn" : "";
     return (
       <div key={d?.id ?? i.typeID} className="doc-row">
@@ -52,15 +53,16 @@ export function PersonFiles({ person }: { person: Person }) {
             <span className="ellipsis" style={{ fontWeight: 700, color: d ? undefined : "var(--muted)" }}>{archiveItemName(i)}{n > 1 && <span className="t-meta muted" style={{ fontWeight: 400 }}> {k + 1}/{n}</span>}</span>
             {i.suggested && !i.explicit && !d && <span className="t-meta muted">常见要求</span>}
           </span>
-          {d && <span className="t-meta muted ellipsis">{[date, isUUIDName(d.originalFileName) ? "" : d.originalFileName].filter(Boolean).join(" · ")}</span>}
+          <span className="t-meta muted ellipsis">{d ? [date, isUUIDName(d.originalFileName) ? "" : d.originalFileName].filter(Boolean).join(" · ") : status.hint}</span>
         </span>
         {d && <LinkChips doc={d} onEdit={() => setLinking(d)} />}
-        <StatusTag s={d && k > 0 ? statusOfFreshness(store.freshness(d)) : itemStatus(i)} />
+        <StatusTag s={status} />
         {view === "review" && (k === 0 ? <CustodyChip owner={owner} item={i} /> : <span style={{ width: 0 }} />)}
         {d ? <>
           <Button size="small" kind="quiet" onClick={() => router.open({ kind: "document", id: d.id })}>查看</Button>
+          {fr === "fileMissing" && <Button size="small" kind="quiet" onClick={() => void store.relocateDocument(d)}>重新定位…</Button>}
           <Button size="small" kind="quiet" title="上传新版本，旧版保留在历史版本中" onClick={() => void startStage({ owner, typeID: i.typeID, replaces: d })}>更新</Button>
-        </> : i.custody !== "agent" && <Button size="small" onClick={() => upload(i.typeID)}>上传</Button>}
+        </> : i.custody === "mine" && <Button size="small" kind="quiet" onClick={() => upload(i.typeID)}>上传</Button>}
       </div>
     );
   };

@@ -2,14 +2,14 @@
 
 import { showUpdateBadge, subscribeUpdate } from "../services/update";
 import { DemoBanner, TourOverlay } from "./Tour";
-import { isDemo } from "../state/demo";
+import { isDemo, isTourDemo } from "../state/demo";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useApp } from "../state/hooks";
 import { sections, workspaceSections, type Section } from "../state/router";
 import { ungrouped } from "../state/store";
 import { Icon } from "../ui/Icon";
-import { ActionMenu, Button, CountBadge, Pill, shortcutLabel, ErrorStateView, Modal, Skeleton, Spinner, divider, item } from "../ui/kit";
+import { hasActiveModal, ActionMenu, Button, CountBadge, Pill, shortcutLabel, ErrorStateView, Modal, Skeleton, Spinner, divider, item } from "../ui/kit";
 import { syncNeedsAttention, syncSymbol, syncTitle } from "../state/sync";
 import { platform } from "../platform/platform";
 import { SheetHost } from "./SheetHost";
@@ -18,6 +18,7 @@ import { FilesView } from "./Files";
 import { PeopleView } from "./People";
 import { SettingsView, SyncView } from "./Settings";
 import { LogoMark } from "../ui/Logo";
+import { isNarrowWindow } from "../ui/uistyle";
 import { StructureView } from "./Structure";
 import { DueView } from "./Due";
 import { VerifyView } from "./Trust";
@@ -76,8 +77,8 @@ function Sidebar() {
   const [railPref, setRail] = useState(readRail);
   const [logoTip, setLogoTip] = useState(false);
   const logoButton = useRef<HTMLButtonElement>(null);
-  const [narrow, setNarrow] = useState(() => window.innerWidth < 1100);
-  useEffect(() => { const r = () => setNarrow(window.innerWidth < 1100); window.addEventListener("resize", r); return () => window.removeEventListener("resize", r); }, []);
+  const [narrow, setNarrow] = useState(isNarrowWindow);
+  useEffect(() => { const r = () => setNarrow(isNarrowWindow()); window.addEventListener("resize", r); return () => window.removeEventListener("resize", r); }, []);
   const rail = railPref || narrow;
   // useLayoutEffect 会在首帧绘制前发出状态；浏览器和非 macOS Electron 没有副作用。
   useLayoutEffect(() => window.charter?.setSidebarRail?.(rail), [rail]);
@@ -87,7 +88,7 @@ function Sidebar() {
     if (!narrow) setRail((r) => { writeRail(!r); return !r; });
   };
   useEffect(() => {
-    const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); toggle(); } };
+    const k = (e: KeyboardEvent) => { if (!hasActiveModal() && (e.metaKey || e.ctrlKey) && e.key === "\\") { e.preventDefault(); toggle(); } };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [narrow]);
@@ -134,12 +135,12 @@ function Sidebar() {
             item("上传材料…", "square.and.arrow.up", () => void router.chooseFiles(router.currentImportContext(groupExists)), { shortcut: shortcutLabel("I") }),
           ]} /></>}
         </div>
-        <button className="side-search" onClick={() => router.open({ kind: "quickSearch" })} aria-label={`搜索公司或人（${shortcutLabel("K")}）`} title={rail ? `搜索（${shortcutLabel("K")}）` : undefined}>
+        <button className="side-search" onClick={() => router.open({ kind: "quickSearch" })} aria-label={rail ? "搜索公司或人" : undefined} title={rail ? `搜索（${shortcutLabel("K")}）` : undefined}>
           <Icon name="magnifyingglass" size={15} /><span className="lbl">搜索公司或人</span><kbd>{shortcutLabel("K")}</kbd>
         </button>
       </div>
       <nav className="nav" aria-label="主要页面">{sections.map((x, i) => navButton(x, i))}</nav>
-      <span className="spacer" />
+      <span className="spacer drag-region" aria-hidden="true" />
       {!rail && (soon.length > 0
         ? <button className={`side-card ${tone}`} onClick={() => router.go("due")}>
             <span className="t-subtitle">{overdue ? `${overdue} 件已逾期` : `30 天内 ${soon.length} 件`}</span>
@@ -178,6 +179,23 @@ const toastIcons = {
   overdue: "clock", missing: "doc.text", duplicate: "doc.on.doc",
 };
 
+/** 把可撤销的提示放进当前表单，正文可滚动，页脚操作始终可点击。 */
+function useSheetFeedbackHost(active: boolean) {
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (!active) { setHost(null); return; }
+    const locate = () => {
+      const modals = document.querySelectorAll(".overlay[aria-modal='true']:not(.ghost-out)");
+      setHost(modals[modals.length - 1]?.querySelector<HTMLElement>(".sheet-feedback") ?? null);
+    };
+    locate();
+    const observer = new MutationObserver(locate);
+    observer.observe(document.body, { childList: true });
+    return () => observer.disconnect();
+  }, [active]);
+  return host;
+}
+
 export function Shell() {
   const { store, router } = useApp();
   useTrashJanitor();
@@ -208,6 +226,7 @@ export function Shell() {
     };
   }, []);
   const inCalendarFooter = router.section === "due" && !router.sheet && !blocked && !store.errorMessage;
+  const feedbackHost = useSheetFeedbackHost(!!store.toast);
   const toast = store.toast && (
     <div className={`toast ${store.toast.action ? "with-action" : ""} ${store.toast.leaving ? "out" : ""}`} key={store.toast.id} role="status"
       onMouseEnter={() => store.pauseToast()} onMouseLeave={() => store.resumeToast()}>
@@ -224,11 +243,11 @@ export function Shell() {
       <main className="main" {...(blocked && !store.isImporting ? { inert: "" } as any : {})}>
         <div className="titlebar drag-region" />
         <DemoBanner />
-        <div className={animatePageEntry ? "col grow page-in" : "col grow"} key={pageKey(router)} style={{ minHeight: 0 }}><Page calendarFeedback={inCalendarFooter ? toast : null} /></div>
+        <div className={animatePageEntry ? "col grow page-in" : "col grow"} key={pageKey(router)} style={{ minHeight: 0 }}><Page calendarFeedback={inCalendarFooter && !feedbackHost ? toast : null} /></div>
       </main>
-      {demo && <TourOverlay />}
+      {demo && isTourDemo() && <TourOverlay />}
       <SheetHost />
-      {!inCalendarFooter && toast}
+      {feedbackHost ? createPortal(toast, feedbackHost) : !inCalendarFooter && toast}
       {store.isLoading && (
         <div className="overlay" style={{ background: "color-mix(in srgb, var(--canvas) 60%, transparent)" }}>
           <div className="col gap12 sheet" style={{ width: 300, padding: 24 }}>

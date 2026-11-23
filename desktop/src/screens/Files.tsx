@@ -1,7 +1,7 @@
 // 文件页：按归属分组的现行文件，筛选、多选、导出 ZIP、继续未完成的导入。移植自 FilesView.swift。
 
 import { companyTint } from "../ui/uistyle";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as D from "../domain/day";
 import { type Document, type DocumentType, type NodeRef } from "../domain/models";
 import { type Freshness, expiryOf, freshnessLabel, freshnessNeedsAttention, freshnessRank } from "../domain/engine";
@@ -12,13 +12,13 @@ import { writeZip } from "../services/files";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
 import { InboxPane, TrashPane } from "./Lifecycle";
-import { addToInbox } from "../state/lifecycle";
-import { Tabs, Avatar, Button, Checkbox, EmptyStateView, JurisdictionBadge, type MenuEntry, Pill, Segmented, SelectField, divider, header, item, useContextMenu, PageHeader } from "../ui/kit";
+import { hasActiveModal, Tabs, Avatar, Button, Checkbox, EmptyStateView, JurisdictionBadge, type MenuEntry, Pill, Segmented, divider, header, item, useContextMenu, PageHeader } from "../ui/kit";
 import { DropTarget } from "../ui/drop";
 import { FileThumb, batchOpen, clearThumbCache, openEntries, ReissueRequestSheet, freshnessPill, useStageFile } from "./common";
 import { ExtraTags, StatusTag, statusOfFreshness } from "./Status";
-import { inboxResultFeedback } from "./fileFeedback";
 import { DeferredFiles, useFileViewport } from "./DeferredFiles";
+import { FilesOwnerPicker, type FilesOwnerOption } from "./FilesOwnerPicker";
+import { chooseFilesScope, isBroadScope, ownerKey, setFilesGroupsOpen, type FilesBrowseView, type FilesScope } from "../state/filesBrowse";
 import "./files558.css";
 
 interface Snap { d: Document; f: Freshness; owner: string; type?: DocumentType; expiry?: D.Day }
@@ -41,30 +41,27 @@ export function FilesView() {
   return <DocumentsView />;
 }
 
-function FilesTabs() {
+function FilesTabs({ count }: { count: number }) {
   const { store, router } = useApp();
   return <Tabs<"files" | "inbox" | "trash"> value={router.filesPane} onChange={(v) => router.set("filesPane", v)}
-    tabs={[["files", "文件", store.data.documents.filter((d) => !d.supersededBy).length], ["inbox", "待整理", store.data.inbox.length], ["trash", "废纸篓", store.data.trash.length]]} />;
+    tabs={[["files", "文件", count], ["inbox", "待整理", store.data.inbox.length], ["trash", "废纸篓", store.data.trash.length]]} />;
 }
 
 function FilesSubPage() {
   const { store, router } = useApp();
   const inbox = router.filesPane === "inbox";
-  // 拖进窗口或“上传材料”的文件：先加入待整理
-  useEffect(() => {
-    if (!inbox || !router.inboxPaths.length) return;
-    const paths = router.inboxPaths; router.inboxPaths = [];
-    void addToInbox(store, paths).then((r) => {
-      const feedback = inboxResultFeedback(r.added, r.duplicates);
-      store.showToast(feedback.text, undefined, "", feedback.kind);
-    })
-      .catch((e) => store.setError(`加入待整理失败：${e instanceof Error ? e.message : String(e)}`));
-  }, [inbox, router.inboxPaths.length]);
+  const groupIDs = store.companyIDsForFilter(router.groupFilter);
+  const view = router.filesBrowse.view;
+  const query = view.query.trim().toLowerCase();
+  const count = store.data.documents.filter((d) => !d.supersededBy &&
+    (d.owner.kind === "person" || !groupIDs || groupIDs.has(d.owner.id)) &&
+    (view.scope === "all" || view.scope === d.owner.kind || view.scope === ownerKey(d.owner)) &&
+    (!query || [store.docType(d.typeID)?.name, store.nameOf(d.owner), d.originalFileName].some((v) => v?.toLowerCase().includes(query)))).length;
   return (
     <DropTarget message="松开即可加入待整理" onDrop={(paths) => router.startImport(paths, null)} style={{ flex: 1, minHeight: 0, display: "flex" }}>
       <div className="page"><div className="page-inner">
         <PageHeader title="文件" subtitle={inbox ? `${store.data.inbox.length} 份待整理` : `废纸篓 ${store.data.trash.length} 份：30 天内可恢复。`} />
-        <FilesTabs />
+        <FilesTabs count={count} />
         {inbox ? <InboxPane /> : <TrashPane />}
       </div></div>
     </DropTarget>
@@ -73,7 +70,15 @@ function FilesSubPage() {
 
 function DocumentsView() {
   const { store, router } = useApp();
-  const [query, setQuery] = useState("");
+  const session = router.filesBrowse;
+  const [browse, setBrowse] = useState(session.view);
+  const { scope, query } = browse;
+  const page = useRef<HTMLDivElement>(null);
+  const restoreTop = useRef<number | null>(session.scrollTop);
+  const setView = (view: FilesBrowseView) => {
+    session.view = view;
+    setBrowse(view);
+  };
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const anchor = useRef<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -84,21 +89,74 @@ function DocumentsView() {
   const th = (k: FSort, label: string) => <th aria-sort={fsort === k ? "descending" : "none"}><button className="row gap4" style={{ font: "inherit", color: fsort === k ? "var(--ink)" : "inherit" }} onClick={() => setFsort(fsort === k ? "status" : k)} title={fsort === k ? "恢复按状态排序" : `按${label}排序`}>{label}{fsort === k && <Icon name="chevron.down" size={9} />}</button></th>;
   const setGrid = (g: boolean) => { setGridState(g); platform().prefSet("files.grid", g ? "1" : "0"); if (!g) clearThumbCache(); };
   useEffect(() => () => clearThumbCache(), []);
-  const filter = router.filesFilter, horizon = router.filesHorizon, ownerKind = router.filesOwnerKind;
+  const filter = router.filesFilter, horizon = router.filesHorizon;
+  const ownerKind = scope === "all" ? null : scope.startsWith("company") ? "company" : "person";
 
   const q = query.trim().toLowerCase();
   const { groupFilter } = router;
-  const snapshots = useMemo(() => {
+  // 在短列表挂载前记录位置。逐字输入不会覆盖搜索前的浏览位置。
+  const positionKey = (view: FilesBrowseView, status: number) =>
+    JSON.stringify([groupFilter, view.scope, status, view.query.trim().toLowerCase(), grid, status === 1 ? horizon : null]);
+  const changeCriteria = (view: FilesBrowseView, status = filter) => {
+    const editingQuery = view.query !== query;
+    if (!editingQuery || !q) session.remember(positionKey(browse, filter), page.current?.scrollTop ?? 0);
+    restoreTop.current = editingQuery && view.query.trim() ? 0 : session.position(positionKey(view, status));
+    setSelected(new Set());
+    anchor.current = null;
+    setView(view);
+    if (status !== filter) router.set("filesFilter", status);
+  };
+  const changeScope = (next: FilesScope) => {
+    if (next !== scope) changeCriteria(chooseFilesScope(browse, next));
+  };
+  const setQuery = (next: string) => changeCriteria({
+    ...browse, query: next, collapsedSearch: q && next.trim() ? browse.collapsedSearch : new Set(),
+  });
+  const setStatus = (next: number) => {
+    if (next !== filter) changeCriteria({ ...browse, collapsedMatches: new Set(), collapsedSearch: new Set() }, next);
+  };
+  useLayoutEffect(() => {
+    if (restoreTop.current === null || !page.current) return;
+    page.current.scrollTop = restoreTop.current;
+    session.scrollTop = page.current.scrollTop;
+    restoreTop.current = null;
+  }, [session, browse, filter]);
+  const expansionField = q ? "collapsedSearch" : !isBroadScope(scope) || filter === 2 ? "collapsedMatches" : "expanded";
+  const groupKeys = browse[expansionField];
+  const isGroupOpen = useCallback((key: string) =>
+    expansionField === "expanded" ? groupKeys.has(key) : !groupKeys.has(key), [expansionField, groupKeys]);
+  const allSnapshots = useMemo(() => {
     const scope = store.companyIDsForFilter(groupFilter);
-    return store.data.documents.filter((d) => !d.supersededBy && (!ownerKind || d.owner.kind === ownerKind) && (d.owner.kind === "person" || !scope || scope.has(d.owner.id)))
+    return store.data.documents.filter((d) => !d.supersededBy && (d.owner.kind === "person" || !scope || scope.has(d.owner.id)))
       .map((d): Snap => {
         const type = store.docType(d.typeID);
         return { d, f: store.freshness(d), owner: store.nameOf(d.owner), type, expiry: expiryOf(d, type) };
       });
-  }, [store, store.data, store.missingFiles, store.today, groupFilter, ownerKind]);
-  const missingCount = useMemo(() => ownerKind === "person" ? 0 : store.missingSummary(groupFilter).items,
-    [store, store.data, store.missingFiles, store.today, groupFilter, ownerKind]);
-  const { scoped, list, grouped, ordered, attention, expiredN, undated } = useMemo(() => {
+  }, [store, store.data, store.missingFiles, store.today, groupFilter]);
+  const owners = useMemo(() => {
+    const options = new Map<string, FilesOwnerOption>();
+    for (const snap of allSnapshots) {
+      const owner = snap.d.owner, key = ownerKey(owner);
+      const existing = options.get(key);
+      if (existing) { existing.count++; continue; }
+      const company = owner.kind === "company" ? store.company(owner.id) : undefined;
+      options.set(key, { ...owner, name: snap.owner, count: 1, code: company?.jurisdiction,
+        tint: company ? companyTint(store, company.id) : undefined });
+    }
+    return [...options.values()].sort((a, b) => a.name.localeCompare(b.name, "zh"));
+  }, [allSnapshots, store]);
+  const activeOwner = isBroadScope(scope) ? undefined : owners.find((o) => ownerKey(o) === scope);
+  // 导入、删除或切换集团后，失效的具体归属回到原来的范围。
+  useLayoutEffect(() => {
+    if (!isBroadScope(scope) && !activeOwner) changeScope(browse.broadScope);
+  }, [scope, activeOwner]);
+  const snapshots = useMemo(() => scope === "all" ? allSnapshots : allSnapshots.filter(({ d }) =>
+    isBroadScope(scope) ? d.owner.kind === scope : ownerKey(d.owner) === scope), [allSnapshots, scope]);
+  const missingCount = useMemo(() => {
+    if (ownerKind === "person") return 0;
+    return store.missingSummary(groupFilter, activeOwner?.id).items;
+  }, [store, store.data, store.missingFiles, store.today, groupFilter, activeOwner, ownerKind]);
+  const { scoped, list, grouped, attention, expiredN, undated } = useMemo(() => {
     const scoped = q ? snapshots.filter((s) => s.type?.name.toLowerCase().includes(q) || s.owner.toLowerCase().includes(q) || s.d.originalFileName.toLowerCase().includes(q)) : snapshots;
     let list = scoped;
     if (filter === 1) list = scoped.filter((s) => s.expiry && D.daysBetween(store.today, s.expiry) >= 0 && D.daysBetween(store.today, s.expiry) <= horizon).sort((a, b) => (a.expiry! < b.expiry! ? -1 : 1));
@@ -118,21 +176,41 @@ function DocumentsView() {
     if (grouped.length) {
       for (const group of grouped) group.docs = sortDocs(group.docs, fsort);
     } else list = sortDocs(list, fsort);
-    const ordered = (grouped.length ? grouped.flatMap((g) => g.docs) : list).map((s) => s.d);
-    return { scoped, list, grouped, ordered, attention: scoped.filter((s) => freshnessNeedsAttention(s.f)).length,
+    return { scoped, list, grouped, attention: scoped.filter((s) => freshnessNeedsAttention(s.f)).length,
       expiredN: scoped.filter((s) => s.f.kind === "expired").length, undated: scoped.filter((s) => s.f.kind === "unknown").length };
   }, [snapshots, q, filter, horizon, store.today, fsort]);
-  const selectedDocs = ordered.filter((d) => selected.has(d.id));
+  const ordered = useMemo(() => (grouped.length ? grouped.flatMap((g) => g.docs) : list).map((s) => s.d), [grouped, list]);
+  const visibleOwnerKeys = useMemo(() => grouped.map((group) => ownerKey(group.owner)), [grouped]);
+  const allGroupsOpen = visibleOwnerKeys.every(isGroupOpen);
+  const changeGroupExpansion = (keys: string[], docs: Snap[], open: boolean) => {
+    if (!open && selected.size) {
+      const next = new Set(selected);
+      for (const { d } of docs) next.delete(d.id);
+      setSelected(next);
+      if (anchor.current && !next.has(anchor.current)) anchor.current = null;
+    }
+    setView(setFilesGroupsOpen(browse, keys, expansionField, open));
+  };
+  const visibleOrder = useRef<Document[]>([]);
+  useLayoutEffect(() => {
+    visibleOrder.current = grouped.length
+      ? grouped.filter((g) => isGroupOpen(ownerKey(g.owner))).flatMap((g) => g.docs.map((s) => s.d))
+      : ordered;
+  }, [grouped, ordered, isGroupOpen]);
+  const selectedDocs = selected.size ? ordered.filter((d) => selected.has(d.id)) : [];
 
   // Ctrl/⌘ A 全选、Esc 取消、Ctrl/⌘ F 搜索
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (router.sheet) return;
+      if (router.sheet || hasActiveModal() || document.querySelector(".files-owner-popover")) return;
       const editing = (e.target as HTMLElement)?.closest("input, textarea, [contenteditable]");
       const cmd = e.metaKey || e.ctrlKey;
       if (cmd && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); return; }
-      if (cmd && e.key.toLowerCase() === "a" && !editing && ordered.length) { e.preventDefault(); setSelected(new Set(ordered.map((d) => d.id))); anchor.current = ordered[0].id; return; }
-      if (e.key === "Escape" && selected.size && !document.querySelector(".popover:not(.ghost-out)")) { setSelected(new Set()); anchor.current = null; }
+      if (cmd && e.key.toLowerCase() === "a" && !editing && ordered.length) { e.preventDefault(); setSelected(new Set(ordered.map((d) => d.id))); anchor.current = visibleOrder.current[0]?.id ?? null; return; }
+      if (e.key === "Escape" && !e.isComposing && !document.querySelector(".popover:not(.ghost-out)")) {
+        if (query) { setQuery(""); search.current?.focus({ preventScroll: true }); }
+        else if (selected.size) { setSelected(new Set()); anchor.current = null; }
+      }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
@@ -148,9 +226,10 @@ function DocumentsView() {
   }, []);
   const click = useCallback((e: React.MouseEvent, id: string) => {
     if (e.shiftKey && anchor.current) {
-      const i = ordered.findIndex((d) => d.id === anchor.current), j = ordered.findIndex((d) => d.id === id);
+      const visible = visibleOrder.current;
+      const i = visible.findIndex((d) => d.id === anchor.current), j = visible.findIndex((d) => d.id === id);
       if (i >= 0 && j >= 0) {
-        const range = ordered.slice(Math.min(i, j), Math.max(i, j) + 1);
+        const range = visible.slice(Math.min(i, j), Math.max(i, j) + 1);
         setSelected((previous) => new Set([...previous, ...range.map((d) => d.id)]));
         return;
       }
@@ -158,7 +237,7 @@ function DocumentsView() {
     if (e.metaKey || e.ctrlKey || e.shiftKey) { toggle(id); return; }
     setSelected(new Set()); anchor.current = id;
     router.open({ kind: "document", id });
-  }, [ordered, router, toggle]);
+  }, [router, toggle]);
   const removeSelected = async (list: Document[]) => {
     if (!list.length) return;
     router.open({ kind: "trashDocs", ids: list.map((d) => d.id) });
@@ -207,19 +286,30 @@ function DocumentsView() {
     const bad = list.filter((s) => freshnessNeedsAttention(s.f)).length;
     const row = (s: Snap, index: number) => <FileTableRow key={s.d.id} rowIndex={index + 2} snap={s} showOwner={!owner} selected={selected.has(s.d.id)} extraMenu={selected.size > 1 && selected.has(s.d.id) ? makeBatchMenu : undefined} onSelect={click} onToggle={toggle} />;
     const c = owner?.kind === "company" ? store.company(owner.id) : undefined;
+    const key = owner ? ownerKey(owner) : null;
+    const isOpen = !key || isGroupOpen(key);
+    const expired = list.filter((s) => s.f.kind === "expired").length;
+    const risk = expired === bad && expired ? `${expired} 份已逾期` :
+      `${bad} 份需处理${expired ? `，含 ${expired} 份逾期` : ""}`;
+    const summary = <>
+      <span className="files-owner-count num">{list.length} 份</span>
+      {bad > 0 && <Pill text={risk} kind={list.some((s) => freshnessPill(s.f) === "bad") ? "bad" : "warn"} />}
+    </>;
     return (
-      <div key={owner ? `${owner.kind}:${owner.id}` : title} className="col gap12">
-        <div className="row gap10">
-          {owner ? <>
+      <div key={key ?? title} data-owner-key={key ?? undefined} className={owner ? `files-owner-section${isOpen ? " is-open" : ""}` : "col gap12"}>
+        {owner && key ? <div className="files-owner-header">
+          <button type="button" className="files-owner-disclosure" aria-expanded={isOpen} title={title}
+            onClick={() => changeGroupExpansion([key], list, !isOpen)}>
+            <span className="files-owner-chevron"><Icon name="chevron.right" size={14} /></span>
             {c ? <JurisdictionBadge code={c.jurisdiction} size={26} tint={companyTint(store, c.id)} /> : <Avatar name={title} size={26} />}
-            <button className="row gap4" onClick={() => (owner.kind === "company" ? router.openCompany(owner.id) : router.openPerson(owner.id))}>
-              <span className="t-card">{title}</span><Icon name="arrow.up.right" size={10} className="muted" />
-            </button>
-          </> : <span className="t-card">{title}</span>}
-          <span className="t-meta muted">{list.length} 份</span>
-          {bad > 0 && <Pill text={`${bad} 份需处理`} kind={list.some((s) => freshnessPill(s.f) === "bad") ? "bad" : "warn"} />}
-        </div>
-        {grid ? (
+            <span className="files-owner-heading-body"><span className="files-owner-name">{title}</span>{summary}</span>
+          </button>
+          {(c || (owner.kind === "person" && store.person(owner.id))) && <button type="button" className="files-owner-profile" aria-label={`查看${title}的资料`} title={`查看${owner.kind === "company" ? "公司" : "人员"}资料`}
+            onClick={() => owner.kind === "company" ? router.openCompany(owner.id) : router.openPerson(owner.id)}>
+            <Icon name="arrow.up.right" size={14} />
+          </button>}
+        </div> : <div className="row gap10"><span className="t-card">{title}</span>{summary}</div>}
+        {isOpen && (grid ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 200px))", gap: 16 }}>
             {list.map((s) => <DeferredFiles key={s.d.id} watch={watchFiles} label={s.d.originalFileName}>{() =>
               <FileCard snap={s} showOwner={!owner} selected={selected.has(s.d.id)} extraMenu={selected.size > 1 && selected.has(s.d.id) ? makeBatchMenu : undefined} onClick={click} />}
@@ -227,7 +317,7 @@ function DocumentsView() {
           </div>
         ) : (
           <div className="card flush" style={{ overflowX: "auto" }}>
-            <table className="table files-table" aria-rowcount={list.length + 1} aria-label={`${title}的文件`}>
+            <table className={`table files-table ${owner ? "files-table-grouped" : "files-table-flat"}`} aria-rowcount={list.length + 1} aria-label={`${title}的文件`}>
               {/* 5.3.2：各分组共用同一套列宽，跨分组竖向对齐 */}
               <colgroup><col style={{ width: 52 }} /><col />{!owner && <col style={{ width: 220 }} />}<col style={{ width: 132 }} /><col style={{ width: 132 }} /><col style={{ width: 168 }} /><col style={{ width: 132 }} /></colgroup>
               <thead><tr><th><span className="sr-only">选择</span></th>{th("type", "文件")}{!owner && <th>归属</th>}{th("issue", "签发")}{th("expiry", "到期")}{th("status", "状态")}<th><span className="sr-only">操作</span></th></tr></thead>
@@ -238,66 +328,70 @@ function DocumentsView() {
               })}
             </table>
           </div>
-        )}
+        ))}
       </div>
     );
   };
 
   const empty = () => {
-    if (q) return <EmptyStateView symbol="magnifyingglass" title={`没有找到“${query}”`} message="搜索范围已按当前集团和归属类型限制。" actionTitle="清除搜索" action={() => setQuery("")} />;
-    if (!scoped.length) return <EmptyStateView symbol="doc.on.doc" title="当前范围没有文件" message="当前集团或归属类型下没有现行文件。" actionTitle="查看全部范围"
-      action={() => router.update((r) => { r.groupFilter = null; r.filesOwnerKind = null; r.filesFilter = 0; })} />;
+    if (q) return <EmptyStateView symbol="magnifyingglass" title={`没有找到“${query}”`} message="可以清除搜索，或更换归属后再试。" actionTitle="清除搜索" action={() => setQuery("")} />;
+    if (!scoped.length) return <EmptyStateView symbol="doc.on.doc" title="当前范围没有文件" message="当前集团或归属下没有现行文件。" actionTitle="查看全部范围"
+      action={() => { changeCriteria(chooseFilesScope(browse, "all"), 0); router.set("groupFilter", null); }} />;
     return <EmptyStateView symbol={filter === 2 ? "checkmark.seal" : "doc.on.doc"} title={filter === 1 ? `未来 ${horizon} 天没有即将到期的文件` : filter === 2 ? "当前范围没有需要处理的文件" : "最近 30 天没有添加文件"}
-      message={`当前范围内还有 ${scoped.length} 份现行文件。`} actionTitle="查看全部文件" action={() => router.set("filesFilter", 0)} />;
+      message={`当前范围内还有 ${scoped.length} 份现行文件。`} actionTitle="查看全部文件" action={() => setStatus(0)} />;
   };
 
   return (
     <DropTarget message="松开即可加入待整理" radius={20} onDrop={(paths) => router.startImport(paths, null)} style={{ flex: 1, minHeight: 0, display: "flex" }}>
-      <div className="page">
+      <div className="page files-page" ref={page} onScroll={(e) => { session.scrollTop = e.currentTarget.scrollTop; }}>
         <div className="page-inner" style={{ paddingBottom: selectedDocs.length ? 96 : undefined }}>
           <div className="col gap12">
-            <PageHeader title="文件" scope={[ownerKind === "company" ? "公司文件" : ownerKind === "person" ? "个人文件" : "公司与人员", router.groupFilter ? store.filterName(router.groupFilter) : "", q ? `搜索“${query.trim()}”` : ""].filter(Boolean).join(" · ")} stats={[
+            <PageHeader title="文件" crumb={groupFilter && <button type="button" className="no-drag" aria-label={`清除集团筛选：${store.filterName(groupFilter)}`}
+              title="清除集团筛选，查看全部归属" onClick={() => router.set("groupFilter", null)}>
+              集团 · {store.filterName(groupFilter)} <Icon name="xmark" size={12} />
+            </button>} stats={[
               { label: "现行文件", value: scoped.length, unit: "份" },
               { label: "已过期", value: expiredN, unit: "份", tone: expiredN ? "bad" : undefined },
-              { label: "需处理", value: attention, unit: "份", tone: attention ? "warn" : undefined, onClick: attention ? () => router.set("filesFilter", 2) : undefined },
+              { label: "需处理", value: attention, unit: "份", tone: attention ? "warn" : undefined, onClick: attention ? () => setStatus(2) : undefined },
               ...(ownerKind !== "person" ? [{ label: "缺件", value: missingCount, unit: "项", tone: missingCount ? "warn" as const : undefined }] : []),
-            ]} subtitle={(list.length === scoped.length ? `${scoped.length} 份现行文件` : `显示 ${list.length} / ${scoped.length} 份`) + (attention ? `，${attention} 份需处理（${[expiredN ? `${expiredN} 份已过期` : "", undated ? `${undated} 份日期待补` : "", attention - expiredN - undated ? `${attention - expiredN - undated} 份快到期或需更新` : ""].filter(Boolean).join("、")}）` : "，都在有效期内") + "。把 PDF、照片或文件夹拖进窗口即可导入。"}>
-              <Button kind="primary" icon="square.and.arrow.up" title="选择 PDF、照片或文件夹；也可以直接拖进窗口" onClick={() => void router.chooseFiles(null)}>加入待整理</Button>
+            ]} subtitle={(list.length === scoped.length ? `${scoped.length} 份现行文件` : `显示 ${list.length} / ${scoped.length} 份`) + (attention ? `，${attention} 份需处理（${[expiredN ? `${expiredN} 份已过期` : "", undated ? `${undated} 份日期待补` : "", attention - expiredN - undated ? `${attention - expiredN - undated} 份快到期或需更新` : ""].filter(Boolean).join("、")}）` : "，都在有效期内") + "。把文件或文件夹拖进窗口即可加入待整理。"}>
+              <Button kind="primary" icon="square.and.arrow.up" title="支持 PDF、DOCX、XLSX 和照片，也可以拖入文件夹" onClick={() => void router.chooseFiles(null)}>加入待整理</Button>
             </PageHeader>
-            <FilesTabs />
-            <div className={`files-toolbar ${filter === 1 ? "with-horizon" : ""}`}>
-              <div className="files-toolbar-main">
-                <span className="files-scope-control" title="按归属筛选：公司材料或个人材料"><span className="files-scope-label">归属</span>
-                  <SelectField options={[[0, "公司与人员"], [1, "公司文件"], [2, "个人文件"]]} value={ownerKind === "company" ? 1 : ownerKind === "person" ? 2 : 0}
-                    ariaLabel="归属范围" onChange={(v) => router.set("filesOwnerKind", v === 1 ? "company" : v === 2 ? "person" : null)} minWidth={112} />
-                </span>
-                <Segmented className="files-status-filter seg-scroll" options={[[0, "全部"], [1, "即将到期"], [2, `需处理 ${attention}`], [3, "最近添加"]]} value={filter} onChange={(v) => router.set("filesFilter", v)} />
-                {filter === 1 && <Segmented className="files-horizon-filter seg-scroll" options={[[30, "30 天"], [60, "60 天"], [90, "90 天"], [183, "半年"]]} value={horizon} onChange={(v) => router.set("filesHorizon", v)} />}
-              </div>
-              <div className="files-toolbar-tools">
-                <label className="search files-search" title="搜索文件（Ctrl/⌘ F）">
-                  <Icon name="magnifyingglass" size={14} />
-                  <input ref={search} className="field" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索类型、公司、人员或文件名" />
-                </label>
-                <Segmented className="files-view-filter" options={[[false, "列表"], [true, "缩略图"]]} value={grid} onChange={setGrid} />
-              </div>
-            </div>
-            {pending && !router.isImportOpen && (
-              <div className="row gap12 card" style={{ padding: "12px 16px" }} aria-label={`上次导入还有 ${pendingRemaining(pending)} 份文件未完成`}>
-                <span className="amber-text" style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--band)", display: "grid", placeItems: "center", flex: "none" }}><Icon name="tray.and.arrow.down" /></span>
-                <div className="col grow" style={{ gap: 2, minWidth: 0 }}>
-                  <span className="t-row">上次导入还有 {pendingRemaining(pending)} 份文件未完成</span>
-                  <span className="t-meta muted ellipsis">识别结果和你的修改都已保存（{snapshotTitle(pending.savedAt)}），继续时不需要重新识别。</span>
-                </div>
-                <Button kind="quiet" size="small" onClick={() => store.discardPendingImport()}>放弃</Button>
-                <Button size="small" onClick={() => router.open({ kind: "resumeImport" })}>继续</Button>
-              </div>
-            )}
+            <FilesTabs count={scoped.length} />
           </div>
-          {!store.data.documents.length ? <div className="card"><EmptyStateView symbol="doc.on.doc" title="还没有文件" message="把 PDF、照片或按公司分好的文件夹拖进窗口，Charter 会识别类型、公司和日期，你确认后才归档。" actionTitle="导入文件" action={() => void router.chooseFiles(null)} /></div>
+          <div className={`files-toolbar ${filter === 1 ? "with-horizon" : ""}`}>
+            <div className="files-toolbar-main">
+              <FilesOwnerPicker owners={owners} value={scope} onChange={changeScope} onClear={() => changeScope(browse.broadScope)} />
+              <Segmented className="files-status-filter seg-scroll" options={[[0, "全部"], [1, "即将到期"], [2, `需处理 ${attention}`], [3, "最近添加"]]} value={filter} onChange={setStatus} />
+              {filter === 1 && <Segmented className="files-horizon-filter seg-scroll" options={[[30, "30 天"], [60, "60 天"], [90, "90 天"], [183, "半年"]]} value={horizon} onChange={(v) => router.set("filesHorizon", v)} />}
+            </div>
+            <div className="files-toolbar-tools">
+              <div className="search files-search" title="搜索文件（Ctrl/⌘ F）">
+                <Icon name="magnifyingglass" size={14} />
+                <input ref={search} className="field" aria-label="搜索文件" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索类型、公司、人员或文件名" />
+                {query && <button type="button" className="files-query-clear" aria-label="清除文件搜索"
+                  onClick={() => { setQuery(""); search.current?.focus({ preventScroll: true }); }}><Icon name="xmark" size={12} /></button>}
+              </div>
+              <Segmented className="files-view-filter" options={[[false, "列表"], [true, "缩略图"]]} value={grid} onChange={setGrid} />
+              {grouped.length > 1 && <Button kind="quiet" size="small" className="files-group-toggle" icon={allGroupsOpen ? "chevron.up" : "chevron.down"}
+                onClick={() => changeGroupExpansion(visibleOwnerKeys, list, !allGroupsOpen)}>{allGroupsOpen ? "全部折叠" : "全部展开"}</Button>}
+            </div>
+          </div>
+          {pending && !router.isImportOpen && (
+            <div className="row gap12 card" style={{ padding: "12px 16px" }} aria-label={`上次导入还有 ${pendingRemaining(pending)} 份文件未完成`}>
+              <span className="amber-text" style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--band)", display: "grid", placeItems: "center", flex: "none" }}><Icon name="tray.and.arrow.down" /></span>
+              <div className="col grow" style={{ gap: 2, minWidth: 0 }}>
+                <span className="t-row">上次导入还有 {pendingRemaining(pending)} 份文件未完成</span>
+                <span className="t-meta muted ellipsis">识别结果和你的修改都已保存（{snapshotTitle(pending.savedAt)}），继续时不需要重新识别。</span>
+              </div>
+              <Button kind="quiet" size="small" onClick={() => store.discardPendingImport()}>放弃</Button>
+              <Button size="small" onClick={() => router.open({ kind: "resumeImport" })}>继续</Button>
+            </div>
+          )}
+          {!store.data.documents.length ? <div className="card"><EmptyStateView symbol="doc.on.doc" title="还没有文件" message="把 PDF、DOCX、XLSX、照片或按公司分好的文件夹拖进窗口，Charter 会识别类型、公司和日期，你确认后才归档。" actionTitle="导入文件" action={() => void router.chooseFiles(null)} /></div>
             : !list.length ? <div className="card">{empty()}</div>
               : filter === 1 || filter === 3 ? section(filter === 1 ? "按到期日排列" : "最近 30 天添加", null, list)
-                : grouped.map((g) => section(g.name, g.owner, g.docs))}
+                : <div className="files-owner-groups">{grouped.map((g) => section(g.name, g.owner, g.docs))}</div>}
         </div>
       </div>
       {selectedDocs.length > 0 && (
@@ -334,7 +428,7 @@ const FileCard = memo(function FileCard({ snap, showOwner, selected, extraMenu, 
     <button className="col gap12 file-card" onClick={(e) => onClick(e, d.id)} onContextMenu={(e) => ctx.open(e, menu())} title={d.originalFileName} aria-label={`${t?.name ?? "文件"}，${freshnessLabel(f)}`} aria-pressed={selected}
       style={{ padding: 12, borderRadius: "var(--r-tile)", background: "var(--surface)", textAlign: "left", position: "relative", borderColor: selected ? "var(--green)" : undefined }}>
       <span className="thumb" style={{ height: 172, borderRadius: "var(--r-control)", background: "var(--surface-sunken)", display: "grid", placeItems: "center", width: "100%" }}>
-        <FileThumb doc={d} alert={freshnessPill(f) === "bad"} width={120} height={150} />
+        <FileThumb doc={d} alert={freshnessPill(f) === "bad"} width={120} height={150} startDelayMs={120} />
       </span>
       <span className="col" style={{ gap: 2, minWidth: 0, width: "100%" }}>
         <span className="t-row ellipsis">{t?.name ?? "文件"}</span>

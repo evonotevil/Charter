@@ -2,6 +2,10 @@
   position: relative;
 }
 
+.due-page-inner[data-drawer-layout] > .two {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .due-burst-layer {
   position: absolute;
   top: 0;

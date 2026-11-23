@@ -1,0 +1,26 @@
+.import-review-scroll { min-width: 0; overflow-x: auto; }
+
+.import-review {
+  min-width: 860px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.import-review .import-col-check { width: 44px; }
+.import-review .import-col-type { width: 16%; }
+.import-review .import-col-owner { width: 18%; }
+.import-review .import-col-date { width: 172px; }
+.import-review .import-col-result { width: 112px; }
+
+.import-review :is(th, td) { padding-inline: var(--space-2); }
+.import-review td { padding-block: var(--space-3); }
+.import-review :is(th, td):first-child { padding-left: var(--space-4); }
+.import-review :is(th, td):last-child { padding-right: var(--space-4); }
+.import-review th:first-child { border-radius: var(--r-input) 0 0 var(--r-input); }
+.import-review th:last-child { border-radius: 0 var(--r-input) var(--r-input) 0; }
+.import-review tbody tr:last-child td { border-bottom: 0; }
+
+.import-review-file { min-width: 0; gap: var(--space-1); }
+.import-review .select, .import-review-date > span, .import-review-date .date-field { width: 100%; }
+.import-review .select svg { flex: none; }
+.import-review-uncertain .select:not(.open):not(:focus-visible) { border-color: var(--amber-text); }

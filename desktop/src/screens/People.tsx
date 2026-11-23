@@ -1,13 +1,13 @@
 // 人员与中介：人员页签（任职、持股、代持、个人文件；新建、编辑、合并、删除）和中介页签。
 
 import { companyTint } from "../ui/uistyle";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { type Appointment, type Person, isActiveOn, newPerson, ref, sameRef } from "../domain/models";
 import { percentLabel, portfolio } from "../domain/engine";
 import { useApp } from "../state/hooks";
 import { platform } from "../platform/platform";
 import { Icon } from "../ui/Icon";
-import { Avatar, Button, Card, CountBadge, EmptyStateView, FieldRow, FormGroup, JurisdictionBadge, ListField, Metrics, Modal, Pill, SelectField, SheetScaffold, TextField, PageHeader, Tabs } from "../ui/kit";
+import { hasActiveModal, Avatar, Button, Card, CountBadge, EmptyStateView, FieldRow, FormGroup, JurisdictionBadge, ListField, Metrics, Modal, Pill, SelectField, SheetScaffold, TextField, PageHeader, Tabs } from "../ui/kit";
 import { AgentsView } from "./Agents";
 import { PersonFiles } from "./PersonFiles";
 import { ChangeRowMenu } from "./Companies";
@@ -19,12 +19,17 @@ export function PeopleView() {
   const [creating, setCreating] = useState(false);
   const search = useRef<HTMLInputElement>(null);
   const q = query.trim().toLowerCase();
-  const list = store.data.people.filter((p) => !q || [p.name, ...p.aliases].join(" ").toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name, "zh"));
+  const list = useMemo(() => filterPeople(store.data.people, q), [store.data.people, q]);
   const firstRequest = useRef(router.newPersonRequest);
-  useEffect(() => { if (!router.selectedPersonID && list[0]) router.set("selectedPersonID", list[0].id); }, []);
+  const selected = list.find((p) => p.id === router.selectedPersonID);
+  useEffect(() => {
+    const nextID = selected?.id ?? list[0]?.id ?? null;
+    if (router.selectedPersonID !== nextID) router.set("selectedPersonID", nextID);
+  }, [list, router, router.selectedPersonID, selected?.id]);
   useEffect(() => { if (router.newPersonRequest !== firstRequest.current) { firstRequest.current = router.newPersonRequest; setCreating(true); } }, [router.newPersonRequest]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      if (hasActiveModal()) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") { e.preventDefault(); search.current?.focus(); return; }
       if (router.sheet || (e.target as HTMLElement)?.closest("input, textarea")) return;
       if ((e.key !== "ArrowUp" && e.key !== "ArrowDown") || !list.length) return;
@@ -36,7 +41,6 @@ export function PeopleView() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   });
-  const selected = store.person(router.selectedPersonID);
   const agents = router.section === "agents" || router.section === "parties";
   return (
     <div className="page people-page-shell"><div className="page-inner people-page">
@@ -64,9 +68,15 @@ export function PeopleView() {
           </div>
         </div>
       )}
-      {creating && <NewPersonSheet onClose={() => setCreating(false)} onCreate={(p) => router.set("selectedPersonID", p.id)} />}
+      {creating && <NewPersonSheet onClose={() => setCreating(false)} onCreate={(p) => { setQuery(""); router.set("selectedPersonID", p.id); }} />}
     </div></div>
   );
+}
+
+export function filterPeople(people: Person[], query: string) {
+  const q = query.trim().toLowerCase();
+  return people.filter((p) => !q || [p.name, ...p.aliases].join(" ").toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name, "zh"));
 }
 
 function PersonRow({ p }: { p: Person }) {

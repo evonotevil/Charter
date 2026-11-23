@@ -1,12 +1,15 @@
 // 文件包、全部材料导出、交办邮件与提醒。移植自 Packager / ArchiveExporter / Mailer / Notifier / CalendarSync。
 
 import * as D from "../domain/day";
+import { sha256Bytes } from "./hash";
 import { type ArchiveItem, type Company, type Document, type PacketTemplate, type PacketWatermark, type Party, archiveStateLabel, isNotApplicable, ref, stateNeedsAttention, latinPad, latinPadEnd, latinPadStart } from "../domain/models";
-import { type Obligation, expiryLabel, expiryOf, obligationStatus, reminderDays } from "../domain/engine";
+import { type Obligation, expiryLabel, expiryOf, obligationStatus, reminderDays, reminderLocalDateTime } from "../domain/engine";
+import { filingCalendarEvent, remindersEnabled, systemCalendarOwnsReminders } from "./calendarSync";
 import { safeName } from "../domain/folder";
 import { extname, platform } from "../platform/platform";
 import type { Store } from "../state/store";
 import { writePDF, writeUnique, writeXLSX, writeZip, type PDFSection } from "./files";
+import { writePacketChecklistPDF, type PacketChecklistData } from "./packetChecklistPDF";
 import { type WMContext, flattenPDF, inspectPDF, kindOf, resolveText, watermarkImage, reencodeImage, watermarkPDF } from "./watermark";
 import { englishDocName } from "../domain/docnames";
 
@@ -87,6 +90,8 @@ export interface PacketWatermarkRun {
 }
 export interface BuildOptions {
   watermark?: PacketWatermarkRun;
+  /** 选文件时核实的内容摘要，用于确认导出的字节就是本次审阅的版本。 */
+  reviewed?: Record<string, string>;
   signal?: AbortSignal;
   /** done/total 按份计；label 为当前处理的文件（和页码）。 */
   onProgress?: (done: number, total: number, label?: string) => void;
@@ -105,20 +110,30 @@ export interface BuildOptions {
 }
 
 /** 每份文件能否加水印，以及原因。 */
-export type WMEligibility = { ok: true } | { ok: false; reason: "other" | "encrypted" | "missing"; label: string } | { ok: true; signed: true };
-export async function wmEligibility(item: PacketItem, s: Store): Promise<WMEligibility> {
+export type WMEligibility = { ok: true; signed?: true; sha256?: string } | { ok: false; reason: "other" | "encrypted" | "missing"; label: string; sha256?: string };
+export async function wmEligibility(item: PacketItem, s: Store, reviewBytes = false): Promise<WMEligibility> {
   if (!item.document) return { ok: false, reason: "missing", label: "还没有这份文件" };
   const src = s.fileURL(item.document);
   const k = kindOf(src);
-  if (k === "other") return { ok: false, reason: "other", label: "无法加水印" };
-  if (k === "image") return { ok: true };
+  if (k === "other" && !reviewBytes) return { ok: false, reason: "other", label: "无法加水印" };
+  if (k === "image" && !reviewBytes) return { ok: true };
   try {
-    const info = inspectPDF(await platform().readBytes(src));
-    if (info.encrypted) return { ok: false, reason: "encrypted", label: "已加密" };
-    if (info.signed) return { ok: true, signed: true };
+    const bytes = await platform().readBytes(src);
+    const sha256 = reviewBytes ? await sha256Bytes(bytes) : undefined;
+    if (k === "other") return { ok: false, reason: "other", label: "无法加水印", sha256 };
+    if (k === "pdf") {
+      const info = inspectPDF(bytes);
+      if (info.encrypted) return { ok: false, reason: "encrypted", label: "已加密", sha256 };
+      if (info.signed) return { ok: true, signed: true, sha256 };
+    }
+    return { ok: true, sha256 };
   } catch { return { ok: false, reason: "missing", label: "读不到文件" }; }
-  return { ok: true };
 }
+
+export class PacketSourceChangedError extends Error {
+  constructor(readonly fileTitle: string) { super(`「${fileTitle}」的原件已更新或移走，请重新核对后生成材料包。`); }
+}
+export const emptyWatermarkMessage = "请至少添加一项水印文字或标签。";
 
 export const packetBaseName = (c: Company, t: PacketTemplate, s: Store, complete: boolean, recipient?: string) =>
   safeName(`${c.name}_${t.name}${recipient?.trim() ? `_${recipient.trim()}` : ""}${complete ? "" : "_部分"}_${stampOf(s)}`);
@@ -132,7 +147,18 @@ export function wmContext(item: PacketItem, t: PacketTemplate, c: Company, s: St
 }
 
 /** 5.5.5：生成服务返回的实际结果；完成页、发送说明、发送记录都以它为准。 */
-export interface PacketResult { path: string; files: number; watermarked: number; missing: number; complete: boolean; missingTitles: string[]; lostTitles: string[]; omittedTitles: string[] }
+export interface PacketResult {
+  path: string;
+  files: number;
+  watermarked: number;
+  missing: number;
+  complete: boolean;
+  includedItemIDs: string[];
+  missingMaterials: PacketChecklistData["missing"];
+  missingTitles: string[];
+  lostTitles: string[];
+  omittedTitles: string[];
+}
 export interface PacketFailure { id: string; title: string; reason: string }
 /** 有文件加水印或清除信息失败、且还没决定怎么处理时抛出；什么都没写入。 */
 export class PacketFailuresError extends Error {
@@ -146,15 +172,21 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
   // 记录在、但文件不在数据文件夹里（比如另一台电脑还没同步过来）：不让整包失败，算作缺件并注明原因。
   const lost = new Set<string>();
   const lostTitles: string[] = [];
-  for (const i of packetIncluded(items)) if (!(await p.stat(s.fileURL(i.document!))).exists) { lost.add(packetItemID(i)); lostTitles.push(packetItemTitle(i, s.docType(i.document!.typeID)?.name)); }
+  for (const i of packetIncluded(items)) if (!(await p.stat(s.fileURL(i.document!))).exists) {
+    const id = packetItemID(i), title = packetItemTitle(i, s.docType(i.document!.typeID)?.name);
+    if (opts.reviewed?.[id]) throw new PacketSourceChangedError(title);
+    lost.add(id); lostTitles.push(title);
+  }
   items = items.map((i) => (lost.has(packetItemID(i)) ? { ...i, included: false, problem: "文件不在数据文件夹里，可能还没同步过来" } : i));
   const included = packetIncluded(items), missing = packetMissing(items);
-  const complete = missing.length === 0;
   const wm = run?.wm.enabled ? run.wm : undefined;
   const recipient = run?.recipient.trim() ?? "";
-  const base = packetBaseName(c, t, s, complete, wm ? recipient : undefined);
-  type Done = { entry: { path: string; data: Uint8Array }; inc: string; wm: string[]; marked: boolean; cleaned: boolean | null; metaLine: string | null; failure?: PacketFailure; omit?: boolean; asIs?: boolean };
   const strip = opts.stripMeta ?? !!wm?.stripMeta;
+  type Done = {
+    item: PacketItem; title: string; fileName: string; data: Uint8Array;
+    marked: boolean; cleaned: boolean; flattened: boolean; note: string;
+    failure?: PacketFailure; omit: boolean;
+  };
   const one = async (i: number, item: PacketItem): Promise<Done> => {
     abort();
     const doc = item.document!;
@@ -162,51 +194,58 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
     const src = s.fileURL(doc);
     let ext = extname(src) || "pdf";
     let data = await p.readBytes(src);
-    const label = `${two(i + 1)} ${title}`;
-    const wmLines: string[] = []; let marked = false;
-    // 清除文件信息与水印无关：不加水印时也要生效。null = 没要求清除。
-    let cleaned: boolean | null = strip ? false : null; let keepReason = "";
-    onItem?.(i, "run", "");
+    const expected = opts.reviewed?.[packetItemID(item)];
+    if (expected && await sha256Bytes(data) !== expected) throw new PacketSourceChangedError(title);
     const kind = kindOf(src);
-    const want = !!wm && !wm.skip.includes(packetItemID(item));
-    if (kind === "pdf") {
-      const info = inspectPDF(data);
-      if (info.encrypted) { if (want) wmLines.push(`${label}：已加密，无法加水印，原样放入`); keepReason = "已加密"; }
-      else if (want || (strip && !info.signed)) {
-        const text = want ? resolveText(wm!.settings, wmContext(item, t, c, s, recipient)) : "";
-        const onPage = (n: number, total: number) => onItem?.(i, "run", `第 ${n} / ${total} 页`);
-        let ok = true;
-        try {
-          data = want && wm!.settings.flatten ? await flattenPDF(data, text, wm!.settings, { stripMeta: true, signal, onPage })
-            : await watermarkPDF(data, text, want ? wm!.settings : null, { stripMeta: strip, signal, onPage });
-        } catch (e) { if (signal?.aborted) throw e; ok = false; keepReason = "PDF 无法读取"; if (want) wmLines.push(`${label}：PDF 无法读取，未加水印，原样放入`); }
-        if (ok && cleaned !== null) cleaned = true;
-        if (want && ok) { marked = true; wmLines.push(`${label}：已加水印${wm!.settings.flatten ? "（已压平）" : ""}${info.signed ? "；原件带电子签名，本副本签名已失效" : ""}`); }
-      } else {
-        if (info.signed) keepReason = "带电子签名，保留原签名";
-        if (wm) wmLines.push(`${label}：${info.signed ? "带电子签名，未加水印，保留原签名" : "未加水印"}`);
+    const want = !!wm && !wm.skip.includes(packetItemID(item)) && !wm.skip.includes(legacyPacketItemID(item));
+    const info = kind === "pdf" ? inspectPDF(data) : undefined;
+    let marked = false, cleaned = false, flattened = false;
+    let failure: PacketFailure | undefined, omit = false;
+    const notes: string[] = [];
+
+    onItem?.(i, "run", "");
+    const canProcess = kind !== "other" && !info?.encrypted && !(info?.signed && !want);
+    if (canProcess && (want || strip)) {
+      const text = want ? resolveText(wm!.settings, wmContext(item, t, c, s, recipient)) : "";
+      if (want && !text) throw new Error(emptyWatermarkMessage);
+      try {
+        if (kind === "pdf") {
+          const onPage = (n: number, total: number) => onItem?.(i, "run", `第 ${n} / ${total} 页`);
+          if (want && wm!.settings.flatten) {
+            data = await flattenPDF(data, text, wm!.settings, { stripMeta: true, signal, onPage });
+            flattened = true;
+          } else {
+            data = await watermarkPDF(data, text, want ? wm!.settings : null, { stripMeta: strip, signal, onPage });
+          }
+        } else {
+          const image = want ? await watermarkImage(data, ext.toLowerCase(), text, wm!.settings) : await reencodeImage(data, ext.toLowerCase());
+          data = image.bytes;
+          ext = image.ext;
+        }
+        marked = want && !!text;
+        cleaned = strip;
+      } catch (e) {
+        if (signal?.aborted) throw e;
+        const reason = kind === "pdf" ? "PDF 无法读取" : "图片无法读取";
+        const id = packetItemID(item);
+        const choice = opts.failed?.[id];
+        if (!choice) failure = { id, title, reason };
+        omit = choice === "omit";
+        notes.push(reason);
       }
-    } else if (kind === "image") {
-      if (want || strip) {
-        const text = want ? resolveText(wm!.settings, wmContext(item, t, c, s, recipient)) : "";
-        let ok = true;
-        try { const r = want ? await watermarkImage(data, ext.toLowerCase(), text, wm!.settings) : await reencodeImage(data, ext.toLowerCase()); data = r.bytes; ext = r.ext; }
-        catch { ok = false; keepReason = "图片无法读取"; if (want) wmLines.push(`${label}：图片无法读取，未加水印，原样放入`); }
-        if (ok && cleaned !== null) cleaned = true;
-        if (want && ok) { marked = true; wmLines.push(`${label}：已加水印`); }
-      } else if (wm) wmLines.push(`${label}：未加水印`);
-    } else { keepReason = `${ext.toUpperCase()} 文件无法处理`; if (wm) wmLines.push(`${label}：${ext.toUpperCase()} 文件无法加水印，原样放入`); }
-    const metaLine = cleaned === null ? null : cleaned ? null : `${label}：未清除（${keepReason || "原样放入"}）`;
-    // 5.5.5：要求加水印或清除信息却没处理成功——先停下让用户决定（默认不放入）。
-    let failure: PacketFailure | undefined, omit = false, asIs = false;
-    const failedProcessing = (want && !marked && /无法读取/.test(wmLines.join())) || (cleaned === false && /无法读取/.test(keepReason));
-    if (failedProcessing) {
-      const id = packetItemID(item), decided = opts.failed?.[id];
-      if (decided === "asis") asIs = true; else if (decided === "omit") omit = true;
-      else failure = { id, title, reason: keepReason || "无法读取" };
     }
-    onItem?.(i, "done", marked ? "已加水印" : "原样放入");
-    return { entry: { path: `${base}/${safeName(label)}.${ext}`, data }, inc: `${two(i + 1)}  ${title}：${recencyText(item)}${asIs ? "（处理失败，原样放入）" : ""}`, wm: wmLines, marked, cleaned, metaLine, failure, omit, asIs };
+    if (wm || strip) {
+      if (info?.encrypted) notes.push("文件已加密");
+      if (info?.signed) notes.push(marked ? "原件带电子签名，本副本签名已失效" : "保留原电子签名");
+      if (flattened) notes.push("已压平");
+      if (wm && !marked) notes.push(kind === "other" || info?.encrypted || want ? "无法加水印" : "未加水印");
+      if (strip && !cleaned) notes.push("未清除文件信息");
+      if (notes.length && !marked && !cleaned) notes.unshift("原样放入");
+    }
+    if (item.maxAgeMonths !== undefined) notes.push(recencyText(item));
+    if (item.problem) notes.push(item.problem);
+    onItem?.(i, "done", omit ? "未放入" : marked ? "已加水印" : cleaned ? "已清除文件信息" : "原样放入");
+    return { item, title, fileName: `${safeName(title)}.${ext}`, data, marked, cleaned, flattened, note: notes.join(" · "), failure, omit };
   };
   // 两份并行：读写和 PDF 处理交错，整体更快；结果按清单顺序装入。
   const results: Done[] = new Array(included.length);
@@ -216,29 +255,39 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
   await Promise.all([worker(), worker()]);
   const failures = results.flatMap((r) => (r.failure ? [r.failure] : []));
   if (failures.length) throw new PacketFailuresError(failures);
-  const omittedTitles = included.filter((_, i) => results[i].omit).map((it) => packetItemTitle(it, s.docType(it.document!.typeID)?.name));
+  const omittedTitles = results.filter((r) => r.omit).map((r) => r.title);
   const kept = results.filter((r) => !r.omit);
-  // 去掉“不放入”的文件后重新编号
-  const renum = (x: string, n: number) => x.replace(/^\d{2}/, two(n));
-  const entries = kept.map((r, k) => ({ ...r.entry, path: r.entry.path.replace(/\/\d{2} /, `/${two(k + 1)} `) })), incLines = kept.map((r, k) => renum(r.inc, k + 1)), wmLines = kept.flatMap((r) => r.wm);
+  const missingTitle = (item: PacketItem) => packetItemTitle(item, item.document ? s.docType(item.document.typeID)?.name : undefined);
+  const missingMaterials = [
+    ...missing.map((item) => ({ title: missingTitle(item), reason: packetReason(item) })),
+    ...omittedTitles.map((title) => ({ title, reason: "处理失败，未放入" })),
+  ];
+  const done = missingMaterials.length === 0;
+  const finalBase = packetBaseName(c, t, s, done, wm ? recipient : undefined);
   const watermarked = kept.filter((r) => r.marked).length;
+  const sample = wm && watermarked ? resolveText(wm.settings, { day: s.today, fileName: "【文件名称】", fileNameEn: "[File name]", company: c.name, packet: t.name, recipient }) : "";
+  const entries = kept.map((r, index) => ({ path: `${finalBase}/${two(index + 1)} ${r.fileName}`, data: r.data }));
   abort();
   onProgress?.(included.length, included.length + 1, "目录");
-  const misLines = [...missing.map((m) => `—  ${packetItemTitle(m)}：${packetReason(m)}`), ...omittedTitles.map((t2) => `—  ${t2}：处理失败，未放入`)];
-  const done = misLines.length === 0;
-  const finalBase = done === complete ? base : packetBaseName(c, t, s, done, wm ? recipient : undefined);
-  if (finalBase !== base) for (const e of entries) e.path = e.path.replace(base + "/", finalBase + "/");
-  const sections: PDFSection[] = [{ heading: `已包含（${incLines.length} 份）`, lines: incLines, alert: false }];
-  if (misLines.length) sections.push({ heading: `尚缺（${misLines.length} 项）`, lines: misLines, alert: true });
-  const sample = wm ? resolveText(wm.settings, { day: s.today, fileName: "【文件名称】", fileNameEn: "[File name]", company: c.name, packet: t.name, recipient }) : "";
-  if (wm) sections.push({ heading: `水印（${watermarked} / ${included.length} 份）`, lines: [`水印文字：${sample}`, ...(recipient ? [`接收方：${recipient}`] : []), ...wmLines], alert: false });
-  if (strip) {
-    const n = results.filter((r) => r.cleaned).length, keep = results.flatMap((r) => (r.metaLine ? [r.metaLine] : []));
-    sections.push({ heading: `文件信息（已清除 ${n} / ${included.length} 份）`, lines: ["已去掉作者、标题、创建软件和照片拍摄信息。", ...keep], alert: false });
-  }
-  const toc = await writePDF(c.name,
-    done ? `${latinPadEnd(t.name)}文件包　${D.long(s.today)}` : `${latinPadEnd(t.name)}文件包（部分材料，缺 ${misLines.length} 项）　${D.long(s.today)}`,
-    sections, done ? undefined : "这是部分材料包。缺少的文件补齐后会另行发送。");
+  const checklist: PacketChecklistData = {
+    company: c.name,
+    purpose: t.name,
+    day: D.long(s.today),
+    files: kept.map((result, index) => ({
+      number: index + 1,
+      fileName: result.fileName,
+      issueText: result.item.document?.issueDate ?? "未注明",
+      warning: result.note || undefined,
+    })),
+    missing: missingMaterials,
+    summary: wm || strip ? {
+      total: kept.length,
+      watermarked: wm ? watermarked : undefined,
+      cleaned: strip ? kept.filter((result) => result.cleaned).length : undefined,
+      watermarkText: sample || undefined,
+    } : undefined,
+  };
+  const toc = await writePacketChecklistPDF(checklist);
   entries.unshift({ path: `${finalBase}/00 目录.pdf`, data: toc });
   abort();
   const zip = await writeZip(entries, (a, b) => onProgress?.(included.length, included.length + 1, `压缩 ${a} / ${b}`));
@@ -248,11 +297,11 @@ export async function buildPacket(items: PacketItem[], t: PacketTemplate, c: Com
   // 发送记录
   s.commit((d) => {
     d.sends.unshift({ id: crypto.randomUUID(), companyID: c.id, at: new Date().toISOString(), day: s.today, packetID: t.id, packetName: t.name, recipient,
-      watermarkText: sample, files: kept.length, watermarked, flattened: !!wm?.settings.flatten, missing: misLines.length, path: out,
+      watermarkText: sample, files: kept.length, watermarked, flattened: kept.some((r) => r.flattened), missing: missingMaterials.length, path: out,
       watermark: wm ? structuredClone(wm) : undefined, stripMeta: strip });
     if (d.sends.length > 500) d.sends.length = 500;
   });
-  return { path: out, files: kept.length, watermarked, missing: misLines.length, complete: done, missingTitles: missing.map((m) => packetItemTitle(m)), lostTitles, omittedTitles };
+  return { includedItemIDs: kept.map((r) => packetItemID(r.item)), missingMaterials, path: out, files: kept.length, watermarked, missing: missingMaterials.length, complete: done, missingTitles: missing.map(missingTitle), lostTitles, omittedTitles };
 }
 
 // MARK: 全部材料
@@ -361,8 +410,7 @@ export interface Reminder { id: string; at: number; title: string; body: string 
 
 /** 所有即将到来的提醒（主设备在应用运行时按时发出）。 */
 export function upcomingReminders(s: Store, now = Date.now()): Reminder[] {
-  const hour = s.data.settings.notificationHour;
-  const at = (d: D.Day) => { const [y, m, dd] = D.parts(d); return new Date(y, m - 1, dd, hour).getTime(); };
+  const at = (day: D.Day) => new Date(reminderLocalDateTime(day, s.data.settings)).getTime();
   const out: Reminder[] = [];
   if (s.complianceOn) for (const o of s.openObligations) {
     for (const d of reminderDays(o, s.data.settings)) {
@@ -403,10 +451,12 @@ export function upcomingReminders(s: Store, now = Date.now()): Reminder[] {
 export function startReminderLoop(s: Store): () => void {
   const p = platform();
   const tick = async () => {
-    if (!s.isPrimaryDevice || s.isLoading) return;
+    if (!s.isPrimaryDevice || s.isLoading || !remindersEnabled()) return;
     const sent = new Set<string>(JSON.parse(p.prefGet("sentReminders") ?? "[]"));
     const now = Date.now();
-    const due = upcomingReminders(s, Date.now() - 36 * 3600 * 1000).filter((r) => r.at <= now && r.at > now - 36 * 3600 * 1000 && !sent.has(r.id));
+    const calendarOwns = systemCalendarOwnsReminders();
+    const due = upcomingReminders(s, Date.now() - 36 * 3600 * 1000).filter((r) =>
+      r.at <= now && r.at > now - 36 * 3600 * 1000 && !sent.has(r.id) && (!calendarOwns || r.id.startsWith("charter.follow|")));
     for (const r of due) { await p.notify(r.title, r.body); sent.add(r.id); }
     if (due.length) p.prefSet("sentReminders", JSON.stringify([...sent].slice(-500)));
   };
@@ -417,31 +467,57 @@ export function startReminderLoop(s: Store): () => void {
 
 // MARK: 日历
 
+export const CALENDAR_SUBSCRIPTION_DAYS = 400;
+
 /** 把未完成事项写成 iCalendar 文件，放在数据文件夹里：Outlook、Apple 日历、Google 日历都能订阅或导入。 */
 export function calendarPath(s: Store): string { return platform().join(s.folder.root, `${safeName(s.data.settings.calendarName || "Charter")}.ics`); }
 
+function icsTimestamp(date: Date): string {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+}
+
+// iCalendar 内容行每行最多 75 个 UTF-8 字节，续行的前导空格也占一个字节。
+function foldCalendarLine(line: string): string {
+  let result = "", bytes = 0;
+  for (const character of line) {
+    const code = character.codePointAt(0)!;
+    const size = code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+    if (bytes + size > 75) {
+      result += "\r\n ";
+      bytes = 1;
+    }
+    result += character;
+    bytes += size;
+  }
+  return result;
+}
+
 /** 日历文件的完整内容；stamp 为空时用于比较是否需要重写（不含生成时间）。 */
 export function calendarText(s: Store, stamp = ""): string {
-  const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
+  const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r\n?|\n/g, "\\n");
   const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Charter//CN", `X-WR-CALNAME:${esc(s.data.settings.calendarName)}`, "CALSCALE:GREGORIAN"];
-  const limit = D.addDays(s.today, 400);
+  const limit = D.addDays(s.today, CALENDAR_SUBSCRIPTION_DAYS);
   for (const o of s.openObligations) {
     if (o.due > limit) continue;
-    const party = s.responsibleParty(o)?.name;
-    const st = obligationStatus(o);
-    const notes = [s.scheduleText(o.rule.schedule), party ? `中介：${party}` : null, st === "pending" ? null : `状态：${st}`].filter(Boolean).join("\n");
+    const event = filingCalendarEvent(s, o);
     const d = o.due.replace(/-/g, "");
     const next = D.addDays(o.due, 1).replace(/-/g, "");
     lines.push("BEGIN:VEVENT", `UID:${encodeURIComponent(o.key)}@charter`, `DTSTAMP:${stamp}`, `DTSTART;VALUE=DATE:${d}`, `DTEND;VALUE=DATE:${next}`,
-      `SUMMARY:${esc(`${o.company.name}：${o.rule.name}`)}`, `DESCRIPTION:${esc(notes)}`, "END:VEVENT");
+      `SUMMARY:${esc(event.title)}`, `DESCRIPTION:${esc(event.notes)}`);
+    for (const at of event.reminders ?? []) {
+      // Resolve the local clock on the reminder day itself, including its daylight-saving offset.
+      const trigger = icsTimestamp(new Date(at));
+      lines.push("BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${esc(event.title)}`, `TRIGGER;VALUE=DATE-TIME:${trigger}`, "END:VALARM");
+    }
+    lines.push("END:VEVENT");
   }
   lines.push("END:VCALENDAR");
-  return lines.join("\r\n");
+  return lines.map(foldCalendarLine).join("\r\n");
 }
 
 export async function writeCalendarFile(s: Store): Promise<string> {
   const path = calendarPath(s);
-  await platform().writeText(path, calendarText(s, new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")));
+  await platform().writeText(path, calendarText(s, icsTimestamp(new Date())));
   return path;
 }
 

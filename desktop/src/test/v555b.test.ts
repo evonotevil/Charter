@@ -1,13 +1,15 @@
 // 5.5.5：外部评测（5.5.4）发现的问题。每条都检查最终写入的文件或数据；修复前应失败。
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { PDFDocument, PDFName } from "pdf-lib";
 import { MemoryPlatform } from "../platform/memory";
-import { setPlatform } from "../platform/platform";
+import { setPlatform, type Platform } from "../platform/platform";
 import { Store } from "../state/store";
 import { installSampleData } from "../state/sample";
 import { PacketFailuresError, buildPacket, packetItemID, packetItems } from "../services/packets";
+import { defaultWatermark } from "../services/watermark";
 import { checkDataFile, exportBackup, readBackup, restoreBackup, safeEntryName } from "../services/backup";
 import { trashDocuments } from "../state/lifecycle";
 import { dayError, parseDay } from "../domain/day";
@@ -29,12 +31,62 @@ async function pdfWithXMP(secret: string) {
   d.catalog.set(PDFName.of("Metadata"), d.context.register(xmp));
   return d.save({ useObjectStreams: false });
 }
+function useChecklistFont(platform: Platform) {
+  // 内存宿主默认没有系统字体。这里从实际 PDF 提取并比对中文处理说明。
+  const font = readFileSync(new URL("../assets/fonts/NotoSansSC-Medium.ttf", import.meta.url));
+  vi.spyOn(platform, "cjkFont").mockResolvedValue(new Uint8Array(font));
+}
+async function pdfText(bytes: Uint8Array) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const standardFontDataUrl = fileURLToPath(new URL("../../node_modules/pdfjs-dist/standard_fonts/", import.meta.url));
+  const pdf = await pdfjs.getDocument({ data: bytes.slice(), standardFontDataUrl }).promise;
+  const pages: string[] = [];
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join(" "));
+  }
+  await pdf.destroy();
+  return pages.join("\n");
+}
 /** 把样例里除第一份以外的文件都换成合法 PDF，避免“处理失败”干扰。 */
 async function realFiles(p: MemoryPlatform, s: Store) {
   const items = packetItems(bank(s), hk(s), s).filter((i) => i.included && i.document);
   for (const i of items) { const d = await PDFDocument.create(); d.addPage(); await p.writeBytes(s.fileURL(i.document!), await d.save()); }
   return items;
 }
+
+describe("5.5.9 材料包审阅与导出", () => {
+  it("有文件需要加水印时拒绝空文字，既不写 ZIP 也不记为已加水印", async () => {
+    const { p, s } = await fresh();
+    const items = await realFiles(p, s);
+    const watermark = { wm: { enabled: true, settings: { ...defaultWatermark(), parts: [] }, skip: [], stripMeta: true }, recipient: "" };
+    await expect(buildPacket(items, bank(s), hk(s), s, { watermark })).rejects.toThrow(/水印文字/);
+    expect(await p.listDir(s.folder.packetsDir)).toHaveLength(0);
+    expect(s.data.sends).toHaveLength(0);
+    const skipped = { ...watermark, wm: { ...watermark.wm, skip: items.map(packetItemID) } };
+    const original = await buildPacket(items, bank(s), hk(s), s, { watermark: skipped });
+    expect(original.watermarked).toBe(0);
+  });
+
+  it("原件同路径替换后阻止旧审阅生成 ZIP，再次审阅可以导出新版", async () => {
+    const { p, s } = await fresh();
+    const [item] = await realFiles(p, s);
+    const path = s.fileURL(item.document!);
+    const { sha256Bytes } = await import("../services/hash");
+    const before = await sha256Bytes(await p.readBytes(path));
+    const changed = await PDFDocument.create();
+    changed.addPage().drawText("Updated after reviewing");
+    await p.writeBytes(path, await changed.save());
+    const reviewed = { [packetItemID(item)]: before };
+    await expect(buildPacket([item], bank(s), hk(s), s, { reviewed })).rejects.toThrow(/已更新/);
+    expect(await p.listDir(s.folder.packetsDir)).toHaveLength(0);
+    expect(s.data.sends).toHaveLength(0);
+    reviewed[packetItemID(item)] = await sha256Bytes(await p.readBytes(path));
+    const exported = await buildPacket([item], bank(s), hk(s), s, { reviewed });
+    expect(exported.files).toBe(1);
+  });
+});
 
 describe("#1 清除文件信息：XMP 隐藏元数据", () => {
   it("导出的 ZIP 里找不到原 XMP 内容", async () => {
@@ -64,6 +116,79 @@ describe("#3 处理失败的文件不能悄悄原样放入", () => {
     expect(omit.omittedTitles).toHaveLength(1);
     const asis = await buildPacket(all, bank(s), hk(s), s, { stripMeta: true, failed: { [id]: "asis" } });
     expect(asis.files).toBe(items.length);
+  });
+  it("不放入后 ZIP、目录、统计都使用最终编号和份数", async () => {
+    const { p, s } = await fresh();
+    useChecklistFont(p);
+    const included = await realFiles(p, s);
+    const failedItem = included[1];
+    await p.writeBytes(s.fileURL(failedItem.document!), new TextEncoder().encode("not a pdf"));
+    const all = packetItems(bank(s), hk(s), s);
+    const watermark = { wm: { enabled: true, settings: { ...defaultWatermark(), lang: "en" as const, parts: [{ kind: "text" as const, text: "For review" }] }, skip: [], stripMeta: true }, recipient: "" };
+    let err: unknown;
+    try { await buildPacket(all, bank(s), hk(s), s, { watermark }); } catch (e) { err = e; }
+    expect(err).toBeInstanceOf(PacketFailuresError);
+    const id = (err as PacketFailuresError).failures[0].id;
+    const result = await buildPacket(all, bank(s), hk(s), s, { watermark, failed: { [id]: "omit" } });
+    const zip = await JSZip.loadAsync(await p.readBytes(result.path));
+    const files = Object.keys(zip.files).filter((name) => !name.endsWith("/") && !name.endsWith("00 目录.pdf"));
+    const secondKeptTitle = s.docType(included[2].document!.typeID)!.name;
+    expect(files).toHaveLength(included.length - 1);
+    expect(files.some((name) => name.includes(`02 ${secondKeptTitle}`))).toBe(true);
+    expect(result.files).toBe(files.length);
+    expect(result.missingMaterials).toContainEqual({ title: result.omittedTitles[0], reason: "处理失败，未放入" });
+    expect(result.watermarked).toBe(files.length);
+    expect(result.includedItemIDs).toEqual(included.filter((item) => item !== failedItem).map(packetItemID));
+    expect(s.data.sends[0]).toMatchObject({ files: files.length, watermarked: files.length });
+    const toc = Object.values(zip.files).find((file) => file.name.endsWith("00 目录.pdf"))!;
+    const text = (await pdfText(await toc.async("uint8array"))).replace(/\s+/g, "");
+    expect(text).toContain(`02${secondKeptTitle}`);
+    expect(text).not.toContain(`03${secondKeptTitle}`);
+    expect(text).not.toContain(`${files.length}/${included.length}份`);
+  });
+  it("清单保留签名、跳过水印和签发时效的说明", async () => {
+    const { p, s } = await fresh();
+    useChecklistFont(p);
+    const [source] = await realFiles(p, s);
+    const signed = await PDFDocument.create();
+    signed.addPage();
+    signed.context.register(signed.context.obj({ Type: "Sig", ByteRange: [0, 4, 6, 10] }));
+    await p.writeBytes(s.fileURL(source.document!), await signed.save({ useObjectStreams: false }));
+    const original = { ...source, isPersonal: true, ownerID: "a", ownerName: "甲", maxAgeMonths: 6 };
+    const marked = { ...source, isPersonal: true, ownerID: "b", ownerName: "乙" };
+    const result = await buildPacket([original, marked], bank(s), hk(s), s, {
+      watermark: { wm: { enabled: true, settings: { ...defaultWatermark(), lang: "en", parts: [{ kind: "text", text: "Review" }] },
+        skip: [packetItemID(original)], stripMeta: true }, recipient: "" },
+    });
+    const zip = await JSZip.loadAsync(await p.readBytes(result.path));
+    const toc = Object.values(zip.files).find((file) => file.name.endsWith("00 目录.pdf"))!;
+    const text = (await pdfText(await toc.async("uint8array"))).replace(/\s+/g, "");
+    expect(text).toContain("保留原电子签名");
+    expect(text).toContain("未加水印");
+    expect(text).toContain("未清除文件信息");
+    expect(text).toContain("要求6个月内签发");
+    expect(text).toContain("本副本签名已失效");
+    expect(result.watermarked).toBe(1);
+  });
+  it("百份清单跨过 99 时仍以保留文件的顺序编号", async () => {
+    const { p, s } = await fresh();
+    const [first, other] = await realFiles(p, s);
+    const omitted = { ...first, category: "跳过测试" };
+    await p.writeBytes(s.fileURL(omitted.document!), new TextEncoder().encode("unreadable"));
+    const retained = Array.from({ length: 101 }, (_, index) => ({
+      ...other, isPersonal: true, ownerID: String(index), ownerName: `测试 ${index + 1}`,
+    }));
+    const result = await buildPacket([omitted, ...retained], bank(s), hk(s), s, {
+      watermark: { wm: { enabled: true, settings: defaultWatermark(), stripMeta: false, skip: retained.map(packetItemID) }, recipient: "" },
+      failed: { [packetItemID(omitted)]: "omit" },
+    });
+    const zip = await JSZip.loadAsync(await p.readBytes(result.path));
+    const fileNumbers = Object.keys(zip.files).filter((name) => !name.endsWith("/") && !name.endsWith("00 目录.pdf"))
+      .map((name) => Number(name.split("/").at(-1)!.split(" ")[0]));
+    expect(fileNumbers).toEqual(retained.map((_, index) => index + 1));
+    expect(result.files).toBe(101);
+    expect(result.watermarked).toBe(0);
+    expect(s.data.sends[0].watermarkText).toBe("");
   });
 });
 

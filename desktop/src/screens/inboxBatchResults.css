@@ -1,0 +1,45 @@
+.card.inbox-result {
+  padding: var(--space-4) var(--space-5);
+  gap: var(--space-2);
+}
+
+.inbox-result.needs-attention {
+  border-color: var(--amber-line);
+}
+
+.inbox-result-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.inbox-result-detail,
+.inbox-result-detail ul,
+.inbox-result-detail li {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.inbox-result-detail {
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-3);
+}
+
+.inbox-result-detail ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  gap: var(--space-4);
+}
+
+.inbox-issue-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: baseline;
+}
+
+.inbox-issue-line svg { align-self: start; }
+.inbox-issue-line strong, .inbox-issue-path { overflow-wrap: anywhere; }

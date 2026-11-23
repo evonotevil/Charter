@@ -135,8 +135,8 @@ export function QuickSearch({ onClose }: { onClose: () => void }) {
   };
   const hint = (t: string, on: boolean) => <span className="t-meta" style={{ flex: "none", color: on ? "color-mix(in srgb, var(--on-selection) 70%, transparent)" : "var(--muted)" }}>{t}</span>;
   return (
-    <Modal onClose={onClose}>
-      <div className="col sheet" style={{ width: 600, height: "min(460px, 80vh)", padding: 0, overflow: "hidden" }} role="dialog" aria-label="查找">
+    <Modal onClose={onClose} ariaLabel="查找">
+      <div className="col sheet" style={{ width: 600, height: "min(460px, 80vh)", padding: 0, overflow: "hidden" }}>
         <div className="row gap10" style={{ height: 60, padding: "0 12px 0 18px", flex: "none" }}>
           <Icon name="magnifyingglass" size={16} className="muted" />
           <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="公司、人名，或“远澜 开户”这样的一句话" className="grow"

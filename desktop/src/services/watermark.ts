@@ -130,7 +130,8 @@ async function embed(doc: PDFDocument, text: string): Promise<PDFFont> {
   const { default: fontkit } = await import("@pdf-lib/fontkit");
   doc.registerFontkit(fontkit);
   const sub = await fontFor(text);
-  if (sub) return doc.embedFont(sub, { subset: false });
+  // Let pdf-lib map the glyphs actually used (including fi/ffi ligatures) to Unicode.
+  if (sub) return doc.embedFont(sub, { subset: true });
   const sys = await platform().cjkFont().catch(() => null);
   if (sys) return doc.embedFont(sys, { subset: true });
   return doc.embedFont("Helvetica");

@@ -1,0 +1,116 @@
+.company-create-sheet > .sheet-head {
+  padding: 24px 28px;
+}
+.company-create-sheet .sheet-head .t-sheet {
+  font: 900 var(--fs-headline)/1.35 var(--display);
+  margin-bottom: 4px;
+}
+.company-create-sheet > .sheet-body { padding-bottom: 20px; }
+.company-create-sheet > .sheet-foot { padding: 12px 28px 16px; gap: 12px; }
+.company-create-sheet > .sheet-foot .btn { padding-inline: var(--space-4); }
+.company-create-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-rows: min-content 1fr;
+  grid-template-areas: "registration preview" "people preview";
+  gap: 20px 24px;
+  align-items: start;
+}
+.company-create-layout h2, .company-create-layout ul { margin: 0; }
+.company-create-section, .company-create-preview {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+.company-registration { grid-area: registration; }
+.company-people {
+  grid-area: people;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+.company-create-sheet .v4-field { min-width: 0; gap: 4px; font-size: var(--fs-label); line-height: 1.25; }
+.company-create-sheet .v4-field > .select { font-weight: 700; }
+.company-create-sheet .v4-field > .t-meta { font-weight: 400; }
+.company-create-sheet .v4-field > .select:disabled {
+  color: var(--muted);
+  background-color: var(--surface-sunken);
+}
+.company-field-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+.company-create-sheet .date-field { width: 100%; font-weight: 400; }
+.company-create-preview { grid-area: preview; }
+.company-preview-heading, .company-preview-schedule li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.company-preview-heading .btn { display: none; }
+.company-preview-card {
+  padding: 20px;
+  border-radius: var(--r-tile);
+  background: var(--surface-sunken);
+  overflow-wrap: anywhere;
+}
+.company-preview-card > * + * {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.company-preview-identity, .company-preview-schedule, .company-preview-reminder {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.company-preview-schedule ul {
+  display: grid;
+  list-style: none;
+  gap: 16px;
+  padding: 12px 0 0;
+}
+.company-preview-schedule time {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.company-combo { position: relative; min-width: 0; }
+.company-combo.bare { flex: 1 1 140px; }
+.company-combo:not(.bare) .field { padding-left: 34px; }
+.company-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+.company-directors { padding-inline: 12px; }
+.company-directors:focus-within {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+.company-create-sheet .newco-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1119px) {
+  .company-create-sheet { max-width: min(544px, calc(100vw - 32px)); max-height: min(712px, calc(100vh - 32px)) !important; }
+  .company-create-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas: "registration" "preview" "people";
+    gap: 16px;
+  }
+  .company-create-preview, .company-create-sheet .company-people {
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+  }
+  .company-preview-heading { align-items: center; }
+  .company-preview-heading .btn { display: inline-flex; }
+  .company-preview-card[data-expanded="false"] { display: none; }
+}
+@media (max-width: 475px) {
+  .company-field-pair, .company-create-sheet .newco-grid { grid-template-columns: minmax(0, 1fr); }
+  .company-create-sheet > .sheet-head, .company-create-sheet > .sheet-body, .company-create-sheet > .sheet-foot { padding-inline: 16px; }
+}

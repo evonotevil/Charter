@@ -1,16 +1,16 @@
 // 申报日历：横幅、范围页签、按月时间线（打勾完成）+ 右侧详情（找谁办、对接人、邮件草稿）。
 
-import { companyTint } from "../ui/uistyle";
+import { companyTint, isNarrowWindow } from "../ui/uistyle";
 import { type CSSProperties, type ReactNode, type RefObject, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useApp } from "../state/hooks";
 import * as D from "../domain/day";
 import { type Obligation, obligationStatus } from "../domain/engine";
+import { filingChecklistCSV, type FilingChecklistRow } from "../domain/filingChecklist";
 import { contactsOf } from "../domain/models";
 import { platform } from "../platform/platform";
-import { writeCalendarFile } from "../services/packets";
-import { ActionMenu, Banner, Button, Card, DateField, PageHeader, PopoverRow, SelectField, Tabs, item , TextField } from "../ui/kit";
+import { CALENDAR_SUBSCRIPTION_DAYS, writeCalendarFile } from "../services/packets";
+import { ActionMenu, Banner, Button, Card, DateField, PageHeader, PopoverRow, SelectField, Tabs, divider, header, item, TextField, useFocusReturn } from "../ui/kit";
 import { PickChip } from "./PropChips";
-import { writePDF } from "../services/files";
 import { useStageFile } from "./common";
 import { FilingDeadlinePill, leftText } from "./InfoCard";
 import { Icon } from "../ui/Icon";
@@ -21,21 +21,30 @@ import "./due558.css";
 import { DueCompletionQueue, DueUndoTimer } from "./dueUndo";
 
 type Range = 90 | 365 | 0;
+const rangeLabels: Record<Range, string> = { 90: "90 天内", 365: "一年内", 0: "全部" };
 type CompletionNotice = { id: number; key: string; text: string; undo: () => void };
 type BurstOrigin = { id: number; x: number; y: number };
 type PlayBurst = (button: HTMLButtonElement, id: number) => void;
 
 export function DueView({ feedback }: { feedback: ReactNode }) {
   const { store, router } = useApp();
-  const [range, setRange] = useState<Range>(365);
+  const [range, setRange] = useState<Range>(() => {
+    const requested = store.openObligations.find((o) => o.key === router.selectedObligationKey);
+    return requested && D.daysBetween(store.today, requested.due) > 365 ? 0 : 365;
+  });
   const list = useMemo(() => store.openObligations
     .filter((o) => !range || D.daysBetween(store.today, o.due) <= range)
     .sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : a.company.name.localeCompare(b.company.name))), [store.data, range, store.today]);
-  const sel = list.find((o) => o.key === router.selectedObligationKey) ?? store.openObligations.find((o) => o.key === router.selectedObligationKey) ?? list[0];
+  const sel = list.find((o) => o.key === router.selectedObligationKey) ?? list[0];
+  const selectedKey = sel?.key ?? null;
+  useEffect(() => {
+    if (selectedKey !== router.selectedObligationKey) router.set("selectedObligationKey", selectedKey);
+  }, [router, selectedKey, router.selectedObligationKey]);
   // 5.4：窄窗口（单栏）里详情改成右侧抽屉，点击事项后打开并聚焦
   const pageRef = useRef<HTMLDivElement>(null);
-  const narrow = useNarrow(pageRef, 720);
+  const narrow = useCalendarDrawerLayout(pageRef);
   const [drawer, setDrawer] = useState(false);
+  useEffect(() => { if (!narrow) setDrawer(false); }, [narrow]);
   const soon = list.filter((o) => D.daysBetween(store.today, o.due) <= 30).length;
   const [completion, setCompletion] = useState<CompletionNotice | null>(null);
   const completionTimer = useRef(new DueUndoTimer());
@@ -72,23 +81,35 @@ export function DueView({ feedback }: { feedback: ReactNode }) {
     catch { store.showToast("日历文件写入失败，未生成订阅文件。", undefined, "", "calendar-error"); return; }
     try {
       await platform().reveal(path);
-      store.showToast("已显示日历文件。用日历应用打开它即可订阅，事项变化时 Charter 会自动更新。");
+      store.showToast(store.data.settings.calendarEnabled && store.complianceOn
+        ? "日历订阅文件已生成。申报事项有变动时，Charter 会更新这份文件。"
+        : "日历订阅文件已生成。若要持续更新，请在提醒设置里开启“保持订阅文件更新”。");
     } catch { store.showToast("日历文件已生成，但没能在文件夹中显示。", undefined, "", "failure"); }
   };
 
-  const exportList = async (csv: boolean) => {
-    const title = `到期事项清单 ${store.today}`;
-    const path = await platform().saveDialog({ defaultName: title + (csv ? ".csv" : ".pdf"), extensions: [csv ? "csv" : "pdf"] });
-    if (!path) return;
+  const exportList = async (format: "pdf" | "csv") => {
+    const exportedOn = store.today;
+    const rangeLabel = rangeLabels[range];
+    const rows: FilingChecklistRow[] = list.map(o => ({
+      due: o.due,
+      company: o.company.name,
+      jurisdiction: store.jurisdictionName(o.company.jurisdiction),
+      filing: o.rule.name,
+      agent: store.responsibleParty(o)?.name ?? "",
+      dateConfirmed: !!o.record?.dateConfirmed,
+      overdue: o.due < exportedOn,
+    }));
     try {
-      if (csv) {
-        const q = (x: string) => `"${x.replace(/"/g, '""')}"`;
-        const rows = ["截止日,公司,法域,事项,中介,日期", ...list.map((o) => [o.due, o.company.name, store.jurisdictionName(o.company.jurisdiction), o.rule.name, store.responsibleParty(o)?.name ?? "", o.record?.dateConfirmed ? "已确认" : "推算"].map(q).join(","))];
-        await platform().writeText(path, "\ufeff" + rows.join("\r\n"));
+      const path = await platform().saveDialog({
+        defaultName: `申报日历清单-${rangeLabel}-${exportedOn}.${format}`,
+        extensions: [format],
+      });
+      if (!path) return;
+      if (format === "csv") {
+        await platform().writeText(path, filingChecklistCSV(rows, exportedOn));
       } else {
-        const sections = months.map((m) => ({ heading: `${m.label}（${m.items.length} 件）`, alert: false,
-          lines: m.items.map((o) => `${D.short(o.due)}　${o.company.name}　${o.rule.name}　${store.responsibleParty(o)?.name ?? "未指定中介"}${o.due < store.today ? "　〔已逾期〕" : ""}${o.record?.dateConfirmed ? "" : "　〔日期为推算〕"}`) }));
-        await platform().writeBytes(path, await writePDF("到期事项清单", `共 ${list.length} 件，${D.long(store.today)}导出`, sections, "标注“日期为推算”的按规则算出，尚未确认。"));
+        const { writeFilingChecklistPDF } = await import("../services/filingChecklistPDF");
+        await platform().writeBytes(path, await writeFilingChecklistPDF({ rangeLabel, exportedOn, rows }));
       }
       store.showToast(`已导出 ${list.length} 件申报事项${overdue ? `，其中 ${overdue} 件已逾期` : ""}。`, () => void platform().reveal(path), "显示文件", overdue ? "overdue" : "success");
     } catch (e) { store.setError(`导出失败：${(e instanceof Error ? e.message : String(e))}`); }
@@ -122,19 +143,23 @@ export function DueView({ feedback }: { feedback: ReactNode }) {
   };
   const tone = overdue ? "bad" : soon ? "warn" : "ok";
   return (
-    <div className="page due-page"><div className="page-inner due-page-inner" ref={pageRef}>
+    <div className="page due-page"><div className="page-inner due-page-inner" ref={pageRef} data-drawer-layout={narrow || undefined}>
       <BurstLayer ref={playBurst} scrollArea={listRef} />
       <PageHeader title="申报日历" subtitle={`全部公司 · 到期前 ${store.data.settings.reminderDays.join(" / ")} 天提醒`}>
-        <Button icon="calendar.badge.plus" onClick={() => void subscribe()}>订阅到日历</Button>
+        <Button icon="bell" onClick={() => router.openSettings("reminders")}>提醒设置</Button>
         <ActionMenu icon="ellipsis" ariaLabel="更多" align="end" showsChevron={false} entries={[
-          item("导出清单 PDF…", "doc.text", () => void exportList(false)),
-          item("导出清单 CSV（Excel 可打开）…", "tablecells", () => void exportList(true)),
+          header(`当前清单 · ${rangeLabels[range]}`),
+          item("导出清单 PDF…", "doc.text", () => void exportList("pdf")),
+          item("导出清单 CSV（Excel 可打开）…", "tablecells", () => void exportList("csv")),
+          divider,
+          header(`含逾期及未来 ${CALENDAR_SUBSCRIPTION_DAYS} 天内的未完成申报`),
+          item("生成申报日历订阅文件（.ics）", "calendar.badge.plus", () => void subscribe()),
         ]} />
       </PageHeader>
       {overdue || soon ? <Banner tone={tone} icon={overdue ? "calendar.badge.clock" : "clock"} title={overdue ? `${overdue} 件已逾期` : `30 天内有 ${soon} 件`}>
         {overdue ? "先联系中介处理逾期的事项，再看快到期的。" : "按日期一件件来，做完点右边的圆圈打勾。"}
       </Banner> : <span className="t-meta muted" style={{ padding: "2px 2px 6px" }}>{list.length ? <>30 天内没有到期事项。接下来 <TweenNumber value={list.length} /> 件都在 30 天以后。</> : "这段时间没有要申报的事。"}</span>}
-      <Tabs<Range> value={range} onChange={setRange} tabs={[[90, "90 天内"], [365, "一年内"], [0, "全部"]]} />
+      <Tabs<Range> value={range} onChange={setRange} tabs={[[90, rangeLabels[90]], [365, rangeLabels[365]], [0, rangeLabels[0]]]} />
       {!list.length ? (
         <Card><div className="celebrate"><span className="emblem"><Icon name="checkmark" size={30} strokeWidth={3} /></span><div className="t-headline">{done.length ? "全部完成！" : "这段时间没有申报事项"}</div><p className="muted">事项按公司的法域和成立日期自动排出。新建公司后这里会出现它的年审。</p></div></Card>
       ) : (
@@ -169,8 +194,8 @@ export function DueView({ feedback }: { feedback: ReactNode }) {
               ))}
             </div>
           </Card>
-          {sel && !narrow && <div className="detail-pane"><DueDetail o={sel} onFinish={finish} /></div>}
-          {sel && narrow && drawer && <DueDrawer onClose={() => { setDrawer(false); requestAnimationFrame(() => document.querySelector<HTMLElement>(`.req-main[data-key="${CSS.escape(sel.key)}"]`)?.focus()); }}><DueDetail o={sel} onFinish={(o2, r) => { setDrawer(false); finish(o2, r); }} /></DueDrawer>}
+          {sel && !narrow && <div className="detail-pane"><DueDetail key={sel.key} o={sel} onFinish={finish} /></div>}
+          {sel && narrow && drawer && <DueDrawer onClose={() => { setDrawer(false); requestAnimationFrame(() => document.querySelector<HTMLElement>(`.req-main[data-key="${CSS.escape(sel.key)}"]`)?.focus()); }}><DueDetail key={sel.key} o={sel} onFinish={(o2, r) => { setDrawer(false); finish(o2, r); }} /></DueDrawer>}
         </div>
       )}
       <div className="two due-feedback-layer">
@@ -247,20 +272,19 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
   const party = store.responsibleParty(o);
   const contacts = party ? contactsOf(party) : [];
   const own = !!party && party.id !== o.company.defaultPartyID;
-  const defaultMail = () => {
-    const to = contacts[0];
-    const hello = to ? (/[A-Za-z]/.test(to.name) ? `Hi ${to.name.split(" ")[0]},` : `${to.name}，您好：`) : "您好：";
-    return `主题：${o.company.name} ${o.rule.name}\n\n${hello}\n\n${o.company.name} 的${o.rule.name}将于 ${D.long(o.due)} 截止。麻烦确认所需材料和时间安排，谢谢。`;
-  };
-  const [mail, setMail] = useState(defaultMail);
-  useEffect(() => setMail(defaultMail()), [o.key, party?.id]);
+  const to = contacts[0];
+  const hello = to ? (/[A-Za-z]/.test(to.name) ? `Hi ${to.name.split(" ")[0]},` : `${to.name}，您好：`) : "您好：";
+  const defaultMail = `主题：${o.company.name} ${o.rule.name}\n\n${hello}\n\n${o.company.name} 的${o.rule.name}将于 ${D.long(o.due)} 截止。麻烦确认所需材料和时间安排，谢谢。`;
+  const [edit, setEdit] = useState<{ text: string; basedOn: string } | null>(null);
+  const mail = edit?.text ?? defaultMail;
+  const needsReview = !!edit && edit.basedOn !== defaultMail;
   const parties = [...store.data.parties].sort((a, b) => a.name.localeCompare(b.name));
   const [startStage, stageNode] = useStageFile();
   const left = D.daysBetween(store.today, o.due);
   return (
-    <section className="card due-detail" aria-label="事项详情" key={o.key}>
+    <section className="card due-detail" aria-label="事项详情">
       <div className="col gap6 due-detail-head appear">
-        <button className="t-label" style={{ textAlign: "left" }} onClick={() => router.openCompany(o.company.id)}>{store.jurisdictionName(o.company.jurisdiction)} · {o.company.name}</button>
+        <button className="t-label ellipsis" style={{ textAlign: "left", maxWidth: "100%" }} onClick={() => router.openCompany(o.company.id)}>{store.jurisdictionName(o.company.jurisdiction)} · {o.company.name}</button>
         <div className="t-title">{o.rule.name}</div>
         <div className="muted t-meta">{D.long(o.due)}截止 · {leftText(D.daysBetween(store.today, o.due))}{o.rule.localName ? " · " + o.rule.localName : ""}</div>
       </div>
@@ -270,7 +294,7 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
             <span className="row gap6" style={{ fontWeight: 600 }}><Icon name={o.record?.dateConfirmed ? "checkmark.circle" : "info.circle"} size={13} />{o.record?.dateConfirmed ? "日期已确认" : "日期按规则推算"}</span>
             <span className="t-meta muted">{o.record?.dateConfirmed ? "可随时改。" : `${store.scheduleText(o.rule.schedule)}。和中介核对后确认或修改。`}</span>
           </span>
-          <DateField value={o.due} onChange={(d) => d && store.confirmDue(o, d)} allowsClear={false} minWidth={150} />
+          <DateField value={o.due} onChange={(d) => d && store.confirmDue(o, d)} ariaLabel="申报截止日" allowsClear={false} minWidth={150} />
           {!o.record?.dateConfirmed && <Button size="small" onClick={() => store.confirmDue(o)}>确认</Button>}
         </div>
         <div className="col gap10" style={{ padding: 14, borderRadius: "var(--r-control)", background: "var(--surface-sunken)" }}>
@@ -295,13 +319,14 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
         </div>
         <div className="col gap6">
           <span className="v4-label">邮件草稿（可改）</span>
-          <TextField multiline rows={7} ariaLabel="邮件草稿" value={mail} onChange={setMail} />
+          <TextField multiline rows={7} ariaLabel="邮件草稿" value={mail} onChange={(text) => setEdit(text === defaultMail ? null : { text, basedOn: defaultMail })} />
+          {needsReview && <span role="status" className="t-meta amber-text">已保留你编辑的草稿。请核对截止日（{D.long(o.due)}）和收件人。</span>}
         </div>
       </div>
       <div className="row gap8 due-detail-actions">
         <Button kind="primary" style={{ flex: 1 }} icon="doc.on.doc" onClick={() => {
           void platform().copyText(mail);
-          store.showToast(contacts[0] ? `已复制，粘贴到邮箱发给 ${contacts[0].name}。` : "邮件已复制。");
+          store.showToast(needsReview ? `已复制手工草稿，请核对截止日（${D.long(o.due)}）和收件人。` : to ? `已复制，粘贴到邮箱发给 ${to.name}。` : "邮件已复制。");
         }}>复制邮件</Button>
         <ActionMenu title="标为已完成" icon="checkmark" align="end" entries={[
           item("标为已完成", "checkmark", () => onFinish(o)),
@@ -313,32 +338,38 @@ function DueDetail({ o, onFinish }: { o: Obligation; onFinish: (o: Obligation, r
   );
 }
 
-/** 内容区（.page-inner）宽度小于 px 时为 true，与 .two 的容器断点一致。 */
-function useNarrow(ref: React.RefObject<HTMLElement>, px: number) {
-  const [m, setM] = useState(false);
+/** 侧栏自动收起的窄窗口，或放大后放不下两栏的内容区，点事项打开抽屉。 */
+function useCalendarDrawerLayout(ref: React.RefObject<HTMLElement>) {
+  const [narrow, setNarrow] = useState(isNarrowWindow);
   useEffect(() => {
     const el = ref.current; if (!el) return;
-    const ro = new ResizeObserver(() => setM(el.clientWidth - parseFloat(getComputedStyle(el).paddingLeft) - parseFloat(getComputedStyle(el).paddingRight) < px));
-    ro.observe(el); return () => ro.disconnect();
-  }, [ref, px]);
-  return m;
+    const observer = new ResizeObserver(([entry]) => {
+      setNarrow(isNarrowWindow() || entry.contentRect.width < 720);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return narrow;
 }
 
-/** 右侧抽屉：打开时焦点移到标题，Esc 或点遮罩关闭，焦点回到原来的行。 */
+/** 右侧抽屉：打开时聚焦关闭入口，Esc 或点遮罩关闭，焦点回到原来的行。 */
 function DueDrawer({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  useFocusReturn(box);
   const closeRef = useRef(onClose); closeRef.current = onClose;
   useEffect(() => {
-    const el = box.current; el?.querySelector<HTMLElement>(".t-title")?.setAttribute("tabindex", "-1");
-    (el?.querySelector<HTMLElement>(".t-title") ?? el)?.focus();
+    closeButton.current?.focus();
     // 5.4.1：抽屉里打开的对话框（.overlay）或弹层在上面时，Esc 先关它们
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(".popover:not(.ghost-out), .overlay:not(.ghost-out)")) { e.stopPropagation(); closeRef.current(); } };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !document.querySelector(".popover:not(.ghost-out), .overlay:not(.ghost-out)")) { e.stopPropagation(); closeRef.current(); return; }
+    };
     document.addEventListener("keydown", key, true); return () => document.removeEventListener("keydown", key, true);
   }, []);
   return (
     <div className="drawer-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={box} className="drawer" role="dialog" aria-modal="true" aria-label="申报事项详情" tabIndex={-1}>
-        <div className="row" style={{ justifyContent: "flex-end" }}><button className="v4-x" aria-label="关闭详情" onClick={onClose}><Icon name="xmark" size={12} /></button></div>
+        <div className="row due-drawer-header"><h2 className="t-sheet">申报事项详情</h2><button ref={closeButton} type="button" className="icon-btn sunken due-drawer-close" aria-label="关闭申报事项详情" title="关闭" onClick={onClose}><Icon name="xmark" size={16} /></button></div>
         {children}
       </div>
     </div>

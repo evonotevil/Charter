@@ -73,6 +73,8 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Build ${{ matrix.arch }} app, DMG and ZIP
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
         run: npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never
       - name: Verify app, DMG and ZIP
         shell: bash
@@ -90,6 +92,8 @@ jobs:
             x64) grep -qw x86_64 macos-architectures.txt ;;
           esac
           test "$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")" = "$VERSION"
+          test "$(plutil -extract CFBundleVersion raw "$APP/Contents/Info.plist")" = "$VERSION.$GITHUB_RUN_NUMBER"
+          lipo -verify_arch "$(lipo -archs "$APP/Contents/MacOS/Charter")" "$APP/Contents/Resources/charter-calendar.node"
           test -f "$APP/Contents/Resources/app.asar"
           test -f "$APP/Contents/Resources/charter-templates.json"
           hdiutil verify "release/Charter-$VERSION-Mac-$EXPECTED_ARCH.dmg"

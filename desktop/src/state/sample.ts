@@ -31,9 +31,20 @@ export function simplePDF(title: string, subtitle: string, lines: string[]): Uin
   return new TextEncoder().encode(out);
 }
 
-export async function installSampleData(s: Store, opts: { quiet?: boolean } = {}) {
+export async function installSampleData(s: Store, opts: { quiet?: boolean; requireSnapshot?: boolean } = {}): Promise<boolean> {
   const d0 = s.data;
-  if (d0.companies.length || d0.documents.length || d0.people.length) await s.snapshotBeforeChange("载入示例数据前");
+  if (opts.requireSnapshot) {
+    if (!(await s.ensureSaved("载入示例数据"))) return false;
+    try {
+      await s.createSnapshot("载入示例数据前");
+      await s.refreshSnapshots();
+    } catch (e) {
+      s.setError(`载入示例数据前的备份没有写成，真实档案没有改动：${(e instanceof Error ? e.message : String(e))}。请确认数据文件夹可写入后重试。`);
+      return false;
+    }
+  } else if (d0.companies.length || d0.documents.length || d0.people.length) {
+    await s.snapshotBeforeChange("载入示例数据前");
+  }
   s.undoStack = []; s.redoStack = [];
   const today = s.today;
   const since = D.addDays(today, -20);
@@ -183,4 +194,5 @@ export async function installSampleData(s: Store, opts: { quiet?: boolean } = {}
   try { await p.removeDir(tmp); } catch { /* 忽略 */ }
   s.onDataCleared?.();
   if (!opts.quiet) s.showToast("示例数据已载入：17 家公司、4 个人、10 家中介。");
+  return true;
 }
